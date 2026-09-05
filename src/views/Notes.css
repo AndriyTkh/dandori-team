@@ -24,16 +24,20 @@
 }
 
 .notes__head-btn {
-  height: 24px;
+  height: var(--seg-h);
   padding: 0 var(--sp-3);
   border-radius: var(--radius);
   color: var(--text-dim);
   font-size: var(--fz-sm);
   line-height: 1;
+  transition:
+    background-color var(--t),
+    color var(--t);
 }
 
 .notes__head-btn:hover {
   background: var(--bg-hover);
+  color: var(--text);
 }
 
 .notes__rows {
@@ -51,6 +55,7 @@
   padding-right: var(--sp-2);
   cursor: default;
   user-select: none;
+  transition: background-color var(--t);
 }
 
 .notes__row:hover {
@@ -112,7 +117,11 @@
   opacity: 1;
 }
 
-/* Row context menu */
+/*
+ * The row's context menu. It is the same object as the header's dropdowns, so
+ * it is built out of the same box and the same rows — it used to be a tighter
+ * pad, a smaller radius and a size smaller type for no reason.
+ */
 
 .notes__menu-scrim {
   position: fixed;
@@ -125,19 +134,20 @@
   z-index: 91;
   display: flex;
   flex-direction: column;
-  width: 168px;
-  padding: var(--sp-1);
+  width: 180px;
+  padding: var(--sp-2);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--bg-raised);
   box-shadow: var(--shadow-pop);
 }
 
 .notes__menu-item {
-  padding: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
   border-radius: var(--radius);
   text-align: left;
-  font-size: var(--fz-sm);
+  font-size: var(--fz-md);
+  transition: background-color var(--t);
 }
 
 .notes__menu-item:hover {
@@ -148,7 +158,10 @@
   color: var(--danger);
 }
 
-/* Editor */
+/*
+ * Editor. The bar carries the same side inset as the body under it, so the
+ * note's name and its first line of text start on one vertical.
+ */
 
 .notes__editor {
   display: flex;
@@ -164,7 +177,7 @@
   gap: var(--sp-3);
   flex: none;
   height: 32px;
-  padding: 0 var(--sp-4);
+  padding: 0 var(--sp-5);
   border-bottom: 1px solid var(--border);
 }
 
@@ -188,8 +201,14 @@
   letter-spacing: -0.01em;
 }
 
+/*
+ * The name is a plain input that looks like a heading, so nothing says it can
+ * be typed into. An inset rule under it on focus says so without moving the
+ * text a pixel.
+ */
 .notes__title:focus {
   outline: none;
+  box-shadow: inset 0 -1px 0 var(--accent);
 }
 
 .notes__link {
