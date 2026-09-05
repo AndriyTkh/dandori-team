@@ -271,6 +271,16 @@
     height: 32px;
   }
 
+  /* The bar carries the only way back to the tree, so it gets a finger's worth
+     of height and the arrow a finger's worth of width. */
+  .notes__bar {
+    height: 40px;
+  }
+
+  .notes__back {
+    width: 32px;
+  }
+
   .notes__more {
     width: 24px;
     opacity: 1;
