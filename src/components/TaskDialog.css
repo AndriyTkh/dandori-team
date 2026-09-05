@@ -7,7 +7,7 @@
   justify-content: center;
   padding: var(--sp-7) var(--sp-5);
   overflow-y: auto;
-  background: rgba(10, 12, 16, 0.5);
+  background: var(--scrim);
 }
 
 .dialog {
@@ -17,7 +17,9 @@
   width: 100%;
   max-width: 520px;
   padding: var(--sp-5);
-  border: 1px solid var(--border);
+  /* Over a dimmed page the plain border disappeared; the dialog needs its own
+     edge in both themes, not the one the flat surfaces share. */
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   background: var(--bg-raised);
   box-shadow: var(--shadow-pop);
@@ -61,8 +63,13 @@
   letter-spacing: -0.01em;
 }
 
+/*
+ * The title is an input dressed as a heading. An inset rule under it on focus
+ * says it can be typed into, and costs no layout.
+ */
 .dialog__title:focus {
   outline: none;
+  box-shadow: inset 0 -1px 0 var(--accent);
 }
 
 .dialog__dates {
@@ -131,15 +138,35 @@
 .labels__pill {
   padding: var(--sp-1) var(--sp-4);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--text-dim);
   font-size: var(--fz-sm);
+  transition:
+    background-color var(--t),
+    border-color var(--t),
+    color var(--t);
 }
 
+.labels__pill:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/*
+ * A selected pill used to be filled solid with the label's colour and lettered
+ * in white — legible on the violet, unreadable on the amber and the green. The
+ * colour holds the edge and a wash of the ground instead, so the name is read
+ * in the text colour whichever of the nine it is.
+ */
 .labels__pill--on {
   border-color: var(--pill);
-  background: var(--pill);
-  color: #fff;
+  background: color-mix(in srgb, var(--pill) 16%, var(--bg-raised));
+  color: var(--text);
+}
+
+.labels__pill--on:hover {
+  border-color: var(--pill);
+  background: color-mix(in srgb, var(--pill) 26%, var(--bg-raised));
 }
 
 .dialog__links {
@@ -194,6 +221,7 @@
   height: 18px;
   border: 2px solid transparent;
   border-radius: 50%;
+  transition: border-color var(--t);
 }
 
 .labels__swatch--on {
@@ -232,8 +260,15 @@
   text-align: left;
 }
 
+.notelink {
+  transition:
+    background-color var(--t),
+    border-color var(--t);
+}
+
 .notelink:hover {
   background: var(--bg-hover);
+  border-color: var(--border-strong);
 }
 
 .notelink__icon {
@@ -272,8 +307,15 @@
   background: var(--bg);
 }
 
+.cfield {
+  transition:
+    border-color var(--t),
+    box-shadow var(--t);
+}
+
 .cfield:focus-within {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .cfield__head {
@@ -317,6 +359,9 @@
   font-size: var(--fz-sm);
   line-height: 1;
   opacity: 0;
+  transition:
+    opacity var(--t),
+    color var(--t);
 }
 
 /* The delete cross only shows up once the field is in play, so a row of them
@@ -339,6 +384,8 @@
   .dialog {
     max-width: none;
     min-height: 100%;
+    /* Full-bleed: the last control must clear the home bar. */
+    padding-bottom: calc(var(--sp-7) + env(safe-area-inset-bottom));
     border: none;
     border-radius: 0;
   }
