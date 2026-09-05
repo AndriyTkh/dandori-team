@@ -7,12 +7,19 @@
   background: var(--bg-raised);
 }
 
+/*
+ * The strip scrolls, and on a phone it always has more chips than fit. Without
+ * the mask the last one is sliced flat against the close button and reads as
+ * broken; the fade only ever touches a chip that actually reaches the edge.
+ */
 .reminders__list {
   display: flex;
   flex: 1;
   gap: var(--sp-3);
   overflow-x: auto;
   scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
 }
 
 .reminders__list::-webkit-scrollbar {
@@ -27,13 +34,25 @@
   max-width: 320px;
   padding: var(--sp-2) var(--sp-4);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--bg);
   font-size: var(--fz-sm);
+  transition:
+    background-color var(--t),
+    border-color var(--t);
 }
 
 .reminders__chip:hover {
   background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.reminders__chip--overdue:hover {
+  border-color: var(--danger);
+}
+
+.reminders__chip--today:hover {
+  border-color: var(--accent);
 }
 
 .reminders__chip--overdue {
@@ -68,9 +87,20 @@
   border-radius: var(--radius);
   color: var(--text-faint);
   font-size: var(--fz-sm);
+  transition:
+    background-color var(--t),
+    color var(--t);
 }
 
 .reminders__close:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+/* A finger needs more than 24px, and the banner is the one bar with room. */
+@media (max-width: 720px) {
+  .reminders__close {
+    width: 32px;
+    height: 32px;
+  }
 }
