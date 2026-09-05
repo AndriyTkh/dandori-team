@@ -6,7 +6,8 @@
   color: var(--text-dim);
 }
 
-.lfilter__btn--on {
+.lfilter__btn--on,
+.lfilter__btn--on:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -41,6 +42,7 @@
   border-radius: var(--radius);
   font-size: var(--fz-md);
   text-align: left;
+  transition: background-color var(--t);
 }
 
 .lfilter__row:hover {

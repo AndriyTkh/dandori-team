@@ -13,12 +13,13 @@
   align-items: center;
   gap: var(--sp-2);
   max-width: 190px;
-  height: 28px;
+  height: var(--ctl-h);
   padding: 0 var(--sp-3);
   border-radius: var(--radius);
   font-size: var(--fz-lg);
   font-weight: 600;
   letter-spacing: -0.01em;
+  transition: background-color var(--t);
 }
 
 .header__ws:hover {
@@ -36,6 +37,11 @@
   font-size: var(--fz-xs);
 }
 
+/*
+ * A segmented control. The same shape appears twice more — the board's range
+ * modes and the timeline's zoom — so its height and side padding are tokens
+ * and the three cannot drift apart again.
+ */
 .header__tabs {
   display: flex;
   gap: var(--sp-1);
@@ -45,11 +51,14 @@
 }
 
 .header__tab {
-  height: 24px;
-  padding: 0 var(--sp-5);
+  height: var(--seg-h);
+  padding: 0 var(--seg-px);
   border-radius: var(--radius);
   color: var(--text-dim);
   font-size: var(--fz-sm);
+  transition:
+    background-color var(--t),
+    color var(--t);
 }
 
 .header__tab:hover {
@@ -71,8 +80,8 @@
 }
 
 .header__gear {
-  width: 28px;
-  height: 28px;
+  width: var(--ctl-h);
+  height: var(--ctl-h);
   justify-content: center;
   color: var(--text-dim);
 }
@@ -108,6 +117,7 @@
   border-radius: var(--radius);
   font-size: var(--fz-md);
   text-align: left;
+  transition: background-color var(--t);
 }
 
 .menu__item:hover:not(:disabled) {
