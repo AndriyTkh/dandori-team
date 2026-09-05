@@ -45,10 +45,14 @@ a {
   color: var(--accent);
 }
 
+/*
+ * One focus ring for the whole app. It used to set `border-radius` too, which
+ * overrode the element's own — a pill-shaped chip snapped to 5px the moment it
+ * was tabbed to. The outline follows whatever radius the element already has.
+ */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-  border-radius: var(--radius);
 }
 
 /* Scrollbars: thin, so they don't eat space on a dense board */
@@ -77,13 +81,17 @@ a {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
-  height: 28px;
+  height: var(--ctl-h);
   padding: 0 var(--sp-4);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-raised);
   font-size: var(--fz-sm);
   white-space: nowrap;
+  transition:
+    background-color var(--t),
+    border-color var(--t),
+    color var(--t);
 }
 
 .btn:hover {
@@ -100,10 +108,19 @@ a {
   color: var(--accent-text);
 }
 
-.btn--primary:hover,
+/*
+ * The primary button used to brighten with a filter, which lightened its text
+ * along with its ground and washed the label out. Two tokens instead, so the
+ * pressed state is also distinct from the hovered one in both themes.
+ */
+.btn--primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 .btn--primary:active {
-  background: var(--accent);
-  filter: brightness(1.08);
+  background: var(--accent-active);
+  border-color: var(--accent-active);
 }
 
 .btn--quiet {
@@ -122,11 +139,21 @@ a {
   border-radius: var(--radius);
   background: var(--bg);
   font-size: var(--fz-md);
+  transition:
+    border-color var(--t),
+    box-shadow var(--t);
 }
 
+/*
+ * A 1px border in the accent colour was the only sign a field had focus, which
+ * is nothing at all across a room. The ring is the same one the rest of the app
+ * draws with `:focus-visible`, only softer, because a text field is focused for
+ * as long as it is being typed into.
+ */
 .field:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 /*
@@ -184,7 +211,7 @@ a {
 
 .md :not(pre) > code {
   padding: 1px var(--sp-2);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: var(--bg-sunken);
 }
 
@@ -207,4 +234,15 @@ a {
 .md hr {
   border: none;
   border-top: 1px solid var(--border);
+}
+
+/* A state change is allowed one frame; nothing here animates for its own sake. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
