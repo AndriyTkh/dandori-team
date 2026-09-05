@@ -100,8 +100,10 @@
   font-size: var(--fz-md);
 }
 
+/* The same ring every other field draws, at the size a 20px row can hold. */
 .notes__rename:focus {
   outline: none;
+  box-shadow: 0 0 0 2px var(--accent-ring);
 }
 
 .notes__more {
