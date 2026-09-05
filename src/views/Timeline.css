@@ -193,7 +193,6 @@
 
 .timeline__row:hover .timeline__name {
   background: var(--bg-hover);
-  color: var(--text);
 }
 
 /*
