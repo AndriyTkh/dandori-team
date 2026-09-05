@@ -19,24 +19,30 @@
 .board__modes {
   display: flex;
   gap: var(--sp-1);
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  padding: var(--sp-1);
+  border-radius: var(--radius-lg);
   background: var(--bg-sunken);
 }
 
 .board__mode {
-  height: 22px;
-  padding: 0 var(--sp-4);
-  border-radius: calc(var(--radius) - 1px);
+  height: var(--seg-h);
+  padding: 0 var(--seg-px);
+  border-radius: var(--radius);
   color: var(--text-dim);
   font-size: var(--fz-sm);
+  transition:
+    background-color var(--t),
+    color var(--t);
+}
+
+.board__mode:hover {
+  color: var(--text);
 }
 
 .board__mode--on {
   background: var(--bg-raised);
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
   box-shadow: var(--shadow-card);
 }
 
@@ -91,12 +97,14 @@
   background: var(--accent-bg);
 }
 
+/* The side inset matches `.board__list` below it, so the date sits on the same
+   vertical as the edge of the cards under it. */
 .board__col-head {
   display: flex;
   flex: 0 0 auto;
   align-items: baseline;
   gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-3) var(--sp-2);
+  padding: var(--sp-3) var(--sp-2) var(--sp-2);
   border-bottom: 1px solid var(--border);
 }
 
@@ -143,6 +151,12 @@
   line-height: 1;
 }
 
+.board__add {
+  transition:
+    background-color var(--t),
+    color var(--t);
+}
+
 .board__add:hover {
   background: var(--bg-hover);
   color: var(--text);
@@ -179,11 +193,17 @@
   font-size: var(--fz-sm);
   cursor: pointer;
   touch-action: manipulation;
+  transition:
+    border-color var(--t),
+    box-shadow var(--t);
 }
 
+/* Hovering used to darken the border and nothing else, which on a white card
+   over a white column was almost invisible. It lifts now as well. */
 .board__card:hover {
   border-color: var(--border-strong);
   border-left-color: var(--card-accent);
+  box-shadow: var(--shadow-raise);
 }
 
 .board__card--done {
@@ -266,7 +286,7 @@
 }
 
 .board__weekday {
-  padding: var(--sp-1) var(--sp-3);
+  padding: var(--sp-1) var(--sp-2);
   color: var(--text-faint);
   font-size: var(--fz-xs);
   text-transform: uppercase;
@@ -412,8 +432,9 @@
     height: 6px;
     padding: 0;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: var(--card-accent);
+    box-shadow: none;
   }
 
   .board__card--compact .board__check,
