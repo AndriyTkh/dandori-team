@@ -5,12 +5,19 @@
   padding: var(--sp-6);
 }
 
+/* The three controls are one stack, so they carry one height. */
 .signin__form {
+  --signin-h: 34px;
+
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
   width: 100%;
   max-width: 280px;
+}
+
+.signin__form .field {
+  height: var(--signin-h);
 }
 
 .signin__title {
@@ -27,6 +34,6 @@
 }
 
 .signin__submit {
-  height: 34px;
+  height: var(--signin-h);
   justify-content: center;
 }

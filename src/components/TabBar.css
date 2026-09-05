@@ -13,9 +13,17 @@
   }
 
   .tabbar__item {
+    display: flex;
     flex: 1;
+    align-items: center;
+    justify-content: center;
     color: var(--text-dim);
     font-size: var(--fz-sm);
+    transition: color var(--t);
+  }
+
+  .tabbar__item:active {
+    color: var(--text);
   }
 
   .tabbar__item--on {
