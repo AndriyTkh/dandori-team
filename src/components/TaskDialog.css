@@ -224,8 +224,14 @@
   transition: border-color var(--t);
 }
 
+/*
+ * The chosen colour is ringed, not outlined: a 2px band of the dialog's own
+ * ground between the fill and the ring, so the mark reads as a selection rather
+ * than as a darker swatch.
+ */
 .labels__swatch--on {
-  border-color: var(--text);
+  border-color: var(--bg-raised);
+  box-shadow: 0 0 0 2px var(--text);
 }
 
 /* Mute switch */
