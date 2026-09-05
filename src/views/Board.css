@@ -1,5 +1,7 @@
 .board {
   --nodate-w: var(--day-col-w);
+  /* The stripe of a task with no label. See `accent` in board/model.ts. */
+  --card-plain: var(--border);
 
   display: flex;
   flex-direction: column;
@@ -384,12 +386,18 @@
 
 @media (max-width: 720px) {
   /*
-   * On a narrow screen nothing is pinned. There are two pinned columns now, and
-   * the pinned area plus a single day already fill the whole screen — the second
-   * one has nowhere to go. «Без даты» and «Просрочено» become ordinary leading
-   * columns of the strip instead: the initial scroll sits on today, and a swipe
-   * to the right brings them back.
+   * On a narrow screen nothing is pinned: the pinned column plus a single day
+   * already fill the whole screen. «Без даты» becomes an ordinary leading column
+   * of the strip instead — the initial scroll sits on today, and a swipe to the
+   * right brings it back.
+   *
+   * The compact card here is nothing but its own stripe, so a task with no label
+   * needs a colour of its own rather than the card border it no longer has.
    */
+  .board {
+    --card-plain: var(--border-strong);
+  }
+
   .board__scroller {
     scroll-snap-type: x proximity;
   }

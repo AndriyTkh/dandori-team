@@ -60,8 +60,12 @@ export function cardClass(
     .join(' ')
 }
 
-/** The first label's colour becomes the left stripe, and tints the whole card on a phone. */
+/** The first label's colour becomes the left stripe, and the whole card on a phone. */
 export function accent(task: Task, labels: Label[]): CSSProperties {
   const first = labelColors(task, labels)[0]
-  return { '--card-accent': first ? labelVar(first) : 'var(--border)' } as CSSProperties
+  // A task with no label gets `--card-plain`, which the board sets to the card's own
+  // border on a wide screen — an accent equal to the border reads as no accent — and
+  // to a visible grey on a phone, where the compact card *is* the stripe and a
+  // border-coloured one would leave the task looking like an empty cell.
+  return { '--card-accent': first ? labelVar(first) : 'var(--card-plain)' } as CSSProperties
 }
