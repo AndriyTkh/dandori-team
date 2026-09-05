@@ -292,6 +292,8 @@
   text-transform: uppercase;
 }
 
+/* No top rule of its own: the weekday strip above already draws one, and the
+   two together were a doubled hairline. */
 .board__grid {
   display: grid;
   flex: 1;
@@ -299,7 +301,6 @@
   grid-auto-rows: minmax(96px, 1fr);
   min-height: 0;
   overflow-y: auto;
-  border-top: 1px solid var(--border);
 }
 
 .board__cell {
@@ -440,5 +441,11 @@
   .board__card--compact .board__check,
   .board__card--compact .board__card-main {
     display: none;
+  }
+
+  /* A finger is wider than a mouse pointer. */
+  .board__check {
+    width: 15px;
+    height: 15px;
   }
 }
