@@ -410,7 +410,7 @@
   height: var(--tl-lv-h);
   /* Opaque, so a lead passing this level is cut off by the text rather than
      drawn across it. */
-  padding: 0 var(--radius-sm);
+  padding: 0 3px;
   border-radius: var(--radius-sm);
   background: var(--bg);
   overflow: hidden;
