@@ -72,8 +72,9 @@
 
   --text: #1a1d23;
   --text-dim: #61656d;
-  /* Carries 11px uppercase labels and day numbers, so it has to clear 4.5:1. */
-  --text-faint: #767c86;
+  /* Carries the 11px uppercase labels, the weekday letters and the day numbers.
+     It sat at 3.2:1 on white, which is under AA for text that small. */
+  --text-faint: #70767f;
 
   --accent: #0068d6;
   --accent-hover: #0059ba;
@@ -108,7 +109,7 @@
 
     --text: #e7e9ee;
     --text-dim: #9aa1ae;
-    --text-faint: #808795;
+    --text-faint: #858c9a;
 
     --accent: #3d8bfd;
     --accent-hover: #5b9dff;
@@ -143,7 +144,7 @@
 
   --text: #e7e9ee;
   --text-dim: #9aa1ae;
-  --text-faint: #808795;
+  --text-faint: #858c9a;
 
   --accent: #3d8bfd;
   --accent-hover: #5b9dff;
