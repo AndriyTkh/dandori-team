@@ -390,18 +390,98 @@
   .dialog {
     max-width: none;
     min-height: 100%;
-    /* Full-bleed: the last control must clear the home bar. */
-    padding-bottom: calc(var(--sp-7) + env(safe-area-inset-bottom));
+    padding: var(--sp-5) max(var(--sp-5), env(safe-area-inset-right))
+      /* Full-bleed: the last control must clear the home bar. */
+      calc(var(--sp-7) + env(safe-area-inset-bottom)) max(var(--sp-5), env(safe-area-inset-left));
     border: none;
     border-radius: 0;
+  }
+
+  /*
+   * The card is the one screen of the app that is nothing but controls, and on a
+   * phone each of them is aimed at with a thumb. The two standing in the top row
+   * are the furthest from it, so they are the ones given a whole finger's
+   * square: closing the card is how it is left, and ticking it done is half of
+   * why it is opened at all.
+   */
+  .dialog__head {
+    min-height: var(--tap);
+  }
+
+  .dialog__done {
+    align-self: stretch;
+    align-items: center;
+    padding-right: var(--sp-4);
+    font-size: var(--fz-md);
+  }
+
+  .dialog__done input,
+  .dialog__mute input {
+    width: 22px;
+    height: 22px;
+  }
+
+  .dialog__mute {
+    align-items: center;
+    min-height: var(--tap);
+    font-size: var(--fz-md);
+  }
+
+  .dialog__close {
+    width: var(--tap);
+    height: var(--tap);
+    margin-right: calc(var(--sp-3) * -1);
+    font-size: var(--fz-lg);
+  }
+
+  .dialog__close:active {
+    background: var(--bg-active);
+    color: var(--text);
+  }
+
+  /*
+   * The links in the field headings are words, and a word is about sixteen
+   * pixels tall. The padding around them is what is actually pressed; the
+   * negative margin keeps the heading on the line it was already on.
+   */
+  .dialog__link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    margin: -9px calc(var(--sp-2) * -1) -9px 0;
+    padding: 0 var(--sp-2);
+  }
+
+  .dialog__link:active {
+    color: var(--accent-active);
   }
 
   .dialog__dates {
     grid-template-columns: 1fr;
   }
 
+  .notelink {
+    min-height: var(--tap);
+  }
+
+  .notelink:active {
+    background: var(--bg-active);
+  }
+
   .notelink__pick {
     grid-template-columns: 1fr;
+  }
+
+  .labels__pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 0 var(--sp-5);
+    font-size: var(--fz-md);
+  }
+
+  .labels__pill:active {
+    background: var(--bg-active);
   }
 
   .labels__row {
@@ -410,5 +490,48 @@
 
   .labels__row .labels__colors {
     grid-column: 1 / -1;
+  }
+
+  /* A colour is picked with a fingertip, and an 18px dot is a fifth of one. */
+  .labels__swatch {
+    width: 28px;
+    height: 28px;
+    border-width: 3px;
+  }
+
+  .labels__colors {
+    gap: var(--sp-3);
+  }
+
+  .labels__del {
+    width: var(--tap);
+    height: var(--tap);
+  }
+
+  .cfield {
+    padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  }
+
+  /*
+   * A custom field's cross has no hover to come out of here: it either stands
+   * there or the field cannot be removed from a phone at all.
+   */
+  .cfield__del {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--tap);
+    height: var(--tap);
+    margin: -11px calc(var(--sp-3) * -1) -11px 0;
+    font-size: var(--fz-lg);
+    opacity: 1;
+  }
+
+  .dialog__foot {
+    padding-top: var(--sp-4);
+  }
+
+  .dialog__foot .btn {
+    min-height: var(--tap);
   }
 }
