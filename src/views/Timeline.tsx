@@ -35,7 +35,7 @@ const DAY_LABEL_W = 20
 /** A narrow bracket cannot fit its label — only the boundary is left. */
 const BRACKET_LABEL_W = 56
 const NAME_W = 184
-const NAME_W_COMPACT = 116
+const NAME_W_COMPACT = 104
 const COMPACT_W = 620
 /** Room for the vertical scrollbar, otherwise the scale scrolls itself sideways. */
 const GUTTER = 10
@@ -192,7 +192,9 @@ function TimelineRow({
       }}
     >
       <div className="timeline__name" title={`${task.title} · ${range}`}>
-        {task.title}
+        {/* The name is wrapped so that a phone can centre it and clamp it to two
+            lines at once: the clamp has to sit on the box that holds the text. */}
+        <span className="timeline__name-text">{task.title}</span>
       </div>
       <div className="timeline__track">
         {row.milestone ? (

@@ -462,11 +462,49 @@
 
 @media (max-width: 720px) {
   .timeline {
-    --tl-row-h: 32px;
+    --tl-row-h: 40px;
   }
 
+  /*
+   * The name gutter took a third of the screen and still ended every task in an
+   * ellipsis: one line of it holds about fourteen letters, and the shortest real
+   * deadline in here is «Промежуточный отчёт по гранту». Two lines in a
+   * narrower gutter carry nearly twice the name and hand the difference to the
+   * track, which is what the tab is for.
+   */
   .timeline__name {
+    display: flex;
+    align-items: center;
     padding: 0 var(--sp-3);
+    white-space: normal;
+  }
+
+  .timeline__name-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    line-height: 1.25;
+  }
+
+  .timeline__row:active {
+    background: var(--bg-active);
+  }
+
+  .timeline__row:active .timeline__name {
+    background: var(--bg-active);
+  }
+
+  /* A bar carries a task's whole span; at 12px it read as a hairline between
+     40px rows. */
+  .timeline__bar {
+    height: 14px;
+  }
+
+  .timeline__dot {
+    width: 13px;
+    height: 13px;
+    margin-left: -6.5px;
   }
 
   /* A finger is not a mouse: taller callout lines and fewer levels, so the
@@ -478,5 +516,21 @@
   .timeline__point {
     /* The dot itself stays small, the tap target around it does not. */
     box-shadow: 0 0 0 3px var(--bg);
+  }
+
+  /*
+   * A 9px dot is not a target a finger can take, and on this tab a dot is one of
+   * the two ways into a task. The box around it is invisible and reaches past
+   * the dot on every side; which of two crowded marks takes the tap is already
+   * decided by the levels, so the nearer one wins as it does with a pointer.
+   */
+  .timeline__point::after {
+    content: '';
+    position: absolute;
+    inset: -9px;
+  }
+
+  .timeline__callout {
+    padding: 0 var(--sp-2);
   }
 }
