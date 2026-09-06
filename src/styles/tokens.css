@@ -29,7 +29,7 @@
   --header-h: 44px;
   --tabbar-h: 52px;
   --day-col-w: 220px;
-  --day-col-w-mobile: 78vw;
+  --day-col-w-mobile: 100%;
 
   /* One height for every small control: buttons, the workspace switcher, the gear. */
   --ctl-h: 28px;

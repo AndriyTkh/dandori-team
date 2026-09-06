@@ -398,27 +398,132 @@
     --card-plain: var(--border-strong);
   }
 
-  .board__scroller {
-    scroll-snap-type: x proximity;
-  }
+  /*
+   * One day fills the screen and a swipe moves to the next. The column used to
+   * stop at 78vw, which left a fifth of the next day standing at the edge: not
+   * an affordance but a card sliced down the middle, and 22% of a 390px screen
+   * taken away from the titles that are the point of the board.
+   *
+   * The snap stays `proximity`. A mandatory one re-snaps every programmatic
+   * scroll, and the auto-scroll that carries a dragged card past the edge of
+   * the screen nudges the strip a few pixels at a time: every nudge would be
+   * answered with a whole column, and a card dragged towards tomorrow would
+   * land a fortnight out.
+   */
 
-  .board__col {
+  .board__col,
+  .board__col--nodate {
     flex-basis: var(--day-col-w-mobile);
     scroll-snap-align: start;
   }
 
   .board__col--nodate {
     position: static;
-    flex-basis: var(--day-col-w-mobile);
-    scroll-snap-align: start;
+  }
+
+  /* The head of the day is the one line that says which day this is, now that
+     no neighbour is visible to place it against. */
+  .board__col-head {
+    align-items: center;
+    min-height: var(--tap);
+    padding: 0 var(--sp-3) 0 var(--sp-4);
+  }
+
+  .board__col-date {
+    font-size: var(--fz-md);
+  }
+
+  .board__add {
+    width: var(--tap);
+    height: var(--tap);
+    margin-right: calc(var(--sp-3) * -1);
+    font-size: var(--fz-xl);
+  }
+
+  .board__add:active {
+    background: var(--bg-active);
+    color: var(--text);
+  }
+
+  .board__list {
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+  }
+
+  /*
+   * The card is the thing the whole tab exists to show, so it is the biggest
+   * type on the screen and a finger's height on its own. The checkbox grows
+   * with it: it and the title are two targets in one row, and the row is tall
+   * enough that a miss lands on the card rather than between them.
+   */
+  .board__card {
+    align-items: center;
+    min-height: var(--tap);
+    gap: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    border-left-width: 3px;
+    font-size: var(--fz-md);
+  }
+
+  .board__card:active {
+    border-color: var(--border-strong);
+    border-left-color: var(--card-accent);
+    background: var(--bg-hover);
+  }
+
+  .board__card-main {
+    gap: var(--sp-2);
+  }
+
+  .board__dot {
+    width: 7px;
+    height: 7px;
+  }
+
+  /*
+   * The bar holds three words and nothing else, so on a phone the three words
+   * are the bar: a segmented control across the full width, each mode a third
+   * of the screen. Same control, same three labels — aimed at with a thumb
+   * rather than at a corner of it.
+   */
+  .board__bar {
+    gap: var(--sp-3);
+    padding: var(--sp-3) max(var(--sp-4), env(safe-area-inset-right)) var(--sp-3)
+      max(var(--sp-4), env(safe-area-inset-left));
+  }
+
+  .board__modes {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .board__mode {
+    flex: 1;
+    min-width: 0;
+    padding: 0 var(--sp-2);
+  }
+
+  .board__mode:active {
+    color: var(--text);
   }
 
   .board__month-nav {
+    gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-3);
   }
 
+  .board__month-title {
+    font-size: var(--fz-md);
+  }
+
+  .board__month-nav .btn,
+  .board__month-nav .btn--quiet {
+    min-width: var(--tap);
+    justify-content: center;
+  }
+
   .board__weekday {
-    padding: var(--sp-1);
+    padding: var(--sp-2) var(--sp-1);
     text-align: center;
   }
 
@@ -428,7 +533,16 @@
 
   .board__cell-head {
     justify-content: center;
-    padding: var(--sp-1) 0;
+    padding: var(--sp-2) 0 var(--sp-1);
+  }
+
+  .board__cell-num {
+    font-size: var(--fz-md);
+  }
+
+  .board__cell--today .board__cell-num {
+    min-width: 24px;
+    height: 24px;
   }
 
   /* A month cell only has room for the label-coloured stripe. */
@@ -436,14 +550,32 @@
     display: none;
   }
 
+  /*
+   * A 6px stripe was a mark, not a target: it carries a whole task and a finger
+   * could not land on it. At 10px it is still only a colour — the cell has no
+   * width for a word — but it can be tapped and it can be counted from across
+   * the room, which is all a month cell is asked for.
+   */
+  .board__cell-list {
+    gap: 3px;
+    padding: 0 var(--sp-2) var(--sp-2);
+  }
+
   .board__card--compact {
-    flex-basis: 6px;
-    height: 6px;
+    flex-basis: 10px;
+    min-height: 0;
+    height: 10px;
+    gap: 0;
     padding: 0;
     border: none;
     border-radius: var(--radius-sm);
     background: var(--card-accent);
     box-shadow: none;
+  }
+
+  .board__card--compact:active {
+    background: var(--card-accent);
+    opacity: 0.6;
   }
 
   .board__card--compact .board__check,
@@ -453,7 +585,8 @@
 
   /* A finger is wider than a mouse pointer. */
   .board__check {
-    width: 15px;
-    height: 15px;
+    width: 20px;
+    height: 20px;
+    margin: 0;
   }
 }
