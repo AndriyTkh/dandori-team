@@ -8,6 +8,9 @@
     flex: 0 0 auto;
     height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
+    /* Landscape on a notched phone puts the cutout beside the bar, not above it. */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
     border-top: 1px solid var(--border);
     background: var(--bg-raised);
   }
@@ -22,7 +25,10 @@
     transition: color var(--t);
   }
 
+  /* A tab is the widest target on the screen; a shade of the ground under the
+     finger answers faster than a change of the text colour alone. */
   .tabbar__item:active {
+    background: var(--bg-active);
     color: var(--text);
   }
 

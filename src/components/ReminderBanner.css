@@ -97,10 +97,38 @@
   color: var(--text);
 }
 
-/* A finger needs more than 24px, and the banner is the one bar with room. */
+/*
+ * A finger needs more than 24px, and the banner is the one bar with room. The
+ * chips are what the bar is for, so the bar is built on them: a chip is a
+ * finger's height, the close button beside it a finger's square, and the two are
+ * far enough apart that dismissing the banner is never how a task gets opened.
+ */
 @media (max-width: 720px) {
+  .reminders {
+    padding-left: max(var(--sp-4), env(safe-area-inset-left));
+    padding-right: max(var(--sp-3), env(safe-area-inset-right));
+  }
+
+  .reminders__chip {
+    /* Given a height of its own the chip stops hanging its text off a baseline. */
+    align-items: center;
+    min-height: 38px;
+    max-width: 78vw;
+    padding: 0 var(--sp-5);
+  }
+
+  .reminders__chip:active {
+    background: var(--bg-active);
+  }
+
   .reminders__close {
-    width: 32px;
-    height: 32px;
+    width: var(--tap);
+    height: var(--tap);
+    font-size: var(--fz-md);
+  }
+
+  .reminders__close:active {
+    background: var(--bg-active);
+    color: var(--text);
   }
 }

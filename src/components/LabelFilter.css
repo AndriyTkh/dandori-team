@@ -65,3 +65,24 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+@media (max-width: 720px) {
+  .lfilter__pop {
+    min-width: 240px;
+    max-width: calc(100vw - var(--sp-4) * 2);
+  }
+
+  .lfilter__row {
+    min-height: var(--tap);
+  }
+
+  .lfilter__row:active {
+    background: var(--bg-active);
+  }
+
+  /* The dot is the only thing in the row that says which label it is. */
+  .lfilter__dot {
+    width: 11px;
+    height: 11px;
+  }
+}

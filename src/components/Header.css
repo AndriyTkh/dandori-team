@@ -157,4 +157,54 @@
   .header__tabs {
     display: none;
   }
+
+  /*
+   * The bar keeps its 44px and hands all of it to the three things standing in
+   * it: a 40px control inside a 44px bar wastes the two strips above and below
+   * it, which is about what a thumb misses by. In landscape on a notched phone
+   * the same bar has to clear the cutout as well.
+   */
+  .header {
+    gap: var(--sp-2);
+    padding-left: max(var(--sp-4), env(safe-area-inset-left));
+    padding-right: max(var(--sp-4), env(safe-area-inset-right));
+  }
+
+  .header__ws,
+  .header__gear,
+  .header__right .btn {
+    height: 100%;
+    border-radius: var(--radius);
+  }
+
+  .header__ws:active,
+  .header__right .btn:active {
+    background: var(--bg-active);
+  }
+
+  .header__gear {
+    width: var(--tap);
+    font-size: var(--fz-lg);
+  }
+
+  /*
+   * The menus stay under the buttons that open them: a workspace is switched
+   * from the header by decision, and everything else in here is rare enough to
+   * be allowed to sit far from the thumb. What they do get is rows a finger can
+   * land on and a width that cannot spill off the edge of a 360px screen.
+   */
+  .menu__pop {
+    min-width: 240px;
+    max-width: calc(100vw - var(--sp-4) * 2);
+  }
+
+  .menu__item {
+    display: flex;
+    align-items: center;
+    min-height: var(--tap);
+  }
+
+  .menu__item:active:not(:disabled) {
+    background: var(--bg-active);
+  }
 }

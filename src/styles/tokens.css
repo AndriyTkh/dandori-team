@@ -162,3 +162,27 @@
   --shadow-raise: 0 2px 6px rgba(0, 0, 0, 0.5);
   --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.55);
 }
+
+/*
+ * The phone. What sat here until now was the laptop scale, shrunk: 11px
+ * uppercase Russian is decoration rather than text at arm's length, and a 28px
+ * control is half of what a fingertip covers. One block lifts the type and the
+ * control heights for every view at once — the same rows, the same rules, drawn
+ * at a size a hand can hit. The bars keep their heights, so none of this costs
+ * the owner a pixel of his own data.
+ */
+@media (max-width: 720px) {
+  :root {
+    --fz-xs: 12px;
+    --fz-sm: 14px;
+    --fz-md: 15px;
+    --fz-lg: 17px;
+    --fz-xl: 22px;
+
+    --ctl-h: 40px;
+    --seg-h: 36px;
+
+    /* A fingertip covers this much. Everything meant to be tapped is laid out on it. */
+    --tap: 44px;
+  }
+}

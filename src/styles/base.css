@@ -260,3 +260,42 @@ a {
     animation-iteration-count: 1 !important;
   }
 }
+
+/*
+ * The phone.
+ *
+ * Anything typed into stays at 16px: iOS Safari zooms the page in on a smaller
+ * field the moment it takes focus, and leaves it zoomed. The OS tap highlight
+ * goes — a grey box the browser paints over whatever it thinks was pressed, on
+ * top of the app's own pressed states, which then read as a glitch. Every
+ * tappable thing answers with `:active` instead, since a finger gets no hover.
+ */
+@media (max-width: 720px) {
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  .btn {
+    padding: 0 var(--sp-5);
+  }
+
+  .btn:active {
+    background: var(--bg-active);
+    border-color: var(--border-strong);
+  }
+
+  .btn--primary:active {
+    border-color: var(--accent-active);
+  }
+
+  .field {
+    min-height: var(--tap);
+    padding: var(--sp-4) var(--sp-5);
+  }
+}
