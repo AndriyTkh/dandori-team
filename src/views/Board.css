@@ -525,8 +525,7 @@
     font-size: var(--fz-md);
   }
 
-  .board__month-nav .btn,
-  .board__month-nav .btn--quiet {
+  .board__month-nav .btn {
     min-width: var(--tap);
     justify-content: center;
   }
