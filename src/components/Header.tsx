@@ -37,16 +37,18 @@ export function Header(props: Props) {
         onSelect={props.onSelectWorkspace}
       />
 
+      {/* Nothing to switch between until there is a workspace. */}
       <nav className="header__tabs">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            className={`header__tab${tab === props.tab ? ' header__tab--on' : ''}`}
-            onClick={() => props.onSelectTab(tab)}
-          >
-            {TAB_TITLES[tab]}
-          </button>
-        ))}
+        {current &&
+          TABS.map((tab) => (
+            <button
+              key={tab}
+              className={`header__tab${tab === props.tab ? ' header__tab--on' : ''}`}
+              onClick={() => props.onSelectTab(tab)}
+            >
+              {TAB_TITLES[tab]}
+            </button>
+          ))}
       </nav>
 
       <div className="header__right">

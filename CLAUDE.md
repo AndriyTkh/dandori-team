@@ -14,9 +14,11 @@ Fixed after the interviews. Change only at the explicit request of the project o
 
 ### Workspaces
 
-- Workspaces are created by the user, there can be any number of them.
-  The two starting ones (work, university) are not hardcoded, they are ordinary rows
-  in the database.
+- Workspaces are created by the user, there can be any number of them, and the app
+  creates none by itself. An empty database shows the header alone — no tabs, no
+  views, nothing for them to stand on — and the first workspace is made from the
+  header's menu. A pair named for you is a pair of names you did not choose and have
+  to rename or delete before you can start.
 - Isolation is complete: own tasks, own labels, own notes. Nothing is shown together.
 - Switching is one click from the header.
 - A workspace can be renamed and deleted. Since it is arbitrary, a typo in the name

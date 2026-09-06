@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { SignIn } from './components/SignIn'
 import { Header } from './components/Header'
 import { TabBar } from './components/TabBar'
@@ -8,7 +8,6 @@ import { Board } from './views/Board'
 import { Timeline } from './views/Timeline'
 import { Notes } from './views/Notes'
 import { useSession } from './auth/useSession'
-import { createWorkspace } from './db/api'
 import { useLabels, useTasks, useWorkspaces } from './db/hooks'
 import { startSync } from './sync/sync'
 import { emptyOf } from './lib/empty'
@@ -43,7 +42,7 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
   const [openNoteId, setOpenNoteId] = useState<ID | null>(null)
   const [remindersHidden, setRemindersHidden] = useState(false)
 
-  useBootstrap(workspaces)
+  useSync()
 
   // Reset the label filter when the workspace changes: the other workspace has its own labels.
   const [filteredFor, setFilteredFor] = useState(workspaceId)
@@ -61,8 +60,14 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
     setActiveLabels((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  if (!workspaces || !workspaceId) return null
+  if (!workspaces) return null
 
+  /*
+   * With no workspace there is nothing for a tab or a view to stand on, so only
+   * the header is drawn: its menu is where the first workspace gets made. The app
+   * makes none by itself — a workspace named for you is a name you did not choose
+   * and have to rename or delete before you can start.
+   */
   return (
     <div className="app">
       <Header
@@ -78,86 +83,65 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
         onSetTheme={onSetTheme}
       />
 
-      {!remindersHidden && (
-        <ReminderBanner
-          tasks={allTasks}
-          onOpenTask={setOpenTaskId}
-          onDismiss={() => setRemindersHidden(true)}
-        />
-      )}
+      {workspaceId && (
+        <>
+          {!remindersHidden && (
+            <ReminderBanner
+              tasks={allTasks}
+              onOpenTask={setOpenTaskId}
+              onDismiss={() => setRemindersHidden(true)}
+            />
+          )}
 
-      <main className="app__body">
-        {tab === 'board' && (
-          <Board
-            workspaceId={workspaceId}
-            tasks={tasks}
-            labels={labels}
-            mode={boardMode}
-            onSetMode={setBoardMode}
-            onOpenTask={setOpenTaskId}
-          />
-        )}
-        {tab === 'timeline' && (
-          <Timeline tasks={tasks} labels={labels} onOpenTask={setOpenTaskId} />
-        )}
-        {tab === 'notes' && (
-          <Notes
-            workspaceId={workspaceId}
-            openNoteId={openNoteId}
-            onOpened={() => setOpenNoteId(null)}
-          />
-        )}
-      </main>
+          <main className="app__body">
+            {tab === 'board' && (
+              <Board
+                workspaceId={workspaceId}
+                tasks={tasks}
+                labels={labels}
+                mode={boardMode}
+                onSetMode={setBoardMode}
+                onOpenTask={setOpenTaskId}
+              />
+            )}
+            {tab === 'timeline' && (
+              <Timeline tasks={tasks} labels={labels} onOpenTask={setOpenTaskId} />
+            )}
+            {tab === 'notes' && (
+              <Notes
+                workspaceId={workspaceId}
+                openNoteId={openNoteId}
+                onOpened={() => setOpenNoteId(null)}
+              />
+            )}
+          </main>
 
-      <TabBar tab={tab} onSelect={setTab} />
+          <TabBar tab={tab} onSelect={setTab} />
 
-      {openTaskId && (
-        <TaskDialog
-          taskId={openTaskId}
-          workspaceId={workspaceId}
-          labels={labels}
-          onOpenNote={(id) => {
-            // Opening a note means leaving the card: the two cannot share the screen.
-            setOpenNoteId(id)
-            setTab('notes')
-            setOpenTaskId(null)
-          }}
-          onClose={() => setOpenTaskId(null)}
-        />
+          {openTaskId && (
+            <TaskDialog
+              taskId={openTaskId}
+              workspaceId={workspaceId}
+              labels={labels}
+              onOpenNote={(id) => {
+                // Opening a note means leaving the card: the two cannot share the screen.
+                setOpenNoteId(id)
+                setTab('notes')
+                setOpenTaskId(null)
+              }}
+              onClose={() => setOpenTaskId(null)}
+            />
+          )}
+        </>
       )}
     </div>
   )
 }
 
-/**
- * Starts sync and seeds the initial workspaces.
- *
- * Seeding may only happen after the first exchange with the server: the local
- * database answers with an empty list instantly, and without that wait a second
- * device would create its own duplicate pair of starter workspaces.
- */
-function useBootstrap(workspaces: ReturnType<typeof useWorkspaces>) {
-  const [pulled, setPulled] = useState(false)
-  const seeded = useRef(false)
-
+/** Runs the exchange with the server for as long as the app is open. */
+function useSync() {
   useEffect(() => {
     const sync = startSync()
-    let alive = true
-    void sync.ready.then(() => {
-      if (alive) setPulled(true)
-    })
-    return () => {
-      alive = false
-      sync.stop()
-    }
+    return sync.stop
   }, [])
-
-  useEffect(() => {
-    if (!pulled || seeded.current || !workspaces || workspaces.length > 0) return
-    seeded.current = true
-    void (async () => {
-      await createWorkspace('Работа')
-      await createWorkspace('Университет')
-    })()
-  }, [pulled, workspaces])
 }
