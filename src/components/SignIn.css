@@ -37,3 +37,16 @@
   height: var(--signin-h);
   justify-content: center;
 }
+
+/*
+ * The one screen a phone opens on before there is anything else. Its three
+ * controls are stacked in the middle of an empty page, so they can be the size
+ * a thumb wants without costing anything its neighbour needs.
+ */
+@media (max-width: 720px) {
+  .signin__form {
+    --signin-h: var(--tap);
+
+    max-width: 320px;
+  }
+}
