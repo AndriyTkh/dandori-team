@@ -308,6 +308,7 @@
 
   .notes__rename {
     height: 34px;
+    font-size: var(--fz-input);
   }
 
   /* The bar carries the only way back to the tree, so it gets a finger's worth
@@ -381,6 +382,7 @@
   .notes__markdown {
     padding: var(--sp-5) max(var(--sp-5), env(safe-area-inset-right)) var(--sp-6)
       max(var(--sp-5), env(safe-area-inset-left));
+    font-size: var(--fz-input);
     line-height: 1.5;
   }
 }

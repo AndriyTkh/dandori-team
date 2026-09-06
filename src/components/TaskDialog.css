@@ -513,6 +513,17 @@
   }
 
   /*
+   * Both halves of a custom field are typed into, so both carry the size a
+   * phone field has to carry. The name keeps its case and its dim colour and
+   * goes on reading as the label of the value under it.
+   */
+  .cfield__name,
+  .cfield__value,
+  .dialog__textarea {
+    font-size: var(--fz-input);
+  }
+
+  /*
    * A custom field's cross has no hover to come out of here: it either stands
    * there or the field cannot be removed from a phone at all.
    */

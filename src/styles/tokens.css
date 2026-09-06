@@ -185,5 +185,11 @@
 
     /* A fingertip covers this much. Everything meant to be tapped is laid out on it. */
     --tap: 44px;
+    /*
+     * The floor for anything typed into. iOS Safari zooms the page in on a field
+     * whose text is smaller than this the moment it takes focus, and leaves it
+     * zoomed — so this is a platform rule, not a step of the type scale.
+     */
+    --fz-input: 16px;
   }
 }
