@@ -168,8 +168,9 @@
  * uppercase Russian is decoration rather than text at arm's length, and a 28px
  * control is half of what a fingertip covers. One block lifts the type and the
  * control heights for every view at once — the same rows, the same rules, drawn
- * at a size a hand can hit. The bars keep their heights, so none of this costs
- * the owner a pixel of his own data.
+ * at a size a hand can hit. The header and the tab bar keep the heights they
+ * had: the lift comes out of the padding standing inside them, not out of the
+ * screen the board is drawn on.
  */
 @media (max-width: 720px) {
   :root {

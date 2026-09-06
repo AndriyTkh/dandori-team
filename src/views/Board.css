@@ -410,6 +410,9 @@
    * answered with a whole column, and a card dragged towards tomorrow would
    * land a fortnight out.
    */
+  .board__scroller {
+    scroll-snap-type: x proximity;
+  }
 
   .board__col,
   .board__col--nodate {
