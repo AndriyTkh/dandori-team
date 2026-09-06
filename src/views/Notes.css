@@ -265,26 +265,122 @@
     display: flex;
   }
 
-  .notes__back {
-    display: block;
+  /*
+   * The tree is a list of rows under a finger, so every row is a finger tall and
+   * the two things standing inside it — the folder's twist and the row's own
+   * menu — are far enough apart that neither is hit while aiming at the other.
+   */
+  .notes__row {
+    height: auto;
+    min-height: var(--tap);
+    gap: var(--sp-3);
+    padding-right: max(var(--sp-2), env(safe-area-inset-right));
   }
 
-  .notes__row {
-    height: 32px;
+  .notes__row:active {
+    background: var(--bg-active);
+  }
+
+  .notes__twist {
+    width: 18px;
+  }
+
+  .notes__icon {
+    font-size: var(--fz-md);
+  }
+
+  .notes__head {
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .notes__head-btn {
+    height: var(--ctl-h);
+    min-width: var(--tap);
+    padding: 0 var(--sp-4);
+    font-size: var(--fz-lg);
+  }
+
+  .notes__head-btn:active {
+    background: var(--bg-active);
+    color: var(--text);
+  }
+
+  .notes__rename {
+    height: 34px;
   }
 
   /* The bar carries the only way back to the tree, so it gets a finger's worth
      of height and the arrow a finger's worth of width. */
   .notes__bar {
-    height: 40px;
+    height: var(--tap);
+    padding-left: max(var(--sp-3), env(safe-area-inset-left));
+    padding-right: max(var(--sp-4), env(safe-area-inset-right));
   }
 
   .notes__back {
-    width: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--tap);
+    height: var(--tap);
+    margin-left: calc(var(--sp-3) * -1);
   }
 
+  .notes__back:active {
+    color: var(--text);
+  }
+
+  /* «Просмотр» is a word, but it is pressed like a button. */
+  .notes__link {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 var(--sp-2);
+  }
+
+  .notes__link:active {
+    color: var(--accent-active);
+  }
+
+  /*
+   * Nothing here has a hover to come out of: the row's menu stands there for
+   * good, and as a square rather than a glyph on a hairline.
+   */
   .notes__more {
-    width: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--tap);
+    height: var(--tap);
+    font-size: var(--fz-lg);
     opacity: 1;
+  }
+
+  .notes__more:active {
+    color: var(--text);
+  }
+
+  .notes__menu {
+    width: 220px;
+  }
+
+  .notes__menu-item {
+    display: flex;
+    align-items: center;
+    min-height: var(--tap);
+  }
+
+  .notes__menu-item:active {
+    background: var(--bg-active);
+  }
+
+  /* The note itself carries the same inset as the bar over it, and enough of a
+     line to be read at the size a phone field has to be. */
+  .notes__textarea,
+  .notes__markdown {
+    padding: var(--sp-5) max(var(--sp-5), env(safe-area-inset-right)) var(--sp-6)
+      max(var(--sp-5), env(safe-area-inset-left));
+    line-height: 1.5;
   }
 }
