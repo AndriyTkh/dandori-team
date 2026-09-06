@@ -170,10 +170,27 @@
     padding-right: max(var(--sp-4), env(safe-area-inset-right));
   }
 
+  /*
+   * None of the three buttons is a child of the bar: each sits in a wrapper that
+   * exists to anchor its dropdown. A wrapper that is only as tall as its content
+   * has no height to hand down, so the height comes from the bar through every
+   * box in turn — the wrapper stretches to the bar, the button stretches to the
+   * wrapper. The popups anchor to the wrapper and now hang off the bar's own
+   * edge instead of the middle of it.
+   */
+  .header__right,
+  .header > .menu,
+  .header__right > .menu,
+  .header__right > .lfilter {
+    display: flex;
+    align-self: stretch;
+  }
+
   .header__ws,
   .header__gear,
   .header__right .btn {
-    height: 100%;
+    height: auto;
+    align-self: stretch;
     border-radius: var(--radius);
   }
 

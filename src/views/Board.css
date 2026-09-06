@@ -453,11 +453,6 @@
     padding: var(--sp-3) var(--sp-4);
   }
 
-  /* The field a new task is typed into stands where its card will stand. */
-  .board__new {
-    min-height: var(--tap);
-    padding: var(--sp-3) var(--sp-4);
-  }
 
   /*
    * The card is the thing the whole tab exists to show, so it is the biggest

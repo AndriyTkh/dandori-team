@@ -180,6 +180,13 @@
     --fz-lg: 17px;
     --fz-xl: 22px;
 
+    /*
+     * The bar's rule is inside its height, so a 44px bar leaves 43 for what
+     * stands in it. One pixel more, and the workspace switcher, the label filter
+     * and the gear are each a full finger tall.
+     */
+    --header-h: 45px;
+
     --ctl-h: 40px;
     --seg-h: 36px;
 
