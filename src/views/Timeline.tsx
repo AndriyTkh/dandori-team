@@ -145,9 +145,15 @@ export function Timeline({ tasks, labels, onOpenTask }: TimelineProps) {
               className="timeline__today"
               style={{ left: `calc(var(--tl-name-w) + ${midOf(scale, now)}px)` }}
             />
-            {rows.map((row) => (
-              <TimelineRow key={row.task.id} row={row} scale={scale} onOpen={onOpenTask} />
-            ))}
+            {/* Stands under the pinned names for the whole height of the rows,
+                scale and all. The grid of ticks is painted on the content and
+                travels with it. */}
+            <div className="timeline__gutter" />
+            <div className="timeline__rows-list">
+              {rows.map((row) => (
+                <TimelineRow key={row.task.id} row={row} scale={scale} onOpen={onOpenTask} />
+              ))}
+            </div>
           </div>
 
           <Axis

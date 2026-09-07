@@ -101,26 +101,43 @@
 
 /* Task rows */
 
+/*
+ * Vertical ticks: one per week of days, or one per column once the step grows.
+ * The gutter and the rows share one grid cell, so the gutter can stand over the
+ * ticks for the whole height without taking any of it away from the rows.
+ */
 .timeline__rows {
   position: relative;
   flex: 1;
-  /*
-   * Vertical ticks: one per week of days, or one per column once the step grows.
-   * A repeating gradient tiles backwards from its origin as well as forwards, so
-   * the ticks used to carry on under the name column and left a stray line
-   * hanging below the last row. The first layer is an opaque band the width of
-   * the name column, laid over them; it is the same fill the sticky names use.
-   */
-  background-image:
-    linear-gradient(to right, var(--bg) 0 var(--tl-name-w), transparent var(--tl-name-w)),
-    linear-gradient(to right, var(--border) 0 1px, transparent 1px);
-  background-size:
-    100% 100%,
-    var(--tl-tile-w) 100%;
-  background-position:
-    0 0,
-    var(--tl-tile-x) 0;
-  background-repeat: no-repeat, repeat;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  background-image: linear-gradient(to right, var(--border) 0 1px, transparent 1px);
+  background-size: var(--tl-tile-w) 100%;
+  background-position: var(--tl-tile-x) 0;
+  background-repeat: repeat;
+}
+
+.timeline__gutter,
+.timeline__rows-list {
+  grid-area: 1 / 1;
+}
+
+/*
+ * What lies under the pinned names.
+ *
+ * The ticks are painted on the content and travel with it, so a band masking
+ * them had to travel too: scroll the scale and the grid came out from under the
+ * names, which is the whole left column looking as if it had come apart. This
+ * is pinned to the same edge the names are, carries their fill, and closes the
+ * column with one rule that does not stop at the last row.
+ */
+.timeline__gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: var(--tl-name-w);
+  background: var(--bg);
+  border-right: 1px solid var(--border);
 }
 
 .timeline__today {
@@ -244,28 +261,27 @@
   border-top: 1px solid var(--border);
 }
 
-/* Under the name column: hides whatever scrolls behind it. */
 /*
- * The corner of the axis: a spacer that keeps the axis in step with the tracks
- * of the rows above, and the one place on the tab with room to spare. On a
- * laptop the range switch sits at the top of it, and the corner is pinned so the
- * switch does not scroll off with the scale. A phone has no switch and the
- * corner goes back to being a bare spacer — a blank pinned block would only take
- * a fifth of the width away from the axis.
+ * The corner of the axis: the foot of the same left column the header's corner
+ * tops and the names fill. It is pinned like they are — left unpinned it slid
+ * out from under them as the scale moved, and two thirds of a column standing
+ * still while the last third walks off is the column looking broken. On a
+ * laptop the range switch stands in it; a phone has no switch and it stays a
+ * bare block, which is the price of the column reading as one thing.
  */
 .timeline__axis-cap {
-  flex: 0 0 var(--tl-name-w);
-}
-
-.timeline__axis-cap--switch {
   position: sticky;
   left: 0;
   z-index: 3;
+  flex: 0 0 var(--tl-name-w);
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+}
+
+.timeline__axis-cap--switch {
   display: flex;
   align-items: flex-start;
   padding: var(--sp-3) var(--sp-4) 0;
-  background: var(--bg);
-  border-right: 1px solid var(--border);
 }
 
 .timeline__zoom {
