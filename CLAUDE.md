@@ -33,7 +33,12 @@ Fixed after the interviews. Change only at the explicit request of the project o
     It has a «Сегодня» button that scrolls back to the current date; the 14-day window
     does not need one, today is always inside it.
 - The third mode is `Месяц` (month): a plain monthly grid. This is the calendar from
-  the requirements, there is no separate tab for it.
+  the requirements, there is no separate tab for it. It carries the same «Сегодня»
+  button as «Лента» and for the same reason — it is paged away from the current
+  date and there has to be one way back.
+- On a phone a month cell is 55 px wide, which holds no words: a task is drawn
+  there as its label's colour bar and nothing else. The month is the overview of
+  where the load sits; the day behind the cell is where it is read.
 - The «Без даты» (no date) column is pinned on the left and does not scroll away.
   Dragging a card back into it clears the date.
 - There is no «Просрочено» column, and adding one back is a finding. An overdue task
@@ -43,6 +48,9 @@ Fixed after the interviews. Change only at the explicit request of the project o
   read as broken.
 - The «14 дней» window starts from yesterday: otherwise yesterday's deadline would
   disappear from the board at midnight. In «Лента» and «Месяц» the past is reachable anyway.
+  «14 дней» opens at the start of that window, «Без даты» pinned and yesterday
+  standing beside it — opening on today instead parked yesterday underneath the
+  pinned column, which is the one place it may not be.
 - On the phone nothing is pinned: the pinned column plus one day already fill the
   whole screen. «Без даты» becomes an ordinary first column of the feed, and the
   initial scroll position is today.
@@ -123,6 +131,9 @@ One schema for all workspaces. No per-workspace schemas.
   callout joined to the dot by a lead. Callouts alternate above and below the axis and
   stack into a few levels when they crowd; when nothing fits the callout is dropped and
   the dot stays, still clickable. Clicking a dot or a callout opens the task.
+  The dot's touch area is 27 px rather than the 44 px everything else gets: in a
+  crowded month the dots stand five to ten pixels apart, and a finger's worth of
+  target around each would let the topmost one swallow its neighbours' taps.
   The axis lives inside the same scroller as the rows, so the two halves cannot drift
   apart. It shows deadlines, not spans — duration is what the rows above are for.
 - On the phone it scrolls horizontally, on the laptop it fits entirely.
@@ -195,7 +206,10 @@ The list is closed. Any item from here, in the code or in the interface, is a bu
 - Onboarding tours, empty states with illustrations, teaching hints.
 - Push notifications.
 - Configurable field schemas per workspace.
-- Any indicators and counters except the sync status dot.
+- Any indicators and counters except the sync status dot, and the number of
+  chosen labels on the header's filter button. That number is the control's own
+  state, not a metric: collapsed, the filter is otherwise silent about a board
+  that is hiding half its tasks.
 
 ---
 
@@ -229,7 +243,8 @@ workspaces   id, user_id, name, position, created_at, updated_at, deleted
 labels       id, user_id, workspace_id, name, color, position,
              created_at, updated_at, deleted
 tasks        id, user_id, workspace_id, title, description,
-             start_date, due_date, done, remind_days_before, position,
+             start_date, due_date, done, remind_days_before, muted,
+             note_id, position,
              label_ids jsonb [uuid], custom_fields jsonb [{name, value}],
              created_at, updated_at, deleted
 notes        id, user_id, workspace_id, parent_id, kind (folder|file),
