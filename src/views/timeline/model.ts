@@ -164,20 +164,20 @@ export function buildScale(
   budget: number,
   zoom: 'all' | 'month',
 ): Scale {
+  /*
+   * `Месяц` always draws days: the month on screen is what the mode is for.
+   * `Всё` takes the finest step whose columns still fit the budget, and falls
+   * back to the coarsest when even that one does not — a grant two years out
+   * would otherwise squeeze every day into a hairline.
+   */
   let step = STEPS[0]
   let cells = cellsOf(step.unit, from, to)
 
   if (zoom === 'all') {
-    step = STEPS[STEPS.length - 1]
-    cells = cellsOf(step.unit, from, to)
-
     for (const candidate of STEPS) {
-      const laid = cellsOf(candidate.unit, from, to)
-      if (laid.length * candidate.min <= budget) {
-        step = candidate
-        cells = laid
-        break
-      }
+      step = candidate
+      cells = candidate === STEPS[0] ? cells : cellsOf(candidate.unit, from, to)
+      if (cells.length * candidate.min <= budget) break
     }
   }
 

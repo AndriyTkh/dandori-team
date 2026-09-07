@@ -36,7 +36,13 @@ const DAY_LABEL_W = 20
 const BRACKET_LABEL_W = 56
 const NAME_W = 184
 const NAME_W_COMPACT = 104
-const COMPACT_W = 620
+/*
+ * The phone, and the same number every stylesheet uses. At 620 the tab sat
+ * between the two: the phone layout was already on — bottom tabs, phone type —
+ * while the timeline still drew its laptop name column and the `Всё / Месяц`
+ * switch that is not supposed to exist there at all.
+ */
+const COMPACT_W = 720
 /** Room for the vertical scrollbar, otherwise the scale scrolls itself sideways. */
 const GUTTER = 10
 /** How far the track may run before the scale coarsens its step: one screen. */

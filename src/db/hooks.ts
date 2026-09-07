@@ -20,13 +20,6 @@ export function useWorkspaces(): Workspace[] | undefined {
   }, [])
 }
 
-export function useWorkspace(id: ID | null): Workspace | null | undefined {
-  return useLiveQuery(async () => {
-    if (!id) return null
-    const row = await db.workspaces.get(id)
-    return row && !row.deleted ? row : null
-  }, [id])
-}
 
 export function useLabels(workspaceId: ID | null): Label[] | undefined {
   return useLiveQuery(async () => {
@@ -60,10 +53,3 @@ export function useNotes(workspaceId: ID | null): Note[] | undefined {
   }, [workspaceId])
 }
 
-export function useNote(id: ID | null): Note | null | undefined {
-  return useLiveQuery(async () => {
-    if (!id) return null
-    const row = await db.notes.get(id)
-    return row && !row.deleted ? row : null
-  }, [id])
-}

@@ -151,9 +151,6 @@
   color: var(--text-faint);
   font-size: var(--fz-lg);
   line-height: 1;
-}
-
-.board__add {
   transition:
     background-color var(--t),
     color var(--t);

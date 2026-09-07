@@ -264,9 +264,6 @@
   background: var(--bg);
   font-size: var(--fz-md);
   text-align: left;
-}
-
-.notelink {
   transition:
     background-color var(--t),
     border-color var(--t);
@@ -311,9 +308,6 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
-}
-
-.cfield {
   transition:
     border-color var(--t),
     box-shadow var(--t);

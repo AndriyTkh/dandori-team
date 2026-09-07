@@ -81,7 +81,7 @@ export function requestPush(): void {
   }, PUSH_DEBOUNCE_MS)
 }
 
-export async function push(): Promise<void> {
+async function push(): Promise<void> {
   // While a push is in flight, further requests collapse into one repeat at the end.
   if (pushInFlight) {
     pushAgain = true
@@ -157,7 +157,7 @@ let pullInFlight: Promise<void> | null = null
  * Fetches everything that changed on the server since last time.
  * A fresh device has no cursor, so the first pull drags in everything.
  */
-export function pull(): Promise<void> {
+function pull(): Promise<void> {
   // The interval, the return from the background and the network coming back
   // can all fire at once. Without this guard three racing pulls would overwrite
   // each other's cursor.
@@ -238,8 +238,6 @@ async function mergeRows(table: SyncedTable, rows: Record<string, unknown>[]): P
 // -------------------------------------------------------------------- start
 
 export interface SyncHandle {
-  /** Resolves once the first exchange with the server is done — successful or not. */
-  ready: Promise<void>
   stop: () => void
 }
 
@@ -273,8 +271,9 @@ export function startSync(): SyncHandle {
   document.addEventListener('visibilitychange', onVisible)
   const timer = setInterval(tick, POLL_INTERVAL_MS)
 
+  tick()
+
   return {
-    ready: cycle(),
     stop: () => {
       stopped = true
       clearInterval(timer)

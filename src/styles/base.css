@@ -286,13 +286,10 @@ a {
     padding: 0 var(--sp-5);
   }
 
+  /* A press has to be visible without a hover to lead into it, so the pressed
+     button takes an edge as well as a ground. */
   .btn:active {
-    background: var(--bg-active);
     border-color: var(--border-strong);
-  }
-
-  .btn--primary:active {
-    border-color: var(--accent-active);
   }
 
   .field {
