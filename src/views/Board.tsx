@@ -303,11 +303,23 @@ function Strip({
   const el = scroller ?? own
   const columns: (ISODate | null)[] = [null, ...days]
 
-  // Open on today: «Без даты» and possibly «Просрочено» sit to the left, and
-  // without this the board would greet a phone user with the empty no-date column.
+  /*
+   * Where the strip opens.
+   *
+   * With «Без даты» pinned there is room for the whole window, so the board
+   * opens at its very start and yesterday stands beside the pinned column.
+   * Scrolling to today instead parked yesterday underneath it — and yesterday is
+   * in the window precisely so that a deadline does not vanish from the board at
+   * midnight.
+   *
+   * On a phone nothing is pinned and one column fills the screen, so it opens on
+   * today rather than on an empty «Без даты».
+   */
   useLayoutEffect(() => {
-    scrollToDay(el.current, today)
-  }, [el, today])
+    const node = el.current
+    if (!node) return
+    scrollToDay(node, pinnedWidth(node) > 0 ? (days[0] ?? today) : today)
+  }, [el, today, days])
 
   return (
     <div className="board__scroller" ref={el} onScroll={onScroll}>
@@ -336,12 +348,17 @@ function scrollToDay(el: HTMLDivElement | null, day: ISODate): void {
   const node = el.querySelector<HTMLElement>(`[data-day="${day}"]`)
   if (!node) return
 
+  el.scrollLeft = node.offsetLeft - pinnedWidth(el)
+}
+
+/** How much of the strip's left edge is covered by columns that do not scroll. */
+function pinnedWidth(el: HTMLDivElement): number {
   let pinned = 0
   for (const child of el.children) {
     if (getComputedStyle(child).position !== 'sticky') break
     pinned += (child as HTMLElement).offsetWidth
   }
-  el.scrollLeft = node.offsetLeft - pinned
+  return pinned
 }
 
 // -------------------------------------------------------------------- ribbon

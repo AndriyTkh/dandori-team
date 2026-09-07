@@ -16,7 +16,13 @@ export interface NotesProps {
   onOpened?: () => void
 }
 
-const MENU_W = 168
+/*
+ * Where the menu is asked to appear. The width it will actually take is decided
+ * by the stylesheet — 180px, and 220 on a phone — so the request is only a
+ * starting point and the menu pulls itself back on screen once it knows its own
+ * size. A constant here guessed 168 and let the phone's menu hang off the edge.
+ */
+const MENU_GAP = 4
 
 interface Row {
   note: Note
@@ -25,8 +31,10 @@ interface Row {
 
 interface Menu {
   id: ID
+  /** The anchor the menu is hung on, and which of its edges is pinned to it. */
   x: number
   y: number
+  edge: 'left' | 'right'
 }
 
 export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
@@ -174,7 +182,7 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
               onClick={() => select(note)}
               onContextMenu={(e) => {
                 e.preventDefault()
-                setMenu({ id: note.id, x: clampX(e.clientX), y: e.clientY })
+                setMenu({ id: note.id, x: e.clientX, y: e.clientY, edge: 'left' })
               }}
             >
               <span className="notes__twist">
@@ -199,7 +207,7 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
                 onClick={(e) => {
                   e.stopPropagation()
                   const box = e.currentTarget.getBoundingClientRect()
-                  setMenu({ id: note.id, x: clampX(box.right - MENU_W), y: box.bottom })
+                  setMenu({ id: note.id, x: box.right, y: box.bottom, edge: 'right' })
                 }}
               >
                 ⋯
@@ -219,6 +227,7 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
         <RowMenu
           x={menu.x}
           y={menu.y}
+          edge={menu.edge}
           onClose={() => setMenu(null)}
           onRename={() => setRenamingId(menuNote.id)}
           onRemove={() => remove(menuNote)}
@@ -228,9 +237,6 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
   )
 }
 
-function clampX(x: number): number {
-  return Math.max(4, Math.min(x, window.innerWidth - MENU_W - 4))
-}
 
 /**
  * Opens every folder on the path to a note. A row inside a collapsed folder is not
@@ -321,17 +327,32 @@ function RenameInput({
 function RowMenu({
   x,
   y,
+  edge,
   onClose,
   onRename,
   onRemove,
 }: {
   x: number
   y: number
+  edge: 'left' | 'right'
   onClose: () => void
   onRename: () => void
   onRemove: () => void
 }) {
   useEscape(onClose)
+
+  /*
+   * Hung on its anchor, then pulled back onto the screen. The width comes from
+   * the stylesheet and is not the same on a phone as on a laptop, so it is
+   * measured after layout instead of being assumed here.
+   */
+  const box = useRef<HTMLDivElement>(null)
+  const [left, setLeft] = useState(x)
+  useLayoutEffect(() => {
+    const w = box.current?.offsetWidth ?? 0
+    const want = edge === 'right' ? x - w : x
+    setLeft(Math.max(MENU_GAP, Math.min(want, window.innerWidth - w - MENU_GAP)))
+  }, [x, edge])
 
   return (
     <>
@@ -343,7 +364,7 @@ function RowMenu({
           onClose()
         }}
       />
-      <div className="notes__menu" style={{ left: `${x}px`, top: `${y}px` }}>
+      <div className="notes__menu" ref={box} style={{ left: `${left}px`, top: `${y}px` }}>
         <button
           className="notes__menu-item"
           onClick={() => {

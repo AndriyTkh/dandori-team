@@ -222,6 +222,14 @@ async function mergeRows(table: SyncedTable, rows: Record<string, unknown>[]): P
         continue
       }
 
+      /*
+       * The cursor is held a few seconds behind on purpose, so a pull always
+       * hands back the newest rows again. Writing one that has not changed
+       * would wake every live query watching the table — once a minute, for as
+       * long as the app is open, over rows nobody touched.
+       */
+      if (local?._dirty === 0 && local.updated_at === clean.updated_at) continue
+
       await db[table].put({ ...clean, _dirty: 0 } as never)
     }
   })

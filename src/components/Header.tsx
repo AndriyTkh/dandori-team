@@ -64,7 +64,6 @@ export function Header(props: Props) {
           current={current}
           theme={props.theme}
           onSetTheme={props.onSetTheme}
-          canDelete={props.workspaces.length > 1}
         />
       </div>
     </header>
@@ -130,12 +129,10 @@ function SettingsMenu({
   current,
   theme,
   onSetTheme,
-  canDelete,
 }: {
   current: Workspace | null
   theme: Theme
   onSetTheme: (t: Theme) => void
-  canDelete: boolean
 }) {
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
@@ -194,7 +191,7 @@ function SettingsMenu({
           <button className="menu__item" onClick={rename} disabled={!current}>
             Переименовать воркспейс
           </button>
-          <button className="menu__item menu__item--danger" onClick={remove} disabled={!canDelete}>
+          <button className="menu__item menu__item--danger" onClick={remove} disabled={!current}>
             Удалить воркспейс
           </button>
 

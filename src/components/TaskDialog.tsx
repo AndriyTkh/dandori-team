@@ -587,6 +587,21 @@ function CustomFieldRow({
 
   useEffect(() => flush, [flush])
 
+  /*
+   * Removing the row unmounts it, and the unmount writes whatever was still
+   * waiting in the debounce — through a callback the parent built before the
+   * removal, which rebuilds the array with this row back in it. Dropping the
+   * pending write first is what makes the removal stick.
+   */
+  function remove() {
+    if (timer.current !== null) {
+      clearTimeout(timer.current)
+      timer.current = null
+    }
+    dirty.current = false
+    onRemove()
+  }
+
   return (
     <div className="cfield">
       <div className="cfield__head">
@@ -597,7 +612,7 @@ function CustomFieldRow({
           autoFocus={autoFocus}
           onChange={(e) => edit({ name: e.target.value })}
         />
-        <button className="cfield__del" onClick={onRemove} aria-label="Удалить поле">
+        <button className="cfield__del" onClick={remove} aria-label="Удалить поле">
           ✕
         </button>
       </div>
