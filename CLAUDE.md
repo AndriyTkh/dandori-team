@@ -46,6 +46,15 @@ Fixed after the interviews. Change only at the explicit request of the project o
 - On the phone nothing is pinned: the pinned column plus one day already fill the
   whole screen. «Без даты» becomes an ordinary first column of the feed, and the
   initial scroll position is today.
+- A day column takes the whole width of a phone. A column at 78% of it left a fifth
+  of the screen to a card sliced down the middle, which reads as damage rather than
+  as an invitation to swipe; the snap and the day header say there is more to the
+  side. The strip is scrolled by the day, so the day is the unit.
+- Auto-scroll while a card is dragged near the edge runs at about one column a
+  second at the very edge. The library's own acceleration is seven times that — a
+  week gone before a finger can lift, and the card lands nowhere near the day it
+  was aimed at. Planning happens on the laptop and «Месяц» is there for the long
+  view, so this gesture only has to be aimable, not fast.
 - A task with a far-off date stays on its own date, it does not "collapse" anywhere.
 - «Сделано» (done) is a checkbox right on the card. The card fades and gets struck
   through, but stays on its day.
@@ -134,7 +143,16 @@ One schema for all workspaces. No per-workspace schemas.
 ### Interface
 
 - Two themes: dark and light, following the system setting plus a manual toggle.
-- Density is compact.
+- Density is compact. On the phone it is compact at a hand's scale, not the laptop's
+  shrunk: 44 px is what a fingertip covers, and everything meant to be tapped is
+  laid out on it — where the paint has to stay small, the touch area is grown around
+  it instead. Anything typed into is held at 16 px, or iOS Safari zooms the page in
+  on focus and leaves it zoomed.
+- There is no hover on a phone. A control that only appears when a pointer is over
+  it cannot be reached at all, so nothing may depend on hover to be usable.
+- The workspace switcher, the label filter and the gear stay in the top corners,
+  the hardest place on the screen for a thumb. They are used rarely enough that
+  reach is worth less than a header that reads the same on both devices.
 - Horizontal overscroll is suppressed on the scrollers. A two-finger swipe over the
   board or the timeline was navigating the browser back, and nothing in a single-page
   app is reached by going back — the gesture only ever lost the user's place.
