@@ -407,18 +407,49 @@
    * answered with a whole column, and a card dragged towards tomorrow would
    * land a fortnight out.
    */
+  /*
+   * And the day is a card, inset from the edges of the screen instead of running
+   * into them. Full width is still right — a phone reads one day at a time — but
+   * full bleed left the day nothing to end against, and the task cards inside it
+   * sat a hair from the glass.
+   *
+   * The outer radius is the inner one plus the padding between them. Equal radii
+   * on nested boxes leave the two curves out of step and the corner reads as a
+   * dent.
+   */
   .board__scroller {
+    gap: var(--sp-4);
+    padding: 0 var(--sp-4) var(--sp-4);
     scroll-snap-type: x proximity;
+    scroll-padding-left: var(--sp-4);
   }
 
   .board__col,
   .board__col--nodate {
     flex-basis: var(--day-col-w-mobile);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) + var(--sp-3));
     scroll-snap-align: start;
   }
 
   .board__col--nodate {
     position: static;
+    background: none;
+  }
+
+  /* The day's own edge carries today. A rule inside the head would sit under a
+     rounded corner and come out clipped at both ends. */
+  .board__col--today {
+    border-color: var(--today);
+  }
+
+  .board__col--today .board__col-head {
+    box-shadow: none;
+  }
+
+  .board__list {
+    padding: var(--sp-3);
   }
 
   /* The head of the day is the one line that says which day this is, now that

@@ -348,7 +348,13 @@ function scrollToDay(el: HTMLDivElement | null, day: ISODate): void {
   const node = el.querySelector<HTMLElement>(`[data-day="${day}"]`)
   if (!node) return
 
-  el.scrollLeft = node.offsetLeft - pinnedWidth(el)
+  /*
+   * The strip carries a side inset on a phone, where a day is a card rather than
+   * a slab: land the day on that inset, not on the edge of the screen, or the
+   * next card's border shows through the gap the inset leaves behind.
+   */
+  const inset = parseFloat(getComputedStyle(el).paddingLeft) || 0
+  el.scrollLeft = node.offsetLeft - pinnedWidth(el) - inset
 }
 
 /** How much of the strip's left edge is covered by columns that do not scroll. */
