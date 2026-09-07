@@ -60,6 +60,15 @@ const WINDOW_BACK = 1
 const WINDOW_FORWARD = 13
 
 /*
+ * Auto-scroll while a card is held near the edge of the strip. The library's
+ * own acceleration runs the board past seven columns a second at the very edge,
+ * which is a week gone before a finger can lift: the card lands nowhere near the
+ * day it was aimed at. At 3 the far edge moves about one column a second and the
+ * near edge of the zone still crawls, so the whole ramp is aimable.
+ */
+const AUTO_SCROLL = { acceleration: 3 }
+
+/*
  * Two questions, answered by different means.
  *
  * Which column: whatever the page says is under the pointer. Rectangles put a
@@ -218,6 +227,7 @@ export function Board({ workspaceId, tasks, labels, mode, onSetMode, onOpenTask 
       <DndContext
         sensors={sensors}
         collisionDetection={collide}
+        autoScroll={AUTO_SCROLL}
         onDragStart={(e: DragStartEvent) => setDragged(String(e.active.id))}
         onDragCancel={() => setDragged(null)}
         onDragEnd={onDragEnd}
