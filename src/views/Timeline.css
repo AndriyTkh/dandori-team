@@ -13,7 +13,16 @@
 
 .timeline__scroll {
   height: 100%;
-  overflow: auto;
+  /*
+   * The horizontal bar is always there, even in `Всё` where the scale fits and
+   * there is nothing to scroll. A bar that comes and goes takes its height out
+   * of the scrollport as it appears, and the axis is pinned to the bottom of
+   * that scrollport — so the whole axis, range switch and all, jumped up and
+   * down as the mode changed. Browsers that draw their bars over the content
+   * reserve nothing here and see no difference.
+   */
+  overflow-x: scroll;
+  overflow-y: auto;
   overscroll-behavior-x: contain;
 }
 
