@@ -427,9 +427,7 @@
     font-size: var(--fz-md);
   }
 
-  /* Both of these are also `.btn`, whose own height would otherwise win: the
-     rule that sets it is loaded after this file, so one class is not enough. */
-  .btn.dialog__close {
+  .dialog__close {
     width: var(--tap);
     height: var(--tap);
     margin-right: calc(var(--sp-3) * -1);
@@ -505,7 +503,7 @@
     gap: var(--sp-3);
   }
 
-  .btn.labels__del {
+  .labels__del {
     width: var(--tap);
     height: var(--tap);
   }
@@ -523,16 +521,6 @@
   .cfield__value,
   .dialog__textarea {
     font-size: var(--fz-input);
-  }
-
-  /*
-   * The description is a `.field` as well, and a phone `.field` carries a
-   * minimum height of its own — loaded after this file, it was cutting the box
-   * from five lines down to two. The second class puts the description back in
-   * charge of its own height.
-   */
-  .field.dialog__textarea {
-    min-height: 120px;
   }
 
   /*

@@ -49,10 +49,4 @@
 
     max-width: 320px;
   }
-
-  /* The button is a `.btn` too, and `.btn` is loaded after this file: without
-     the second class it keeps its own height and the stack stops being one. */
-  .signin__form .signin__submit {
-    height: var(--signin-h);
-  }
 }
