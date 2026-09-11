@@ -211,11 +211,12 @@ async function push(): Promise<void> {
            * offering an edit that can never land.
            */
           const refused = batch.filter((row) => !landed.has(row.id)).map((row) => row.id)
-          if (refused.length > 0) {
+          // The ids travel in the query string, so they go a hundred at a time.
+          for (const ids of chunks(refused, 100)) {
             const { data: kept, error: keptError } = await supabase
               .from(table)
               .select('*')
-              .in('id', refused)
+              .in('id', ids)
             if (keptError) throw keptError
             if (mine !== session) return
             await mergeRows(table, (kept ?? []) as Record<string, unknown>[])
