@@ -49,7 +49,6 @@ export const TEXT = {
 
   // ---------------------------------------------------------------- sync
 
-  'sync.idle': { ru: 'Всё сохранено', en: 'Everything saved' },
   'sync.syncing': { ru: 'Синхронизация…', en: 'Syncing…' },
   'sync.offline': {
     ru: 'Офлайн, изменения сохранятся локально',
@@ -63,6 +62,8 @@ export const TEXT = {
   'signin.submit': { ru: 'Войти', en: 'Sign in' },
   'signin.busy': { ru: 'Вход…', en: 'Signing in…' },
   'signin.failed': { ru: 'Не удалось войти', en: 'Could not sign in' },
+  'signin.wrong': { ru: 'Неверная почта или пароль', en: 'Wrong email or password' },
+  'signin.unreachable': { ru: 'Нет связи с сервером', en: 'No connection to the server' },
 
   // ----------------------------------------------------------- reminders
 

@@ -32,14 +32,9 @@ export default defineConfig({
         // Precache the shell: everything Vite has built.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: '/index.html',
-        // Supabase is not cached: offline rests on IndexedDB, not on the HTTP cache.
-        navigateFallbackDenylist: [/supabase\.co/],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/[a-z0-9-]+\.supabase\.co\/.*/i,
-            handler: 'NetworkOnly',
-          },
-        ],
+        // Nothing routes Supabase. Its requests are never navigations, so the
+        // fallback never had them to deny, and what workbox has no route for
+        // goes to the network anyway — offline rests on IndexedDB regardless.
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         // A new worker takes over at once instead of waiting for every tab to close.

@@ -240,12 +240,21 @@
 }
 
 /* The control clicked more than any other on the board, so it is the size a
-   pointer lands on without aiming: centred on the first line of the title. */
+   pointer lands on without aiming: centred on the first line of the title. The
+   box is the label around it, the tick is the input inside — on a phone the two
+   stop being the same size. */
 .board__check {
+  display: flex;
   flex: 0 0 auto;
+  margin: 1px 0 0;
+  cursor: pointer;
+}
+
+.board__check-box {
+  display: block;
   width: 16px;
   height: 16px;
-  margin: 1px 0 0;
+  margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
 }
@@ -394,9 +403,12 @@
 }
 
 .board__card--compact .board__check {
+  margin-top: 2px;
+}
+
+.board__card--compact .board__check-box {
   width: 13px;
   height: 13px;
-  margin-top: 2px;
 }
 
 .board__card--compact .board__dot {
@@ -473,10 +485,6 @@
     box-shadow: none;
   }
 
-  .board__list {
-    padding: var(--sp-3);
-  }
-
   /* The head of the day is the one line that says which day this is, now that
      no neighbour is visible to place it against. */
   .board__col-head {
@@ -505,7 +513,6 @@
     gap: var(--sp-3);
     padding: var(--sp-3) var(--sp-4);
   }
-
 
   /*
    * The card is the thing the whole tab exists to show, so it is the biggest
@@ -556,6 +563,7 @@
   }
 
   .board__mode {
+    position: relative;
     flex: 1;
     min-width: 0;
     padding: 0 var(--sp-2);
@@ -563,6 +571,33 @@
 
   .board__mode:active {
     color: var(--text);
+  }
+
+  /*
+   * The segmented control keeps its height — the bar is built around it — and
+   * grows an invisible box out to a fingertip instead. It reaches into the
+   * padding of the bar it stands in and stops four pixels short of its edge;
+   * sideways nothing is added, so the two pixels between the modes stay the two
+   * pixels between them.
+   */
+  .board__mode::after,
+  .board__bar > .btn::after {
+    content: '';
+    position: absolute;
+  }
+
+  .board__mode::after {
+    inset: -4px 0;
+  }
+
+  .board__bar > .btn {
+    position: relative;
+  }
+
+  /* «Сегодня» is four pixels taller than a mode, so its box grows by four less.
+     A button's box hangs off its padding edge, and its own rule is the odd pixel. */
+  .board__bar > .btn::after {
+    inset: -3px -1px;
   }
 
   .board__month-nav {
@@ -575,8 +610,18 @@
   }
 
   .board__month-nav .btn {
+    position: relative;
     min-width: var(--tap);
     justify-content: center;
+  }
+
+  /* Two pixels of the row's own padding on each side, which is what the three
+     buttons are short of a fingertip — plus the pixel their own rule takes, since
+     the box hangs off the padding edge. Their four-pixel gaps are left alone. */
+  .board__month-nav .btn::after {
+    content: '';
+    position: absolute;
+    inset: -3px -1px;
   }
 
   .board__weekday {
@@ -619,6 +664,7 @@
   }
 
   .board__card--compact {
+    position: relative;
     flex-basis: 10px;
     min-height: 0;
     height: 10px;
@@ -635,15 +681,39 @@
     opacity: 0.6;
   }
 
+  /*
+   * A fingertip is what this one cannot have. Two stripes in a cell stand three
+   * pixels apart and the cell is 55px wide, so the box takes the width of the
+   * cell and one pixel of the three, and stops there: anything more would be one
+   * task swallowing the tap meant for the one under it. The day behind the cell
+   * is where a task is opened without aiming.
+   */
+  .board__card--compact::after {
+    content: '';
+    position: absolute;
+    inset: -1px calc(var(--sp-2) * -1);
+  }
+
   .board__card--compact .board__check,
   .board__card--compact .board__card-main {
     display: none;
   }
 
-  /* A finger is wider than a mouse pointer. */
+  /*
+   * A finger is wider than a mouse pointer, and wider than what the checkbox
+   * paints. The tick stays 20px; the label around it is padded out to a
+   * fingertip's height and the same negative margin hands the space straight
+   * back, so nothing on the card moves. On the left the box runs to the card's
+   * own edge; on the right it stops four pixels short of the title, which is the
+   * other target in the row.
+   */
   .board__check {
+    padding: 12px 4px 12px 11px;
+    margin: -12px -4px -12px -11px;
+  }
+
+  .board__check-box {
     width: 20px;
     height: 20px;
-    margin: 0;
   }
 }

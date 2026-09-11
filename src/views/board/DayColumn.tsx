@@ -27,7 +27,7 @@ export function DayColumn({ workspaceId, date, today, tasks, labels, onOpenTask 
   const relative = date ? relativeDayLabel(date, t.lang, today) : null
   const className = [
     'board__col',
-    date ? 'board__col--day' : 'board__col--nodate',
+    date ? '' : 'board__col--nodate',
     date === today ? 'board__col--today' : '',
     date && isWeekend(date) ? 'board__col--weekend' : '',
     isOver ? 'board__col--over' : '',

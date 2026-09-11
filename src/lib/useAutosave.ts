@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-const SAVE_DELAY = 500
+/** How long a field waits before it writes. The one delay for everything typed into. */
+export const SAVE_DELAY = 500
 
 /**
  * A text field that writes to the database on a delay.

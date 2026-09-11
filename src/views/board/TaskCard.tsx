@@ -70,18 +70,28 @@ export function CardBody({ task, labels }: { task: Task; labels: Label[] }) {
 
   return (
     <>
-      <input
-        type="checkbox"
+      {/*
+        The tick is drawn at its own size and caught at a finger's: the box around
+        it is this label, which is transparent and reaches past the checkbox on
+        every side. A label hands its taps to the input inside it, so the two are
+        one target rather than two side by side.
+      */}
+      <label
         className="board__check"
-        checked={task.done}
-        aria-label={t('common.done')}
         // Swallow mousedown, touchstart and pointerdown alike: the card's drag start hangs off them.
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        onChange={() => void toggleTaskDone(task.id)}
-      />
+      >
+        <input
+          type="checkbox"
+          className="board__check-box"
+          checked={task.done}
+          aria-label={t('common.done')}
+          onChange={() => void toggleTaskDone(task.id)}
+        />
+      </label>
       <span className="board__card-main">
         <span className="board__card-title">{task.title}</span>
         {colors.length > 0 && (
