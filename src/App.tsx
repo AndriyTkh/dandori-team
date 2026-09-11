@@ -11,6 +11,7 @@ import { Notes } from './views/Notes'
 import { useSession } from './auth/useSession'
 import { useLabels, useTasks, useWorkspaces } from './db/hooks'
 import { startSync } from './sync/sync'
+import { startGcal } from './gcal/sync'
 import { emptyOf } from './lib/empty'
 import { useBoardMode, useCurrentWorkspace, useTab, useTheme, type Theme } from './state/ui'
 import type { ID, Label, Task } from './db/types'
@@ -151,10 +152,17 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
   )
 }
 
-/** Runs the exchange with the server for as long as the app is open. */
+/**
+ * Runs the two exchanges for as long as the app is open: the server's, and the
+ * calendar's. Both are the same shape — start it, stop it on the way out.
+ */
 function useSync() {
   useEffect(() => {
     const sync = startSync()
-    return sync.stop
+    const gcal = startGcal()
+    return () => {
+      sync.stop()
+      gcal.stop()
+    }
   }, [])
 }
