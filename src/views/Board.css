@@ -116,7 +116,7 @@
 }
 
 .board__col-date {
-  font-size: var(--fz-sm);
+  font-size: var(--fz-md);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -165,7 +165,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
   min-height: 0;
   padding: var(--sp-2);
   overflow-y: auto;
@@ -176,20 +176,36 @@
   font-size: var(--fz-sm);
 }
 
-/* Task card */
+/* On the desk the field a task is typed into is the card it is about to
+   become — the same type, the same height — so nothing jumps when it lands. */
+@media (min-width: 721px) {
+  .board__new {
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--fz-md);
+  }
+}
 
+/*
+ * Task card.
+ *
+ * It is drawn at the app's body size, the size of every menu row and dialog
+ * field. It used to be a step under it, which made the board — the screen the
+ * app is opened for — the one place set smaller than its own dropdowns. A day
+ * holds three tasks on a busy day and fifteen before it scrolls, so the size
+ * costs nothing it would have shown, and titles wrap where they wrapped.
+ */
 .board__card {
   display: flex;
   flex: 0 0 auto;
   align-items: flex-start;
-  gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--border);
   border-left: 2px solid var(--card-accent);
   border-radius: var(--radius);
   background: var(--bg-raised);
   box-shadow: var(--shadow-card);
-  font-size: var(--fz-sm);
+  font-size: var(--fz-md);
   cursor: pointer;
   touch-action: manipulation;
   transition:
@@ -222,11 +238,13 @@
   box-shadow: var(--shadow-pop);
 }
 
+/* The control clicked more than any other on the board, so it is the size a
+   pointer lands on without aiming: centred on the first line of the title. */
 .board__check {
   flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
-  margin: 2px 0 0;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
   accent-color: var(--accent);
   cursor: pointer;
 }
