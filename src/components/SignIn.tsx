@@ -94,7 +94,8 @@ function reasonOf(err: unknown): TextKey {
     typeof err === 'object' && err !== null && 'status' in err ? Number(err.status) : NaN
   // What the server says on purpose when the pair does not match.
   if (status === 400 || status === 401 || status === 422) return 'signin.wrong'
-  // A request that never landed anywhere has no status of its own: Supabase gives it a zero.
-  if (status === 0 || !navigator.onLine) return 'signin.offline'
+  // A request that never landed has no status of its own: Supabase gives it a zero.
+  // From in here a phone with no signal and a server that is down look the same.
+  if (status === 0 || !navigator.onLine) return 'signin.unreachable'
   return 'signin.failed'
 }

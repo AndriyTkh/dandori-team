@@ -63,7 +63,7 @@ export const TEXT = {
   'signin.busy': { ru: 'Вход…', en: 'Signing in…' },
   'signin.failed': { ru: 'Не удалось войти', en: 'Could not sign in' },
   'signin.wrong': { ru: 'Неверная почта или пароль', en: 'Wrong email or password' },
-  'signin.offline': { ru: 'Нет сети: войти не получится', en: 'No network, so there is no way in' },
+  'signin.unreachable': { ru: 'Нет связи с сервером', en: 'No connection to the server' },
 
   // ----------------------------------------------------------- reminders
 
