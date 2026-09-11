@@ -158,3 +158,57 @@ export interface Note extends Synced {
  */
 export const SYNCED_TABLES = ['workspaces', 'labels', 'notes', 'tasks'] as const
 export type SyncedTable = (typeof SYNCED_TABLES)[number]
+
+/** What a row of each table is. */
+export interface SyncedRow {
+  workspaces: Workspace
+  labels: Label
+  notes: Note
+  tasks: Task
+}
+
+/** Every field of a row, named once. */
+type ColumnsOf<T> = { readonly [K in keyof T]-?: true }
+
+const OWN = { id: true, created_at: true, updated_at: true, deleted: true } as const
+const IN_WORKSPACE = { ...OWN, workspace_id: true } as const
+
+/*
+ * The columns the server has, table by table.
+ *
+ * The push sends these and nothing else. A cache written by another build can
+ * hold a field the table does not have, and one such field in one row came back
+ * as an error over the whole batch — the same batch every cycle, for as long as
+ * the row was there, so that table stopped syncing for good.
+ *
+ * The shape is checked against the row types above: a column missing here would
+ * quietly stop being sent, and one that does not exist would break the push.
+ */
+export const SYNCED_COLUMNS = {
+  workspaces: { ...OWN, name: true, position: true, gcal_sync: true, gcal: true },
+  labels: { ...IN_WORKSPACE, name: true, color: true, position: true },
+  notes: {
+    ...IN_WORKSPACE,
+    parent_id: true,
+    kind: true,
+    name: true,
+    content: true,
+    position: true,
+  },
+  tasks: {
+    ...IN_WORKSPACE,
+    title: true,
+    description: true,
+    start_date: true,
+    due_date: true,
+    done: true,
+    remind_days_before: true,
+    muted: true,
+    note_id: true,
+    position: true,
+    label_ids: true,
+    custom_fields: true,
+    gcal: true,
+    gcal_placed: true,
+  },
+} satisfies { [K in SyncedTable]: ColumnsOf<SyncedRow[K]> }

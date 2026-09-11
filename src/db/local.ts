@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Label, Note, Task, Workspace } from './types'
+import { SYNCED_TABLES, type Label, type Note, type Task, type Workspace } from './types'
 
 /*
  * The local database is the source of truth for the UI.
@@ -72,6 +72,38 @@ export async function getMeta(key: string): Promise<string | null> {
 
 export async function setMeta(key: string, value: string): Promise<void> {
   await db.meta.put({ key, value })
+}
+
+/** Drops the fields that exist only here and mean nothing to the server. */
+export function stripLocal<T extends object>(row: Local<T>): T {
+  const { _dirty, ...rest } = row
+  return rest as unknown as T
+}
+
+/** How many edits are still waiting to go out. */
+export async function pendingCount(): Promise<number> {
+  const counts = await Promise.all(SYNCED_TABLES.map((t) => db[t].where('_dirty').equals(1).count()))
+  return counts.reduce((a, b) => a + b, 0)
+}
+
+/*
+ * Whose rows these are.
+ *
+ * Signing out on one device ends the session on the other one too, and that
+ * other device only finds out when its token expires: it shows the sign-in form
+ * with a full cache still behind it. Whoever signs in next would have seen the
+ * previous account's workspaces — and the queue would have pushed its unsent
+ * edits up under the new account's name.
+ *
+ * A cache with no owner written on it is adopted rather than thrown away: it
+ * was made by a build that predates this note, and there is only one account
+ * it can belong to.
+ */
+export async function claimCache(userId: string): Promise<void> {
+  const owner = await getMeta('owner')
+  if (owner === userId) return
+  if (owner) await wipeLocal()
+  await setMeta('owner', userId)
 }
 
 /** Wipes all local data — used on sign-out. */
