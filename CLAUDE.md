@@ -251,10 +251,12 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   both live side by side in one dictionary, and a string with only one of them is
   a bug.
 - A question before anything is taken away — a task, a label, a note, a
-  workspace — is asked by the app, not by the browser. One window for all four:
-  a step inside the settings window would have served the workspace alone, and
-  the notes tree has nowhere to put one. The focus starts on «Отмена»: a stray
-  Enter must not delete anything.
+  workspace, or edits a sign-out would lose — is asked by the app, not by the
+  browser. One window for all of them: a step inside the settings window would
+  have served the workspace alone, and the notes tree has nowhere to put one.
+  The focus starts on «Отмена»: a stray Enter must not delete anything. The
+  sign-out question names no number — that would be a counter, and it would
+  count rows rather than edits.
 - Sync status dot in the header: 7×7 px, visible only during an exchange, when offline
   or on error. The app writes to the local database and does not wait for the network,
   so without the dot a silently failed send would look like success.
@@ -262,7 +264,11 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
 ### Data
 
 - Supabase Postgres, access closed off by RLS policies on `user_id`.
-- Login by email and password. There is one account.
+- Login by email and password. There is one account. A failed sign-in says
+  which of two things went wrong — the email or password, or no connection to
+  the server — in the interface's language. The owner has to know whether to
+  retype or to wait, and the server's own message is English whatever the
+  interface is set to.
 - Offline: reading and editing. Local cache in IndexedDB, the queue of edits goes out
   once there is network.
 - Conflict resolution is last-write-wins by `updated_at`, over the whole row, and

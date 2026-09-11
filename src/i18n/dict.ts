@@ -160,6 +160,11 @@ export const TEXT = {
 
   'settings.rename': { ru: 'Переименовать воркспейс', en: 'Rename workspace' },
   'settings.remove': { ru: 'Удалить воркспейс', en: 'Delete workspace' },
+  // Asked at sign-out, which wipes this device: those edits exist nowhere else.
+  'settings.confirmSignOut': {
+    ru: 'Не все изменения ушли на сервер. Выйти и потерять их?',
+    en: 'Some edits never reached the server. Sign out and lose them?',
+  },
   'settings.confirmRemove': {
     ru: 'Удалить воркспейс «{name}»? Вместе с ним удалятся его задачи, метки и заметки.',
     en: 'Delete the workspace “{name}”? Its tasks, labels and notes go with it.',
@@ -275,20 +280,6 @@ export const PLURALS = {
       other: 'За {n} часов',
     },
     en: { one: '{n} hour before', other: '{n} hours before' },
-  },
-  // Asked at sign-out, which wipes this device: the edits it names exist
-  // nowhere else.
-  'settings.confirmSignOut': {
-    ru: {
-      one: '{n} изменение так и не ушло на сервер. Выйти и потерять его?',
-      few: '{n} изменения так и не ушли на сервер. Выйти и потерять их?',
-      many: '{n} изменений так и не ушли на сервер. Выйти и потерять их?',
-      other: '{n} изменений так и не ушли на сервер. Выйти и потерять их?',
-    },
-    en: {
-      one: '{n} edit never reached the server. Sign out and lose it?',
-      other: '{n} edits never reached the server. Sign out and lose them?',
-    },
   },
 } as const satisfies Record<string, Plural>
 

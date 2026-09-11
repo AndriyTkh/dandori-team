@@ -188,9 +188,8 @@ function WorkspaceSection({
 // ------------------------------------------------------------------- account
 
 function AccountSection({ t }: { t: T }) {
-  // How many edits the sign-out would take with it, once it is clear they
-  // cannot be sent. Zero while there is nothing to ask about.
-  const [unsent, setUnsent] = useState(0)
+  // Set once it is clear that some edits cannot be sent before the sign-out.
+  const [asking, setAsking] = useState(false)
 
   async function exportJson() {
     const json = await exportAll()
@@ -217,7 +216,7 @@ function AccountSection({ t }: { t: T }) {
     const left = await flushQueue()
     if (left > 0) {
       release()
-      setUnsent(left)
+      setAsking(true)
       return
     }
     await signOut()
@@ -237,11 +236,11 @@ function AccountSection({ t }: { t: T }) {
         {t('settings.signOut')}
       </button>
 
-      {unsent > 0 && (
+      {asking && (
         <Confirm
-          question={t.n('settings.confirmSignOut', unsent)}
+          question={t('settings.confirmSignOut')}
           action={t('settings.signOut')}
-          onCancel={() => setUnsent(0)}
+          onCancel={() => setAsking(false)}
           onConfirm={() => void leaveAnyway()}
         />
       )}
