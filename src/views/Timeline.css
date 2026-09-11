@@ -167,7 +167,10 @@
   padding: 0 var(--sp-4);
   border-right: 1px solid var(--border);
   background: var(--bg);
-  font-size: var(--fz-sm);
+  /* A task's title is set at one size wherever it is listed — the board's card
+     is the body size, and so is this. At 220px it cuts no more names than 12px
+     did: the two it cuts are too long for either. */
+  font-size: var(--fz-md);
   line-height: var(--tl-row-h);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -198,13 +201,14 @@
   transform: translateY(-50%);
 }
 
-
-.timeline__row--overdue {
-  background: var(--overdue-bg);
-}
-
+/*
+ * Overdue is said by the name in red and the ring on its mark — and by the
+ * banner over the tab. A band across the whole row said it a fourth time, and
+ * on a desk the row is 1400px long for a dot eleven wide: two late tasks and a
+ * quarter of the timeline was pink. It also lost to the hover and turned grey
+ * under the pointer with red letters still on it.
+ */
 .timeline__row--overdue .timeline__name {
-  background: var(--overdue-bg);
   color: var(--danger);
 }
 
@@ -501,6 +505,7 @@
     display: flex;
     align-items: center;
     padding: 0 var(--sp-3);
+    font-size: var(--fz-sm);
     white-space: normal;
   }
 
@@ -510,6 +515,13 @@
     -webkit-line-clamp: 2;
     overflow: hidden;
     line-height: 1.25;
+  }
+
+  /* A phone scrolls the scale and the mark can be off the screen, so the row
+     itself keeps the band there. */
+  .timeline__row--overdue,
+  .timeline__row--overdue .timeline__name {
+    background: var(--overdue-bg);
   }
 
   .timeline__row:active {

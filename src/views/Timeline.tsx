@@ -36,7 +36,12 @@ const MAX_SPAN_DAYS = 1830
 const DAY_LABEL_W = 20
 /** A narrow bracket cannot fit its label — only the boundary is left. */
 const BRACKET_LABEL_W = 56
-const NAME_W = 184
+/*
+ * The board's pinned column is `--day-col-w`, and this is the same width: the
+ * two views of the same tasks keep their left edge where it was as the tabs are
+ * switched. At 184 it jumped by 36px, and cut names that missed by a dozen.
+ */
+const NAME_W = 220
 const NAME_W_COMPACT = 104
 /*
  * The phone, and the same number every stylesheet uses. At 620 the tab sat
