@@ -92,12 +92,17 @@ export function forgetSession(): void {
   session += 1
 }
 
+/** Which sign-in is current — for the calendar's pass, which checks it too. */
+export function currentSession(): number {
+  return session
+}
+
 /**
  * Timestamps arrive in different formats: local ones are written as `…Z`, while
  * PostgREST returns `…+00:00`. Comparing them as strings would be wrong.
  */
-function isNewerOrSame(a: string, b: string): boolean {
-  return Date.parse(a) >= Date.parse(b)
+function isNewer(a: string, b: string): boolean {
+  return Date.parse(a) > Date.parse(b)
 }
 
 function isSameMoment(a: string, b: string): boolean {
@@ -258,7 +263,12 @@ async function push(): Promise<void> {
               .in('id', ids)
             if (keptError) throw keptError
             if (mine !== session) return
-            await mergeRows(table, (kept ?? []) as Record<string, unknown>[])
+            // The server has just said this is the row it keeps, so an unsent copy
+            // of the same moment does not stand against it: a stamp equal to the
+            // millisecond but older by microseconds would be kept and offered
+            // again forever. An edit made since, while this was in flight, is
+            // newer than either, and still wins.
+            await mergeRows(table, (kept ?? []) as Record<string, unknown>[], true)
           }
         }
       } catch (err) {
@@ -283,9 +293,23 @@ async function push(): Promise<void> {
   }
 }
 
-/** Sends what is queued and answers with how many edits could not go out. */
+/**
+ * Sends what is queued and answers with how many edits could not go out.
+ *
+ * A push already on its way sends only what it read when it started, and
+ * awaiting it counted the edit made just before signing out as lost while the
+ * repeat was about to carry it. So it goes round until the queue is empty, the
+ * network is gone, or a push has had its fair tries.
+ */
 export async function flushQueue(): Promise<number> {
-  await push()
+  if (pushTimer) {
+    clearTimeout(pushTimer)
+    pushTimer = null
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await push()
+    if ((await pendingCount()) === 0 || !navigator.onLine) break
+  }
   return pendingCount()
 }
 
@@ -382,7 +406,11 @@ async function pullTable(table: SyncedTable): Promise<boolean> {
   return true
 }
 
-async function mergeRows(table: SyncedTable, rows: Record<string, unknown>[]): Promise<void> {
+async function mergeRows(
+  table: SyncedTable,
+  rows: Record<string, unknown>[],
+  refused = false,
+): Promise<void> {
   await db.transaction('rw', db[table], async () => {
     for (const remote of rows) {
       // Both belong to the server alone: the owner it checks, and the stamp it
@@ -391,8 +419,20 @@ async function mergeRows(table: SyncedTable, rows: Record<string, unknown>[]): P
       const id = clean.id as string
       const local = await db[table].get(id)
 
-      // The local edit is newer than the remote one, so keep it; the next push sends it.
-      if (local?._dirty === 1 && isNewerOrSame(local.updated_at, clean.updated_at as string)) {
+      /*
+       * The local row is newer than the server's copy: keep it. Unsent, it goes
+       * out with the next push. Sent, the answer is simply stale — a pull that
+       * left before the push and came back after it, carrying the row as it was
+       * before the edit that has since landed. Taking that copy put the old
+       * value back on screen, and the next edit sent it to the server under a
+       * newer stamp, where not even the server's own rule could catch it. The
+       * server keeps only the newer of two writes, so a row it accepted can
+       * never be older than what it hands out later.
+       */
+      if (local && isNewer(local.updated_at, clean.updated_at as string)) continue
+      // Same moment, still unsent: a write that records something without being
+      // an edit — where a calendar event stands — waiting for its push.
+      if (!refused && local?._dirty === 1 && isSameMoment(local.updated_at, clean.updated_at as string)) {
         continue
       }
 
