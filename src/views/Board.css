@@ -381,17 +381,23 @@
   overflow-y: auto;
 }
 
+/*
+ * A month cell is a fifth of the width a day column has, so its card stays a
+ * size under the day's — but not under the app's smallest reading size, and
+ * its checkbox not under what a pointer can take. The bar the range modes
+ * stood in paid for the height: a cell at 1280 still holds four tasks.
+ */
 .board__card--compact {
-  gap: var(--sp-2);
-  padding: 1px var(--sp-2);
-  font-size: var(--fz-xs);
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fz-sm);
   box-shadow: none;
 }
 
 .board__card--compact .board__check {
-  width: 11px;
-  height: 11px;
-  margin-top: 1px;
+  width: 13px;
+  height: 13px;
+  margin-top: 2px;
 }
 
 .board__card--compact .board__dot {
