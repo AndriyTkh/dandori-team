@@ -203,8 +203,14 @@ export async function disconnect(): Promise<void> {
 }
 
 /*
- * On start-up the state is whatever localStorage remembers, without asking
- * Google anything: the first write, or the settings window opening, is what
- * actually fetches a token.
+ * On start-up the device knows only whether it was ever connected, which is not
+ * the same as having a token. So it asks for one straight away and silently:
+ * without that, a settings window opened in the first seconds would tell a
+ * connected owner that he has no account, and offer him a button he does not
+ * need. Nothing is shown and nothing pops up — a silent refusal simply leaves
+ * the state where it started.
  */
-if (CLIENT_ID && connected()) setState('needs-consent')
+if (CLIENT_ID && connected()) {
+  setState('needs-consent')
+  void getToken()
+}

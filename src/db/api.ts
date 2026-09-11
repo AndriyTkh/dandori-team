@@ -257,21 +257,18 @@ export async function setWorkspaceGcal(
 }
 
 /**
- * Puts every dated task of the workspace into the calendar on one set of terms.
+ * How many tasks the whole-workspace switch speaks for.
  *
- * Tasks that already carry their own settings are left alone: the whole-workspace
- * switch is for the ones nobody has decided about, and overwriting a deliberate
- * choice with a default is not a bulk action, it is a loss.
+ * It writes nothing. The switch is a standing arrangement, not a stamp on every
+ * row: the calendar works out which tasks it covers each time it looks, so a
+ * task made tomorrow joins on its own, changing the defaults changes them all,
+ * and turning the switch off takes the events away again. Tasks that carry
+ * settings of their own are not among these — those were decided deliberately
+ * and the switch never speaks over them.
  */
-export async function syncWorkspaceTasks(workspaceId: ID, cfg: GcalConfig): Promise<number> {
-  const rows = (await listTasks(workspaceId)).filter(
-    (t) => t.due_date !== null && !t.done && t.gcal === null,
-  )
-  await db.transaction('rw', db.tasks, async () => {
-    for (const row of rows) await db.tasks.put(touch({ ...row, gcal: { ...cfg } }))
-  })
-  queue()
-  return rows.length
+export async function countWorkspaceGcalTasks(workspaceId: ID): Promise<number> {
+  const rows = await listTasks(workspaceId)
+  return rows.filter((t) => t.due_date !== null && !t.done && t.gcal === null).length
 }
 
 export async function deleteTask(id: ID): Promise<void> {

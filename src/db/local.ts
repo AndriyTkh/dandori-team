@@ -36,6 +36,30 @@ export class DandoriDB extends Dexie {
       notes: 'id, workspace_id, _dirty',
       meta: 'key',
     })
+
+    /*
+     * The calendar columns arrived after rows were already cached here, and a
+     * row read back without them would be `undefined` where the type promises a
+     * value — right up until the next pull happened to refresh it. The indexes
+     * are unchanged; this version exists only to fill the gap in what is
+     * already stored.
+     */
+    this.version(2).upgrade(async (tx) => {
+      await tx
+        .table('workspaces')
+        .toCollection()
+        .modify((w: Partial<Workspace>) => {
+          w.gcal_sync ??= false
+          w.gcal ??= null
+        })
+      await tx
+        .table('tasks')
+        .toCollection()
+        .modify((t: Partial<Task>) => {
+          t.gcal_event_id ??= null
+          t.gcal ??= null
+        })
+    })
   }
 }
 

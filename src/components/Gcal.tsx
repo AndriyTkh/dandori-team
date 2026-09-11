@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { listCalendars, type Calendar } from '../gcal/api'
 import { connect, disconnect, getGcalState, onGcalState, type GcalState } from '../gcal/client'
 import { reconcile } from '../gcal/sync'
-import { setTaskGcal, setWorkspaceGcal, syncWorkspaceTasks } from '../db/api'
+import { countWorkspaceGcalTasks, setTaskGcal, setWorkspaceGcal } from '../db/api'
 import { useEscape } from '../lib/useEscape'
 import type { T } from '../i18n'
 import type { GcalConfig, GcalReminder, ID, Workspace } from '../db/types'
@@ -364,7 +364,7 @@ export function GcalSection({ workspace, t }: { workspace: Workspace | null; t: 
     // touches is put into the calendar on, so they cannot stay unwritten.
     await setWorkspaceGcal(workspace.id, { gcal_sync: on, gcal: defaults })
     if (!on) return setAdded(null)
-    setAdded(await syncWorkspaceTasks(workspace.id, defaults))
+    setAdded(await countWorkspaceGcalTasks(workspace.id))
     void reconcile()
   }
 
