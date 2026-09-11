@@ -231,13 +231,21 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   hold five items; it cannot hold a form. It is a part of the page, never a
   second browser window.
 - Two interface languages, Russian and English, picked in the settings window and
-  remembered per device. Russian is the default. The two language names are the
+  remembered per device. The sign-in screen carries the same pair of names under
+  the form: it is reached before the settings window exists, and a visitor who
+  cannot read Russian would otherwise meet a Russian form with no way past it —
+  which is the one situation the English was added for. Russian is the default. The two language names are the
   exception to the dictionary: each is written in itself — «Русский», "English" —
   so that someone who cannot read the current language can still find his own. The project is shown to people
   who do not read it, and a planner whose every label is unreadable cannot be
   looked at at all. Neither language is a translation of the other in the code:
   both live side by side in one dictionary, and a string with only one of them is
   a bug.
+- A question before anything is taken away — a task, a label, a note, a
+  workspace — is asked by the app, not by the browser. One window for all four:
+  a step inside the settings window would have served the workspace alone, and
+  the notes tree has nowhere to put one. The focus starts on «Отмена»: a stray
+  Enter must not delete anything.
 - Sync status dot in the header: 7×7 px, visible only during an exchange, when offline
   or on error. The app writes to the local database and does not wait for the network,
   so without the dot a silently failed send would look like success.

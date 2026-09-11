@@ -1,6 +1,8 @@
 .signin {
   display: grid;
-  place-items: center;
+  align-content: center;
+  justify-items: center;
+  gap: var(--sp-6);
   min-height: 100%;
   padding: var(--sp-6);
 }
@@ -39,6 +41,32 @@
 }
 
 /*
+ * Quiet, under the form: it is the way out for someone who cannot read the
+ * screen, not a thing to decide before signing in. The current language is
+ * marked rather than hidden, so both names stay legible to whoever needs one.
+ */
+.signin__langs {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.signin__lang {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: var(--fz-sm);
+}
+
+.signin__lang:hover {
+  color: var(--text);
+}
+
+.signin__lang--on {
+  color: var(--text);
+  background: var(--bg-sunken);
+}
+
+/*
  * The one screen a phone opens on before there is anything else. Its three
  * controls are stacked in the middle of an empty page, so they can be the size
  * a thumb wants without costing anything its neighbour needs.
@@ -48,5 +76,11 @@
     --signin-h: var(--tap);
 
     max-width: 320px;
+  }
+
+  .signin__lang {
+    min-height: var(--tap);
+    padding-inline: var(--sp-5);
+    font-size: var(--fz-md);
   }
 }

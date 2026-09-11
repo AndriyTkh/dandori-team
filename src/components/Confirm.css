@@ -1,0 +1,45 @@
+.ask__scrim {
+  position: fixed;
+  inset: 0;
+  /* Above every window that can ask, including the event's at 110. */
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-5);
+  background: var(--scrim);
+}
+
+.ask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  width: 100%;
+  max-width: 340px;
+  padding: var(--sp-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-pop);
+}
+
+.ask__question {
+  font-size: var(--fz-md);
+  line-height: 1.45;
+}
+
+.ask__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+}
+
+/* Both answers are the size of a fingertip, and the destructive one is not
+   the one under the thumb by accident — it stays on the right, where the
+   window's own buttons are. */
+@media (max-width: 720px) {
+  .ask__foot .btn {
+    min-height: var(--tap);
+    padding-inline: var(--sp-5);
+  }
+}

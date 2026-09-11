@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { signIn } from '../auth/useSession'
-import { useT } from '../i18n'
+import { LANGS, setLang, useLang } from '../state/ui'
+import { LANG_TITLES, useT } from '../i18n'
 import './SignIn.css'
 
 /** Email and password sign-in. There is no sign-up: accounts are created in the Supabase dashboard. */
@@ -10,6 +11,7 @@ export function SignIn() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const t = useT()
+  const lang = useLang()
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -53,6 +55,26 @@ export function SignIn() {
           {busy ? t('signin.busy') : t('signin.submit')}
         </button>
       </form>
+
+      {/*
+        The one screen reached before the settings window exists, and so the one
+        place the language has to be switchable from outside it: a visitor who
+        does not read Russian would otherwise meet a Russian form and no way
+        past it. Each name is written in itself, as in the settings.
+      */}
+      <div className="signin__langs">
+        {LANGS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`signin__lang${option === lang ? ' signin__lang--on' : ''}`}
+            aria-pressed={option === lang}
+            onClick={() => setLang(option)}
+          >
+            {LANG_TITLES[option]}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

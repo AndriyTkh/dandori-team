@@ -29,6 +29,7 @@ export const TEXT = {
   'common.done': { ru: 'Готово', en: 'Done' },
   'common.add': { ru: 'Добавить', en: 'Add' },
   'common.save': { ru: 'Сохранить', en: 'Save' },
+  'common.delete': { ru: 'Удалить', en: 'Delete' },
 
   // The pair on a markdown box: the same two words on the task card and in the
   // notes editor.
@@ -134,7 +135,6 @@ export const TEXT = {
   'notes.newFolder': { ru: 'Новая папка', en: 'New folder' },
   'notes.actions': { ru: 'Действия', en: 'Actions' },
   'notes.rename': { ru: 'Переименовать', en: 'Rename' },
-  'notes.delete': { ru: 'Удалить', en: 'Delete' },
   'notes.confirmDeleteFolder': {
     ru: 'Удалить папку «{name}» со всем содержимым?',
     en: 'Delete the folder “{name}” and everything in it?',

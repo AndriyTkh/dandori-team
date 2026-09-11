@@ -9,6 +9,15 @@ import { PLURALS, TEXT, type Forms, type PluralKey, type TextKey } from './dict'
 
 export type Vars = Record<string, string | number>
 
+/*
+ * Each language named in itself, and so not in the dictionary: someone who
+ * cannot read the current one still has to be able to find their own.
+ */
+export const LANG_TITLES: Record<Lang, string> = {
+  ru: 'Русский',
+  en: 'English',
+}
+
 const HOLE = /\{(\w+)\}/g
 
 function fill(s: string, vars: Vars | undefined): string {

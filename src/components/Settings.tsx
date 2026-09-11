@@ -3,9 +3,10 @@ import { deleteWorkspace, exportAll, renameWorkspace } from '../db/api'
 import { signOut } from '../auth/useSession'
 import { useAutosave } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
+import { Confirm } from './Confirm'
 import { GcalSection } from './Gcal'
-import { useT, type T } from '../i18n'
-import { LANGS, setLang, THEMES, useLang, type Lang, type Theme } from '../state/ui'
+import { LANG_TITLES, useT, type T } from '../i18n'
+import { LANGS, setLang, THEMES, useLang, type Theme } from '../state/ui'
 import type { Workspace } from '../db/types'
 import './Settings.css'
 
@@ -14,15 +15,6 @@ const THEME_TITLES = {
   light: 'settings.themeLight',
   dark: 'settings.themeDark',
 } as const
-
-/*
- * Each language named in itself, and so not in the dictionary: someone who
- * cannot read the current one still has to be able to find their own.
- */
-const LANG_TITLES: Record<Lang, string> = {
-  ru: 'Русский',
-  en: 'English',
-}
 
 const SECTIONS = ['theme', 'language', 'workspace', 'gcal', 'account'] as const
 type Section = (typeof SECTIONS)[number]
@@ -159,9 +151,10 @@ function WorkspaceSection({
     void renameWorkspace(workspace.id, v),
   )
 
+  const [asking, setAsking] = useState(false)
+
   async function remove() {
-    const ok = confirm(t('settings.confirmRemove', { name: workspace.name }))
-    if (!ok) return
+    setAsking(false)
     await deleteWorkspace(workspace.id)
     onClose()
   }
@@ -173,9 +166,18 @@ function WorkspaceSection({
         <input className="field" value={name} onChange={(e) => setName(e.target.value)} />
       </label>
 
-      <button className="btn btn--danger" onClick={remove}>
+      <button className="btn btn--danger" onClick={() => setAsking(true)}>
         {t('settings.remove')}
       </button>
+
+      {asking && (
+        <Confirm
+          question={t('settings.confirmRemove', { name: workspace.name })}
+          action={t('common.delete')}
+          onCancel={() => setAsking(false)}
+          onConfirm={() => void remove()}
+        />
+      )}
     </div>
   )
 }

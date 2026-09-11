@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { renderMarkdown } from '../lib/markdown'
 import { useAutosave } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
+import { Confirm } from './Confirm'
 import {
   createLabel,
   createNote,
@@ -130,6 +131,8 @@ function Body({
     patch({ description: v }),
   )
 
+  const [asking, setAsking] = useState(false)
+
   const html = useMemo(() => (preview ? renderMarkdown(description) : ''), [preview, description])
 
   /*
@@ -146,7 +149,7 @@ function Body({
   }
 
   async function remove() {
-    if (!confirm(t('task.confirmDelete', { name: task.title }))) return
+    setAsking(false)
     await deleteTask(task.id)
     onClose()
   }
@@ -274,10 +277,19 @@ function Body({
       />
 
       <div className="dialog__foot">
-        <button className="btn btn--quiet btn--danger" onClick={() => void remove()}>
+        <button className="btn btn--quiet btn--danger" onClick={() => setAsking(true)}>
           {t('task.delete')}
         </button>
       </div>
+
+      {asking && (
+        <Confirm
+          question={t('task.confirmDelete', { name: task.title })}
+          action={t('common.delete')}
+          onCancel={() => setAsking(false)}
+          onConfirm={() => void remove()}
+        />
+      )}
     </>
   )
 }
@@ -497,10 +509,7 @@ function LabelPicker({
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
   }
 
-  async function remove(label: Label) {
-    if (!confirm(t('label.confirmDelete', { name: label.name }))) return
-    await deleteLabel(label.id)
-  }
+  const [asking, setAsking] = useState<Label | null>(null)
 
   return (
     <div className="dialog__field">
@@ -527,7 +536,7 @@ function LabelPicker({
       {mode === 'manage' ? (
         <div className="labels__manage">
           {labels.map((label) => (
-            <LabelRow key={label.id} label={label} onRemove={() => void remove(label)} t={t} />
+            <LabelRow key={label.id} label={label} onRemove={() => setAsking(label)} t={t} />
           ))}
         </div>
       ) : (
@@ -560,6 +569,19 @@ function LabelPicker({
             {t('common.add')}
           </button>
         </div>
+      )}
+
+      {asking && (
+        <Confirm
+          question={t('label.confirmDelete', { name: asking.name })}
+          action={t('common.delete')}
+          onCancel={() => setAsking(null)}
+          onConfirm={() => {
+            const id = asking.id
+            setAsking(null)
+            void deleteLabel(id)
+          }}
+        />
       )}
     </div>
   )

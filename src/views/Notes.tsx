@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createNote, deleteNote, updateNote } from '../db/api'
 import { useNotes } from '../db/hooks'
+import { Confirm } from '../components/Confirm'
 import { useT, type T } from '../i18n'
 import { emptyOf } from '../lib/empty'
 import { renderMarkdown } from '../lib/markdown'
@@ -49,6 +50,7 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<ID>>(() => new Set())
   const [renamingId, setRenamingId] = useState<ID | null>(null)
   const [menu, setMenu] = useState<Menu | null>(null)
+  const [asking, setAsking] = useState<Note | null>(null)
   // Phone: the tree and the editor do not fit side by side, so show one at a time.
   const [detail, setDetail] = useState(false)
   // The row to scroll to once the folders above it are open and it is in the DOM.
@@ -138,12 +140,7 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
     if (trimmed) void updateNote(id, { name: trimmed })
   }
 
-  function remove(note: Note) {
-    const key = note.kind === 'folder' ? 'notes.confirmDeleteFolder' : 'notes.confirmDeleteFile'
-    if (!confirm(t(key, { name: note.name }))) return
-    // deleteNote takes down the subtree itself, no need to duplicate the walk here.
-    void deleteNote(note.id)
-  }
+  const askKey = asking?.kind === 'folder' ? 'notes.confirmDeleteFolder' : 'notes.confirmDeleteFile'
 
   const menuNote = menu ? (notes.find((n) => n.id === menu.id) ?? null) : null
 
@@ -231,8 +228,21 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
           edge={menu.edge}
           onClose={() => setMenu(null)}
           onRename={() => setRenamingId(menuNote.id)}
-          onRemove={() => remove(menuNote)}
+          onRemove={() => setAsking(menuNote)}
           t={t}
+        />
+      )}
+
+      {asking && (
+        <Confirm
+          question={t(askKey, { name: asking.name })}
+          action={t('common.delete')}
+          onCancel={() => setAsking(null)}
+          onConfirm={() => {
+            setAsking(null)
+            // deleteNote takes down the subtree itself, no need to duplicate the walk here.
+            void deleteNote(asking.id)
+          }}
         />
       )}
     </div>
@@ -385,7 +395,7 @@ function RowMenu({
             onRemove()
           }}
         >
-          {t('notes.delete')}
+          {t('common.delete')}
         </button>
       </div>
     </>
