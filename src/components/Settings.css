@@ -28,8 +28,10 @@
    * reminders — so the window keeps its size as the sections are switched. At
    * 260 it grew by half for that one section and, being centred, the whole
    * window jumped 80px up and back under the pointer choosing the section.
+   * On a screen shorter than that the screen wins: a minimum that overrode the
+   * maximum pushed the close button off the top of a phone lying on its side.
    */
-  min-height: 420px;
+  min-height: min(420px, 100%);
   max-height: 100%;
   overflow: hidden;
   /* Over a dimmed page the plain border disappears; the window needs its own

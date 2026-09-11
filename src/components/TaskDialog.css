@@ -450,11 +450,6 @@
     padding: 0;
   }
 
-  /* The title comes first in the card; the phone keeps its head row on top. */
-  .dialog__head {
-    order: -1;
-  }
-
   .dialog {
     max-width: none;
     min-height: 100%;
@@ -473,6 +468,8 @@
    * why it is opened at all.
    */
   .dialog__head {
+    /* The title comes first in the card; the phone keeps its head row on top. */
+    order: -1;
     min-height: var(--tap);
   }
 
