@@ -1,4 +1,4 @@
-import { db, type Local } from './local'
+import { db, stripLocal, type Local } from './local'
 import { requestPush } from '../sync/sync'
 import { translate } from '../i18n'
 import type {
@@ -241,8 +241,6 @@ export async function toggleTaskDone(id: ID): Promise<void> {
 export async function setTaskGcal(id: ID, cfg: GcalSetting | null): Promise<void> {
   const row = await db.tasks.get(id)
   if (!row) return
-  // The event's id is derived from the task's, so forgetting it costs nothing
-  // and leaving it behind would claim an event that is about to be deleted.
   await db.tasks.put(touch({ ...row, gcal: cfg }))
   queue()
 }
@@ -379,8 +377,8 @@ export async function deleteNote(id: ID): Promise<void> {
 
 /** Dumps everything into one file: insurance in case we ever leave Supabase. */
 export async function exportAll(): Promise<string> {
-  const strip = <T extends object>(rows: Local<T>[]) =>
-    rows.filter((r) => !(r as { deleted?: boolean }).deleted).map(({ _dirty, ...rest }) => rest)
+  const strip = <T extends { deleted: boolean }>(rows: Local<T>[]) =>
+    rows.filter((r) => !r.deleted).map(stripLocal)
 
   const data = {
     format: 'dandori-export',
