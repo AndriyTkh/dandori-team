@@ -216,8 +216,15 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
 - Two themes: dark and light, following the system setting plus a manual toggle.
 - Density is compact. On the phone it is compact at a hand's scale, not the laptop's
   shrunk: 44 px is what a fingertip covers, and everything meant to be tapped is
-  laid out on it — where the paint has to stay small, the touch area is grown around
-  it instead. Anything typed into is held at 16 px, or iOS Safari zooms the page in
+  laid out on it where the layout allows. Where it does not, the paint stays small
+  and nothing is grown around it: measured on the phone, a browser already carries
+  a tap 10–13 px past a control's own edge, and up to 11 px into the next control,
+  so an invisible box grown towards a neighbour does not reach into empty space —
+  it moves the boundary and takes the neighbour's taps. A grid of 166 258 taps
+  found that every such growth cost a neighbour more than it gained. It is allowed
+  only where nothing tappable stands within about 25 px — which on this phone is
+  the timeline's axis alone, where the dot is the reasoned exception below.
+  Anything typed into is held at 16 px, or iOS Safari zooms the page in
   on focus and leaves it zoomed.
 - There is no hover on a phone. A control that only appears when a pointer is over
   it cannot be reached at all, so nothing may depend on hover to be usable.
