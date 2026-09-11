@@ -30,8 +30,20 @@ export interface TimelineProps {
 const PAD_DAYS = 3
 /** A short scale looks truncated: always show at least a month ahead of today. */
 const MIN_SPAN_DAYS = 30
-/** Guard against an outlier date: the scale must not unfold into tens of thousands of columns. */
-const MAX_SPAN_DAYS = 1830
+/*
+ * Guard against a typo in a year, not against a far deadline.
+ *
+ * The scale is bounded by its columns, not by its span: a column never goes
+ * below the width its step can be read at, and what does not fit is scrolled —
+ * so a grant five years out costs a wider track, not a squeezed one. Truncating
+ * the span instead left the task outside the scale, pinned to the last column
+ * and months away from its own date. A century of columns is still only twelve
+ * hundred months. Thirty years is past any deadline a person plans towards and
+ * still cheap for a mistyped year, which is all this now catches: the scale then
+ * draws about eleven thousand day columns in «Месяц» instead of the thirty-seven
+ * thousand a year of 2999 asked for, and the phone is always in «Месяц».
+ */
+const MAX_SPAN_DAYS = 365 * 30
 /** Below this width the day numbers run together — only week starts keep a label. */
 const DAY_LABEL_W = 20
 /** A narrow bracket cannot fit its label — only the boundary is left. */

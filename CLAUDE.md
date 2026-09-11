@@ -129,6 +129,13 @@ One schema for all workspaces. No per-workspace schemas.
   place inside a column — only the grid and the labels become coarser. On a phone
   there is no width to fit anything into, so the step holds out longer and the
   scale scrolls instead.
+- The stretching stops there, and the rest is scrolled. A column never goes below
+  the width its step can be read at, so a deadline far enough out makes the track
+  wider than the screen rather than the columns narrower than an eye. Every task
+  is on the scale at its own date whatever that costs in width: the scale used to
+  be cut to five years instead, which left a task past that pinned to the last
+  column, standing months away from the date it has. Only a mistyped year is
+  still caught, at thirty — past any deadline a person plans towards.
 - An axis is pinned along the bottom edge: one line across the full width, closed by
   an arrow, with ticks on Mondays and month boundaries and month names underneath.
   One dot per task at its deadline (its start date if it has no deadline), and a short
@@ -140,7 +147,8 @@ One schema for all workspaces. No per-workspace schemas.
   target around each would let the topmost one swallow its neighbours' taps.
   The axis lives inside the same scroller as the rows, so the two halves cannot drift
   apart. It shows deadlines, not spans — duration is what the rows above are for.
-- On the phone it scrolls horizontally, on the laptop it fits entirely.
+- On the phone it always scrolls horizontally; on the laptop it fits whenever its
+  columns are readable at that width, and scrolls when they are not.
 
 ### Google Calendar
 
