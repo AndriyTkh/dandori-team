@@ -154,8 +154,20 @@ function Body({
     onClose()
   }
 
+  /*
+   * The title comes first: on the desk it leads the card it names, with the
+   * close beside it and «Готово» under it. The phone draws the head row above
+   * it instead, where the thumb reaches both — see TaskDialog.css.
+   */
   return (
     <>
+      <input
+        className="dialog__title"
+        value={title}
+        placeholder={t('task.title')}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+
       <div className="dialog__head">
         <label className="dialog__done">
           <input
@@ -169,13 +181,6 @@ function Body({
           ✕
         </button>
       </div>
-
-      <input
-        className="dialog__title"
-        value={title}
-        placeholder={t('task.title')}
-        onChange={(e) => setTitle(e.target.value)}
-      />
 
       <div className="dialog__dates">
         <Field label={t('task.start')}>

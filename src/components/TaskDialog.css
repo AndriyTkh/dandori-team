@@ -102,10 +102,12 @@
   font-size: var(--fz-sm);
 }
 
+/* The same size as its own preview, as in the notes: «Просмотр» changes the
+   form of the text, not its size. */
 .dialog__textarea {
   min-height: 120px;
   font-family: var(--font-mono);
-  font-size: var(--fz-sm);
+  font-size: var(--fz-md);
   line-height: 1.55;
   resize: vertical;
 }
@@ -383,10 +385,74 @@
   color: var(--danger);
 }
 
+/*
+ * The desk. The card opened with «Готово» and the close on a line of their own
+ * above the title, so the first thing it said was a checkbox. The title leads
+ * now, the close stands at the end of its line, and «Готово» follows as the
+ * task's state. The head row gives its two controls to the grid rather than
+ * boxing them, which is what lets them sit on two different lines.
+ *
+ * And one left edge. Every label, field and pill of the card starts at the
+ * same x; three things did not. The native checkboxes carry the browser's 4px
+ * margin, and «Привязать заметку» is a quiet button whose word stood 9px inside
+ * its invisible box — its ground now reaches out on hover, its word lines up.
+ * «Удалить задачу» is the same button on the right edge, where the links of
+ * the field heads end.
+ */
+@media (min-width: 721px) {
+  .dialog {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--sp-4);
+  }
+
+  .dialog > * {
+    grid-column: 1 / -1;
+  }
+
+  .dialog__head {
+    display: contents;
+  }
+
+  .dialog__title {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .dialog__close {
+    grid-row: 1;
+    grid-column: 2;
+    align-self: center;
+  }
+
+  .dialog__done {
+    justify-self: start;
+  }
+
+  .dialog__done input,
+  .dialog__mute input,
+  .dialog__gcal-label input {
+    margin: 0;
+  }
+
+  .notelink__add {
+    margin-left: calc((var(--sp-4) + 1px) * -1);
+  }
+
+  .dialog__foot .btn {
+    margin-right: calc((var(--sp-4) + 1px) * -1);
+  }
+}
+
 @media (max-width: 720px) {
   .dialog__scrim {
     align-items: stretch;
     padding: 0;
+  }
+
+  /* The title comes first in the card; the phone keeps its head row on top. */
+  .dialog__head {
+    order: -1;
   }
 
   .dialog {
