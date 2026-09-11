@@ -31,7 +31,10 @@ Fixed after the interviews. Change only at the explicit request of the project o
   - `14 дней` (14 days) — a sliding window, the first column is always «Сегодня» (today).
   - `Лента` (feed) — infinite scroll of days to the left and to the right, days load as you go.
     It has a «Сегодня» button that scrolls back to the current date; the 14-day window
-    does not need one, today is always inside it.
+    does not need one, today is always inside it. It opens where that button
+    brings it back to: the days behind today are loaded only so that there is
+    somewhere to scroll, and opening on the first of them put the laptop a
+    fortnight in the past.
 - The third mode is `Месяц` (month): a plain monthly grid. This is the calendar from
   the requirements, there is no separate tab for it. It carries the same «Сегодня»
   button as «Лента» and for the same reason — it is paged away from the current
@@ -224,6 +227,11 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   board or the timeline was navigating the browser back, and nothing in a single-page
   app is reached by going back — the gesture only ever lost the user's place.
 - Three tabs: `Доска` (board) · `Таймлайн` (timeline) · `Заметки` (notes).
+- On the laptop the board's range modes stand in the header, beside the tabs they
+  belong to. A bar of their own under the header cost 41 px of board height to
+  hold 200 px of buttons, while the header had a thousand empty pixels in its
+  middle. On the phone they keep that bar: there it is a full-width control,
+  each mode a third of the screen for a thumb.
 - Settings are a window, not a menu. The gear opens a panel over the page — its
   own sections down the side, the way an editor's settings work — and everything
   that used to hang off the gear lives in it: theme, language, the workspace's
