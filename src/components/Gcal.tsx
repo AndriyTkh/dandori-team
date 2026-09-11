@@ -63,6 +63,14 @@ function offsetLabel(t: T, minutes: number): string {
 
 // --------------------------------------------------------------- the account
 
+/** What the section says about the account, one line per state. */
+const NOTES = {
+  unconfigured: 'gcal.unconfigured',
+  'signed-out': 'gcal.signedOut',
+  'needs-consent': 'gcal.needsConsent',
+  ready: 'gcal.ready',
+} as const
+
 /** The account state, watched: connecting in one window redraws the other. */
 function useGcalState(): GcalState {
   return useSyncExternalStore(onGcalState, getGcalState)
@@ -84,16 +92,9 @@ function GcalAccount({ state, t }: { state: GcalState; t: T }) {
     }
   }
 
-  const note = {
-    unconfigured: 'gcal.unconfigured',
-    'signed-out': 'gcal.signedOut',
-    'needs-consent': 'gcal.needsConsent',
-    ready: 'gcal.ready',
-  } as const
-
   return (
     <div className="gacc">
-      <span className="gacc__note">{t(note[state])}</span>
+      <span className="gacc__note">{t(NOTES[state])}</span>
 
       {state === 'signed-out' && (
         <button className="btn btn--primary" disabled={busy} onClick={() => void begin()}>
@@ -121,11 +122,10 @@ function GcalAccount({ state, t }: { state: GcalState; t: T }) {
  * when Google would not give one, and then the picker falls back to the
  * calendar already chosen.
  */
-function useCalendars(enabled: boolean): Calendar[] | null {
+function useCalendars(): Calendar[] | null {
   const [calendars, setCalendars] = useState<Calendar[] | null>(null)
 
   useEffect(() => {
-    if (!enabled) return
     let alive = true
     listCalendars().then(
       (list) => alive && setCalendars(list),
@@ -137,7 +137,7 @@ function useCalendars(enabled: boolean): Calendar[] | null {
     return () => {
       alive = false
     }
-  }, [enabled])
+  }, [])
 
   return calendars
 }
@@ -152,7 +152,7 @@ function GcalForm({
   onChange: (next: GcalConfig) => void
   t: T
 }) {
-  const calendars = useCalendars(true)
+  const calendars = useCalendars()
   const list = calendars ?? []
   // A calendar Google did not list — it is still what the event is set to, and
   // drawing the picker without it would quietly move the event somewhere else.
@@ -168,14 +168,16 @@ function GcalForm({
   return (
     <div className="gform">
       <div className="gform__pair">
-        <label className="gform__field gform__field--time">
+        <label className="gform__field">
           <span className="gform__label">{t('gcal.time')}</span>
           <input
             className="field"
             type="time"
             value={value.time}
             // An empty field is someone mid-edit, not a wish for no time at all.
-            onChange={(e) => e.target.value && onChange({ ...value, time: e.target.value.slice(0, 5) })}
+            onChange={(e) =>
+              e.target.value && onChange({ ...value, time: e.target.value.slice(0, 5) })
+            }
           />
         </label>
 
@@ -270,9 +272,10 @@ function GcalForm({
         {value.reminders.length < MAX_REMINDERS && (
           <button
             className="btn btn--quiet gform__add"
-            onClick={() =>
-              onChange({ ...value, reminders: [...value.reminders, { method: 'popup', minutes: 30 }] })
-            }
+            onClick={() => {
+              const fresh: GcalReminder = { method: 'popup', minutes: 30 }
+              onChange({ ...value, reminders: [...value.reminders, fresh] })
+            }}
           >
             {t('gcal.addReminder')}
           </button>
