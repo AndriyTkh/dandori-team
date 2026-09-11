@@ -81,7 +81,8 @@ export function Timeline({ tasks, labels, onOpenTask }: TimelineProps) {
   const span = useMemo(() => spanOf(rows, now), [rows, now])
   const [zoom, setZoom] = useTimelineZoom()
 
-  const compact = width > 0 && width < COMPACT_W
+  // `max-width: 720px` in the stylesheets includes 720 itself, so this has to too.
+  const compact = width > 0 && width <= COMPACT_W
   const nameW = compact ? NAME_W_COMPACT : NAME_W
   const free = Math.max(240, width - nameW - GUTTER)
   /*
@@ -101,14 +102,23 @@ export function Timeline({ tasks, labels, onOpenTask }: TimelineProps) {
    * the range is switched, which is the one moment the old scroll position means
    * nothing. Data changing under a scale the user has scrolled away from does not
    * count: that would yank the view out from under them.
+   *
+   * Until he has scrolled, though, it keeps centring as the scale changes. The
+   * first frames are drawn before the tasks arrive, and a scale centred on an
+   * empty month is centred on nothing once four months of past are laid in front
+   * of it. Marking the view done on that first empty pass is what left it open
+   * on the far past, and never on today in «Месяц» on the desk.
    */
-  const centred = useRef<string | null>(null)
+  const centred = useRef<{ range: string; left: number } | null>(null)
   useEffect(() => {
     const el = scrollRef.current
-    if (!el || width === 0 || centred.current === range) return
-    centred.current = range
-    if (el.scrollWidth <= el.clientWidth) return
+    if (!el || width === 0) return
+    const last = centred.current
+    // Moved away from where it was put: his position now, until the range changes.
+    if (last && last.range === range && Math.abs(el.scrollLeft - last.left) > 1) return
     el.scrollLeft = nameW + midOf(scale, now) - el.clientWidth / 2
+    // Read back rather than kept: the browser clamps it to what can scroll.
+    centred.current = { range, left: el.scrollLeft }
   }, [width, range, nameW, scale, now])
 
   const vars = {
