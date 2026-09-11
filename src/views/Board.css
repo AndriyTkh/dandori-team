@@ -15,8 +15,6 @@
   display: none;
   flex: 0 0 auto;
   align-items: center;
-  gap: var(--sp-4);
-  padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--border);
 }
 
@@ -173,9 +171,10 @@
   overflow-y: auto;
 }
 
+/* No size of its own on the phone: the 16px every typed-into field is held at
+   there comes from `.field`, and a smaller one here zoomed iOS in on focus. */
 .board__new {
   padding: var(--sp-2) var(--sp-3);
-  font-size: var(--fz-sm);
 }
 
 /* On the desk the field a task is typed into is the card it is about to

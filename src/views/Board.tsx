@@ -319,10 +319,13 @@ function Strip({
   groups,
   labels,
   onOpenTask,
+  opensOnToday = false,
 }: StripProps & {
   days: ISODate[]
   scroller?: RefObject<HTMLDivElement | null>
   onScroll?: () => void
+  /** The feed opens where its «Сегодня» brings it back to, not on its first day. */
+  opensOnToday?: boolean
 }) {
   const own = useRef<HTMLDivElement>(null)
   const el = scroller ?? own
@@ -339,12 +342,17 @@ function Strip({
    *
    * On a phone nothing is pinned and one column fills the screen, so it opens on
    * today rather than on an empty «Без даты».
+   *
+   * The feed is not a window with a start: its first day is two weeks back only
+   * so that there is somewhere to scroll to. Opening on it put the desk a
+   * fortnight in the past.
    */
   useLayoutEffect(() => {
     const node = el.current
     if (!node) return
-    scrollToDay(node, pinnedWidth(node) > 0 ? (days[0] ?? today) : today)
-  }, [el, today, days])
+    const atStart = !opensOnToday && pinnedWidth(node) > 0
+    scrollToDay(node, atStart ? (days[0] ?? today) : today)
+  }, [el, today, days, opensOnToday])
 
   return (
     <div className="board__scroller" ref={el} onScroll={onScroll}>
@@ -487,5 +495,5 @@ function Ribbon({ ref, ...props }: StripProps & { ref: Ref<RibbonHandle> }) {
     else if (el.scrollWidth - el.scrollLeft - el.clientWidth < RIBBON_EDGE) extend('right')
   }
 
-  return <Strip {...props} days={days} scroller={scroller} onScroll={onScroll} />
+  return <Strip {...props} days={days} scroller={scroller} onScroll={onScroll} opensOnToday />
 }
