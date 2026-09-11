@@ -171,6 +171,9 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   the owner set up by hand is never spoken over by it. The terms are set in the
   same place and belong to the workspace: sync is per workspace, so its defaults
   are too.
+  A task can still be taken out of such a workspace one by one: unticking its
+  checkbox says so explicitly, and that is remembered, because clearing its own
+  terms would only drop it back under the workspace's.
   This is the one rule in the app that acts on rows made after it was written,
   which is close to the automations the list forbids. It is allowed because it
   is a switch the owner holds and can see, on one workspace, doing one thing —
@@ -184,6 +187,11 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
 - One-way, always. The calendar is told what the task says; what happens to the
   event in Google is never read back. Two directions would need a server to
   listen, and a second answer to every conflict.
+- Which calendar an event stands in travels with the task. It is the only record
+  that the event exists at all: a device that did not create it — a second one,
+  or the same one after signing out cleared its local notes — would otherwise
+  have no way to know there was anything to take away, and turning the sync off
+  would leave the events behind with nothing that could ever remove them.
 
 ### Notes
 
@@ -317,7 +325,8 @@ tasks        id, user_id, workspace_id, title, description,
              note_id, position,
              label_ids jsonb [uuid], custom_fields jsonb [{name, value}],
              gcal jsonb {time, calendar_id, color_id,
-                         reminders [{method, minutes}]},
+                         reminders [{method, minutes}]} | {off: true},
+             gcal_placed text,
              created_at, updated_at, deleted
 notes        id, user_id, workspace_id, parent_id, kind (folder|file),
              name, content, position, created_at, updated_at, deleted
