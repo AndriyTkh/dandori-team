@@ -23,11 +23,30 @@ export interface Calendar {
 
 export class GcalError extends Error {
   status: number
+  /*
+   * Google's own word for what went wrong. The status alone does not say it:
+   * it answers a calendar the owner may only read and a spent quota with the
+   * same 403, and the two want opposite things from the caller.
+   */
+  reason: string | null
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, reason: string | null = null) {
     super(message)
     this.status = status
+    this.reason = reason
   }
+}
+
+/** The refusal, with the reason read out of the body Google sends with it. */
+async function refusal(res: Response, what: string): Promise<GcalError> {
+  let reason: string | null = null
+  try {
+    const body = (await res.json()) as { error?: { errors?: { reason?: string }[] } }
+    reason = body.error?.errors?.[0]?.reason ?? null
+  } catch {
+    // An error with no body of its own, or one that is not JSON at all.
+  }
+  return new GcalError(res.status, `${what}: ${res.status}${reason ? ` ${reason}` : ''}`, reason)
 }
 
 /** The token can die mid-flight; one retry with a fresh one, then it is an error. */
@@ -57,12 +76,16 @@ async function call(path: string, init: RequestInit = {}, retry = true): Promise
 
 export async function listCalendars(): Promise<Calendar[]> {
   const res = await call('/users/me/calendarList?minAccessRole=writer&maxResults=100')
-  if (!res.ok) throw new GcalError(res.status, `calendarList: ${res.status}`)
+  if (!res.ok) throw await refusal(res, 'calendarList')
   const body = (await res.json()) as {
     items?: { id: string; summary?: string; primary?: boolean }[]
   }
   return (body.items ?? []).map((c) => ({
-    id: c.id,
+    // Google lists the main calendar under the account's own address, and also
+    // answers to `primary` for it — which is what this app writes by default.
+    // Left as two ids it is one calendar offered twice, and choosing the other
+    // of them moves the event to where it already stands.
+    id: c.primary === true ? 'primary' : c.id,
     summary: c.summary ?? c.id,
     primary: c.primary === true,
   }))
@@ -89,6 +112,11 @@ function body(task: Task, cfg: GcalConfig): Record<string, unknown> {
 
   return {
     id: eventIdOf(task.id),
+    // A deleted event is kept by Google as `cancelled` under the same id, and an
+    // insert over it is refused as a duplicate. Saying outright that the event
+    // is confirmed is what brings such a one back; on a new event it is what
+    // Google would have assumed anyway.
+    status: 'confirmed',
     summary: task.title,
     description: task.description || undefined,
     start: { dateTime: start, timeZone: zone },
@@ -112,25 +140,34 @@ function plusMinutes(local: string, minutes: number): string {
   return `${at.getUTCFullYear()}-${p(at.getUTCMonth() + 1)}-${p(at.getUTCDate())}T${p(at.getUTCHours())}:${p(at.getUTCMinutes())}:00`
 }
 
-/** Creates the event, or rewrites it if it is already there. */
-export async function putEvent(task: Task, cfg: GcalConfig): Promise<void> {
+/**
+ * Creates the event, or rewrites it if it is already there.
+ *
+ * `standing` is the task's own record of an event already in this calendar. It
+ * decides which call goes first and nothing else: every rewrite used to open
+ * with an insert that was always refused, so an edited task cost two calls and
+ * left a 409 in the console each time. Either way round the other call follows,
+ * because the record can be wrong — an event deleted in Google behind the app's
+ * back, or one a second device made a moment ago.
+ */
+export async function putEvent(task: Task, cfg: GcalConfig, standing: boolean): Promise<void> {
   const cal = encodeURIComponent(cfg.calendar_id)
-  const made = await call(`/calendars/${cal}/events`, {
-    method: 'POST',
-    body: JSON.stringify(body(task, cfg)),
-  })
-  if (made.ok) return
-
-  // 409 is the event already existing — which is exactly what a second device,
-  // or a second run, is supposed to find.
-  if (made.status !== 409) throw new GcalError(made.status, `insert: ${made.status}`)
-
   const id = eventIdOf(task.id)
-  const patched = await call(`/calendars/${cal}/events/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(body(task, cfg)),
-  })
-  if (!patched.ok) throw new GcalError(patched.status, `update: ${patched.status}`)
+  const payload = JSON.stringify(body(task, cfg))
+
+  const update = () => call(`/calendars/${cal}/events/${id}`, { method: 'PUT', body: payload })
+  const insert = () => call(`/calendars/${cal}/events`, { method: 'POST', body: payload })
+
+  const first = await (standing ? update() : insert())
+  if (first.ok) return
+  // The two ways of being wrong about it: nothing there to rewrite, or
+  // something there already — a second device's event, or the cancelled husk
+  // Google keeps of a deleted one.
+  const expected = standing ? 404 : 409
+  if (first.status !== expected) throw await refusal(first, standing ? 'update' : 'insert')
+
+  const second = await (standing ? insert() : update())
+  if (!second.ok) throw await refusal(second, standing ? 'insert' : 'update')
 }
 
 /** Takes the event away. Already gone counts as done. */
@@ -138,5 +175,5 @@ export async function deleteEvent(calendarId: string, taskId: string): Promise<v
   const cal = encodeURIComponent(calendarId)
   const res = await call(`/calendars/${cal}/events/${eventIdOf(taskId)}`, { method: 'DELETE' })
   if (res.ok || res.status === 404 || res.status === 410) return
-  throw new GcalError(res.status, `delete: ${res.status}`)
+  throw await refusal(res, 'delete')
 }
