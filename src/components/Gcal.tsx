@@ -3,6 +3,7 @@ import { listCalendars, type Calendar } from '../gcal/api'
 import { connect, disconnect, getGcalState, onGcalState, type GcalState } from '../gcal/client'
 import { reconcile } from '../gcal/sync'
 import { setTaskGcal, setWorkspaceGcal } from '../db/api'
+import { SAVE_DELAY } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
 import type { T } from '../i18n'
 import type { TextKey } from '../i18n/dict'
@@ -52,8 +53,6 @@ const COLORS: { id: string; name: TextKey; hex: string }[] = [
 
 /** How long before the event a reminder can fire, in minutes. */
 const OFFSETS = [0, 10, 30, 60, 120, 1440, 2880]
-/** The same pause every other field in the app takes before it writes. */
-const SAVE_DELAY = 500
 
 /** Google takes five; the owner asked for three. */
 const MAX_REMINDERS = 3

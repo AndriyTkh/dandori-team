@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { renderMarkdown } from '../lib/markdown'
-import { useAutosave } from '../lib/useAutosave'
+import { SAVE_DELAY, useAutosave } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
 import { Confirm } from './Confirm'
 import {
@@ -28,9 +28,6 @@ import {
   type Workspace,
 } from '../db/types'
 import './TaskDialog.css'
-
-/** Same debounce as the shared autosave hook: one write per pause in typing. */
-const SAVE_DELAY = 500
 
 interface Props {
   taskId: ID

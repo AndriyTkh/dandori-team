@@ -106,7 +106,7 @@ export async function createLabel(
   const row: Local<Label> = {
     id: uid(),
     workspace_id: workspaceId,
-    name: name.trim() || translate('label.default'),
+    name: name.trim(),
     color,
     position: (existing.at(-1)?.position ?? 0) + POS_STEP,
     created_at: ts,

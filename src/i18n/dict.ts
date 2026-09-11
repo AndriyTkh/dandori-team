@@ -120,7 +120,6 @@ export const TEXT = {
   // -------------------------------------------------------------- labels
 
   'label.plural': { ru: 'Метки', en: 'Labels' },
-  'label.default': { ru: 'Метка', en: 'Label' },
   'label.manage': { ru: 'Правка', en: 'Edit' },
   'label.new': { ru: 'Новая', en: 'New' },
   'label.name': { ru: 'Название метки', en: 'Label name' },
