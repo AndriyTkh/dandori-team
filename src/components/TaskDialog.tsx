@@ -353,7 +353,8 @@ function GcalRow({
    * the task's own settings alone showed an unticked box beside an event that
    * existed — and unticking it offered to make a second one.
    */
-  const byWorkspace = task.gcal === null && workspace?.gcal_sync === true && workspace.gcal !== null
+  const whole = workspace?.gcal_sync === true && workspace.gcal !== null
+  const byWorkspace = task.gcal === null && whole
   const own = gcalConfigOf(task.gcal)
   const on = own !== null || byWorkspace
 
@@ -361,11 +362,12 @@ function GcalRow({
     if (next) return onSetOpen(true)
     /*
      * Off is a decision, not a draft, so the event goes now rather than on the
-     * next tick. Inside a workspace that syncs whole it has to be said out
-     * loud: clearing the task's own terms would only drop it back under the
-     * workspace's.
+     * next tick. Inside a workspace that syncs whole it has to be said out loud,
+     * and by a task that had terms of its own just as much as by one that had
+     * none: clearing terms only drops the task back under the workspace's, which
+     * ticks the box again and rewrites the event on its terms.
      */
-    void setTaskGcal(task.id, byWorkspace ? { off: true } : null).then(reconcile)
+    void setTaskGcal(task.id, whole ? { off: true } : null).then(reconcile)
   }
 
   return (
@@ -652,15 +654,35 @@ function CustomFields({
   onChange: (f: CustomField[]) => void
   t: T
 }) {
+  /*
+   * Every row writes the whole list back, and each of them builds it from this
+   * one copy rather than from the `fields` it was rendered with. Closing the
+   * card flushes all the waiting rows in the same moment, before any of their
+   * writes has come back around — each row rebuilt the list from the same stale
+   * copy, and the last one put the others' text back to what it had been.
+   */
+  const latest = useRef(fields)
+  useEffect(() => {
+    latest.current = fields
+  }, [fields])
+
+  const write = useCallback(
+    (next: CustomField[]) => {
+      latest.current = next
+      onChange(next)
+    },
+    [onChange],
+  )
+
   // Rows written before ids existed get one now, so editing state cannot follow
   // the wrong row after a deletion.
   const missingIds = fields.some((f) => !f.id)
   useEffect(() => {
-    if (missingIds) onChange(fields.map((f) => (f.id ? f : { ...f, id: crypto.randomUUID() })))
-  }, [missingIds, fields, onChange])
+    if (missingIds) write(fields.map((f) => (f.id ? f : { ...f, id: crypto.randomUUID() })))
+  }, [missingIds, fields, write])
 
   function add() {
-    onChange([...fields, { id: crypto.randomUUID(), name: '', value: '' }])
+    write([...latest.current, { id: crypto.randomUUID(), name: '', value: '' }])
   }
 
   return (
@@ -677,8 +699,8 @@ function CustomFields({
           key={field.id ?? i}
           field={field}
           autoFocus={field.name === '' && field.value === ''}
-          onChange={(next) => onChange(fields.map((f, j) => (i === j ? next : f)))}
-          onRemove={() => onChange(fields.filter((_, j) => j !== i))}
+          onChange={(next) => write(latest.current.map((f, j) => (i === j ? next : f)))}
+          onRemove={() => write(latest.current.filter((_, j) => j !== i))}
           t={t}
         />
       ))}

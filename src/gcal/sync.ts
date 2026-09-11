@@ -12,7 +12,8 @@
  * to skip work the laptop had already done, and that work is one idempotent
  * write it can well afford to repeat.
  */
-import { db, getMeta, setMeta } from '../db/local'
+import { db, setMeta } from '../db/local'
+import { requestPush } from '../sync/sync'
 import { currentZone, deleteEvent, GcalError, putEvent } from './api'
 import { getToken, isConnected } from './client'
 import { gcalConfigOf, type GcalConfig, type ID, type Task, type Workspace } from '../db/types'
@@ -22,7 +23,8 @@ const TICK_MS = 60_000
 /** After a refusal that is not the owner's fault, wait before trying again. */
 const BACKOFF_MS = 5 * 60_000
 
-const sentKey = (taskId: ID) => `gcal:${taskId}`
+const KEY_PREFIX = 'gcal:'
+const sentKey = (taskId: ID) => `${KEY_PREFIX}${taskId}`
 
 /*
  * The parts of the signature are joined on a NUL rather than a space: a title
@@ -34,10 +36,29 @@ const SEP = '\u0000'
 
 /** What this device last put in the calendar for one task. */
 interface Sent {
-  /** The calendar it went into — it has to be known to take it out again. */
+  /**
+   * The calendar it went into. The task carries that as well, and the task's is
+   * the record that travels between devices; this copy is what the pass falls
+   * back on when the task's has been lost — see `placed`.
+   */
   cal: string
   /** Everything about the event that could change, flattened into one string. */
   sig: string
+}
+
+/** This device's memory of its own traffic, read once for the whole pass. */
+async function sentNotes(): Promise<Map<ID, Sent>> {
+  const notes = new Map<ID, Sent>()
+  for (const row of await db.meta.toArray()) {
+    if (!row.key.startsWith(KEY_PREFIX)) continue
+    try {
+      notes.set(row.key.slice(KEY_PREFIX.length), JSON.parse(row.value) as Sent)
+    } catch {
+      // Unreadable: this pass simply does not know about that one, and the
+      // task's own record still does.
+    }
+  }
+  return notes
 }
 
 function signature(task: Task, cfg: GcalConfig): string {
@@ -72,21 +93,32 @@ function configFor(task: Task, workspace: Workspace | undefined): GcalConfig | n
   return null
 }
 
-/** Records which calendar the task's event stands in, `null` for none. */
+/*
+ * Records which calendar the task's event stands in, `null` for none.
+ *
+ * Bookkeeping, not an edit: `updated_at` stays exactly where the owner's last
+ * edit left it, so this row can never win a conflict against an edit made on
+ * another device while it waited in the queue. And it asks to be sent at once
+ * instead of waiting for the next cycle — until it lands it is the only record
+ * that the event exists at all, and a sign-out here would take it away with the
+ * cache.
+ */
 async function placed(taskId: ID, calendar: string | null): Promise<void> {
   const row = await db.tasks.get(taskId)
   if (!row || row.gcal_placed === calendar) return
-  await db.tasks.put({ ...row, gcal_placed: calendar, updated_at: nowStamp(), _dirty: 1 })
+  await db.tasks.put({ ...row, gcal_placed: calendar, _dirty: 1 })
+  requestPush()
 }
 
-const nowStamp = () => new Date().toISOString()
-
-async function reconcileTask(task: Task, cfg: GcalConfig | null): Promise<void> {
-  const raw = await getMeta(sentKey(task.id))
-  const sent = raw ? (JSON.parse(raw) as Sent) : null
-  // Where the event stands, whoever put it there. The local note is only this
-  // device's shortcut for skipping work it has already done.
-  const standing = task.gcal_placed
+async function reconcileTask(task: Task, cfg: GcalConfig | null, sent: Sent | null): Promise<void> {
+  /*
+   * Where the event stands, whoever put it there. Carrying no stamp of its own,
+   * the record is refused by the server when another device has edited the task
+   * in the meantime, and the pull that follows brings back that device's row —
+   * which has never heard of the event. The local note is what the pass falls
+   * back on then, and writing the record again from it is how that heals.
+   */
+  const standing = task.gcal_placed ?? sent?.cal ?? null
 
   if (!cfg) {
     if (standing) await deleteEvent(standing, task.id)
@@ -96,15 +128,29 @@ async function reconcileTask(task: Task, cfg: GcalConfig | null): Promise<void> 
   }
 
   const sig = signature(task, cfg)
-  if (standing === cfg.calendar_id && sent?.sig === sig) return
+  // The task's own record, not the fallback: while that one is missing there is
+  // a placement to write, however little else has changed.
+  if (task.gcal_placed === cfg.calendar_id && sent?.sig === sig) return
 
   // Moved to another calendar. Google keeps events per calendar, so the old copy
   // has to go before the new one is written, or both would stand there.
   if (standing && standing !== cfg.calendar_id) await deleteEvent(standing, task.id)
 
-  await putEvent(task, cfg)
+  await putEvent(task, cfg, standing === cfg.calendar_id)
   await setMeta(sentKey(task.id), JSON.stringify({ cal: cfg.calendar_id, sig }))
   await placed(task.id, cfg.calendar_id)
+}
+
+/*
+ * Whether a refusal is about the account rather than about the one task.
+ * Google answers a spent quota with 429 — and also with a 403 that looks exactly
+ * like the 403 for a calendar the owner may only read. The reason it names is
+ * the only thing that tells those two apart.
+ */
+const SPENT = new Set(['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded'])
+
+function spent(err: GcalError): boolean {
+  return err.status === 429 || (err.reason !== null && SPENT.has(err.reason))
 }
 
 let running = false
@@ -119,21 +165,26 @@ export async function reconcile(): Promise<void> {
   running = true
   try {
     const spaces = new Map((await db.workspaces.toArray()).map((w) => [w.id, w]))
+    const notes = await sentNotes()
 
     for (const task of await db.tasks.toArray()) {
       const cfg = configFor(task, spaces.get(task.workspace_id))
+      const sent = notes.get(task.id) ?? null
       // Nothing wanted and nothing standing: the overwhelming majority of rows.
-      if (!cfg && task.gcal_placed === null) continue
+      if (!cfg && task.gcal_placed === null && !sent) continue
       try {
-        await reconcileTask(task, cfg)
+        await reconcileTask(task, cfg, sent)
       } catch (err) {
-        if (err instanceof GcalError && (err.status === 403 || err.status === 429)) {
-          // Out of quota, or refused outright: stop the pass rather than spend
-          // the rest of it collecting the same answer.
+        if (err instanceof GcalError && spent(err)) {
+          // Out of quota: every other task would collect the same answer, so the
+          // pass stops rather than spend the rest of itself on it.
           until = Date.now() + BACKOFF_MS
           console.error('[gcal] backing off', err.message)
           return
         }
+        // One task refused — a calendar gone read-only, say. That is this task's
+        // own trouble: dropping the whole pass over it would leave every task
+        // after it unwritten, and the order never changes, so for good.
         console.error('[gcal] task failed', task.id, err)
       }
     }

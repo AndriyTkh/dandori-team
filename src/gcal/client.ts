@@ -25,6 +25,13 @@ const SCOPE = [
 ].join(' ')
 /** Ask for a new token a little before the old one dies, so a write never races it. */
 const EXPIRY_MARGIN_MS = 5 * 60 * 1000
+/*
+ * How long a silent refusal is believed before one is tried again. Google
+ * refuses until the owner allows it anew, and the reconciler asks once per task
+ * and once per return to the tab: without the pause a refused account meant a
+ * request a second, each of them an attempt at a popup the browser blocks.
+ */
+const REFUSAL_MS = 5 * 60 * 1000
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
 
@@ -44,6 +51,8 @@ interface Token {
 }
 
 let token: Token | null = null
+/** When the last silent request came back without a token. */
+let refusedAt = 0
 let state: GcalState = CLIENT_ID ? 'signed-out' : 'unconfigured'
 const listeners = new Set<(s: GcalState) => void>()
 
@@ -189,16 +198,19 @@ async function request(interactive: boolean): Promise<string | null> {
       callback: (r) => {
         if (r.access_token && r.expires_in) {
           token = { value: r.access_token, expires: Date.now() + r.expires_in * 1000 }
+          refusedAt = 0
           setConnected(true)
           setState('ready')
           answer(r.access_token)
           return
         }
         // A silent request Google would not answer without the owner.
+        refusedAt = Date.now()
         setState(connected() ? 'needs-consent' : 'signed-out')
         answer(null)
       },
       error_callback: () => {
+        refusedAt = Date.now()
         setState(connected() ? 'needs-consent' : 'signed-out')
         answer(null)
       },
@@ -218,6 +230,9 @@ export function getToken(interactive = false): Promise<string | null> {
   if (!CLIENT_ID) return Promise.resolve(null)
   if (token && token.expires - EXPIRY_MARGIN_MS > Date.now()) return Promise.resolve(token.value)
   if (!interactive && !connected()) return Promise.resolve(null)
+  // Still inside the pause after a refusal. His own click never waits for it:
+  // allowing the account again is the one thing that can change the answer.
+  if (!interactive && Date.now() - refusedAt < REFUSAL_MS) return Promise.resolve(null)
   if (pending) return pending
   pending = request(interactive)
   return pending
@@ -237,6 +252,7 @@ export function connect(): Promise<boolean> {
 export async function disconnect(): Promise<void> {
   const held = token?.value
   token = null
+  refusedAt = 0
   // The token client holds the grant it was built with. Kept across a
   // disconnect, it would hand the next owner the last one's session.
   client = null
