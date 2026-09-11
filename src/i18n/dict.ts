@@ -28,6 +28,7 @@ export const TEXT = {
   'common.cancel': { ru: 'Отмена', en: 'Cancel' },
   'common.done': { ru: 'Готово', en: 'Done' },
   'common.add': { ru: 'Добавить', en: 'Add' },
+  'common.save': { ru: 'Сохранить', en: 'Save' },
 
   // The pair on a markdown box: the same two words on the task card and in the
   // notes editor.
@@ -166,6 +167,51 @@ export const TEXT = {
 
   'settings.export': { ru: 'Экспорт в JSON', en: 'Export to JSON' },
   'settings.signOut': { ru: 'Выйти', en: 'Sign out' },
+
+  // ----------------------------------------------------- google calendar
+
+  // «Calendar» stays English in the Russian column: it is the service's name.
+  'gcal.section': { ru: 'Google Календарь', en: 'Google Calendar' },
+  'gcal.sync': {
+    ru: 'Синхронизировать с Google Calendar',
+    en: 'Sync with Google Calendar',
+  },
+  'gcal.edit': { ru: 'Править', en: 'Edit' },
+  'gcal.needsDue': {
+    ru: 'Событие создаётся на дату дедлайна — у задачи её нет',
+    en: 'An event needs a deadline, and this task has none',
+  },
+
+  'gcal.event': { ru: 'Событие в календаре', en: 'Calendar event' },
+  'gcal.time': { ru: 'Время', en: 'Time' },
+  'gcal.calendar': { ru: 'Календарь', en: 'Calendar' },
+  'gcal.calendarPrimary': { ru: 'Основной', en: 'Primary' },
+  'gcal.color': { ru: 'Цвет', en: 'Colour' },
+  'gcal.colorDefault': { ru: 'Как у календаря', en: 'Whatever the calendar uses' },
+  'gcal.reminders': { ru: 'Напоминания', en: 'Reminders' },
+  'gcal.addReminder': { ru: 'Добавить напоминание', en: 'Add a reminder' },
+  'gcal.removeReminder': { ru: 'Убрать напоминание', en: 'Remove the reminder' },
+  'gcal.popup': { ru: 'Уведомление', en: 'Notification' },
+  'gcal.email': { ru: 'Письмо', en: 'E-mail' },
+  'gcal.atTime': { ru: 'В момент события', en: 'When it starts' },
+
+  'gcal.unconfigured': {
+    ru: 'В этой сборке нет ключа Google — календарь недоступен',
+    en: 'This build carries no Google key, so the calendar is out of reach',
+  },
+  'gcal.signedOut': { ru: 'Аккаунт Google не подключён', en: 'No Google account is connected' },
+  'gcal.connect': { ru: 'Подключить Google', en: 'Connect Google' },
+  'gcal.connecting': { ru: 'Подключение…', en: 'Connecting…' },
+  'gcal.needsConsent': {
+    ru: 'Google больше не продлевает доступ — его нужно выдать заново',
+    en: 'Google has stopped renewing access; it has to be granted again',
+  },
+  'gcal.reconnect': { ru: 'Выдать доступ', en: 'Grant access' },
+  'gcal.ready': { ru: 'Аккаунт Google подключён', en: 'The Google account is connected' },
+  'gcal.disconnect': { ru: 'Отключить', en: 'Disconnect' },
+
+  'gcal.defaults': { ru: 'Настройки воркспейса «{name}»', en: 'Defaults for “{name}”' },
+  'gcal.workspaceSync': { ru: 'Синхронизировать воркспейс', en: 'Sync the whole workspace' },
 } as const satisfies Record<string, Text>
 
 export type TextKey = keyof typeof TEXT
@@ -202,6 +248,33 @@ export const PLURALS = {
       other: 'За {n} дней',
     },
     en: { one: '{n} day before', other: '{n} days before' },
+  },
+  'gcal.beforeMinutes': {
+    ru: {
+      one: 'За {n} минуту',
+      few: 'За {n} минуты',
+      many: 'За {n} минут',
+      other: 'За {n} минут',
+    },
+    en: { one: '{n} minute before', other: '{n} minutes before' },
+  },
+  'gcal.beforeHours': {
+    ru: {
+      one: 'За {n} час',
+      few: 'За {n} часа',
+      many: 'За {n} часов',
+      other: 'За {n} часов',
+    },
+    en: { one: '{n} hour before', other: '{n} hours before' },
+  },
+  'gcal.synced': {
+    ru: {
+      one: 'В календарь добавлена {n} задача',
+      few: 'В календарь добавлено {n} задачи',
+      many: 'В календарь добавлено {n} задач',
+      other: 'В календарь добавлено {n} задач',
+    },
+    en: { one: '{n} task added to the calendar', other: '{n} tasks added to the calendar' },
   },
 } as const satisfies Record<string, Plural>
 

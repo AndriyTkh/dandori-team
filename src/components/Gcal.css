@@ -1,0 +1,284 @@
+/* The account row: one line about the state, one control for it. */
+
+.gacc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  width: 100%;
+}
+
+.gacc__note {
+  color: var(--text-dim);
+  font-size: var(--fz-sm);
+}
+
+/* The four fields of an event, the same ones in the card's window and in the
+   settings section. */
+
+.gform {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  width: 100%;
+}
+
+.gform__pair {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: var(--sp-4);
+}
+
+.gform__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.gform__label {
+  color: var(--text-faint);
+  font-size: var(--fz-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gform__colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* The same swatch the label picker draws, so a colour is picked the one way in
+   this app. The chosen one is ringed with a band of the window's own ground. */
+.gform__swatch {
+  width: 18px;
+  height: 18px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  transition: border-color var(--t);
+}
+
+.gform__swatch--on {
+  border-color: var(--bg-raised);
+  box-shadow: 0 0 0 2px var(--text);
+}
+
+/* "Whatever the calendar uses" is the absence of a colour, and a stroke across
+   an empty circle is how that is drawn. */
+.gform__swatch--none {
+  background: linear-gradient(
+    to bottom right,
+    transparent calc(50% - 1px),
+    var(--text-faint) calc(50% - 1px),
+    var(--text-faint) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.gform__swatch--none.gform__swatch--on {
+  border-color: var(--bg-raised);
+  box-shadow:
+    inset 0 0 0 1px var(--border-strong),
+    0 0 0 2px var(--text);
+}
+
+.gform__rem {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.gform__del {
+  width: 28px;
+  justify-content: center;
+  color: var(--text-faint);
+}
+
+.gform__del:hover {
+  color: var(--danger);
+}
+
+.gform__add {
+  align-self: flex-start;
+  color: var(--accent);
+}
+
+/* The event's window, over the task card */
+
+.gwin__scrim {
+  position: fixed;
+  inset: 0;
+  /* Above the card that opened it, which sits at 100. */
+  z-index: 110;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--sp-7) var(--sp-5);
+  overflow-y: auto;
+  background: var(--scrim);
+}
+
+.gwin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  width: 100%;
+  max-width: 420px;
+  padding: var(--sp-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-pop);
+}
+
+.gwin__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gwin__title {
+  font-size: var(--fz-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.gwin__close {
+  width: 26px;
+  height: 26px;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.gwin__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The settings window's section */
+
+.gsec {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  width: 100%;
+}
+
+/* Sync is per workspace and so are these fields: the line says which one. */
+.gsec__for {
+  color: var(--text-faint);
+  font-size: var(--fz-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gsec__whole {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fz-md);
+  cursor: pointer;
+}
+
+.gsec__whole input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+.gsec__count {
+  color: var(--text-dim);
+  font-size: var(--fz-sm);
+}
+
+@media (max-width: 720px) {
+  .gwin__scrim {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .gwin {
+    max-width: none;
+    min-height: 100%;
+    padding: var(--sp-5) max(var(--sp-5), env(safe-area-inset-right))
+      /* Full-bleed: the save button must clear the home bar. */
+      calc(var(--sp-7) + env(safe-area-inset-bottom)) max(var(--sp-5), env(safe-area-inset-left));
+    border: none;
+    border-radius: 0;
+  }
+
+  .gwin__head {
+    min-height: var(--tap);
+  }
+
+  .gwin__close {
+    width: var(--tap);
+    height: var(--tap);
+    margin-right: calc(var(--sp-3) * -1);
+    font-size: var(--fz-lg);
+  }
+
+  .gwin__close:active {
+    background: var(--bg-active);
+    color: var(--text);
+  }
+
+  .gwin__foot .btn {
+    min-height: var(--tap);
+  }
+
+  /* Two fields of a phone's width cannot share a row and stay typeable. */
+  .gform__pair {
+    grid-template-columns: 1fr;
+  }
+
+  /* A colour is picked with a fingertip, and an 18px dot is a fifth of one. */
+  .gform__swatch {
+    width: 28px;
+    height: 28px;
+    border-width: 3px;
+  }
+
+  .gform__colors {
+    gap: var(--sp-3);
+  }
+
+  /*
+   * Three controls on one line leave a phone about 130px for each select, and
+   * «Уведомление» does not fit in that. The offset keeps the top line with the
+   * cross, the method drops under it.
+   */
+  .gform__rem {
+    grid-template-columns: 1fr var(--tap);
+  }
+
+  .gform__rem .field:nth-child(2) {
+    grid-column: 1;
+  }
+
+  .gform__del {
+    grid-row: 1;
+    grid-column: 2;
+    width: var(--tap);
+    height: var(--tap);
+  }
+
+  .gform__add,
+  .gacc .btn {
+    min-height: var(--tap);
+  }
+
+  .gsec__whole {
+    min-height: var(--tap);
+  }
+
+  .gsec__whole input {
+    width: 22px;
+    height: 22px;
+  }
+}
