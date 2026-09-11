@@ -28,7 +28,8 @@ Fixed after the interviews. Change only at the explicit request of the project o
 
 - Columns are **days**, not statuses. Drag a card into another column and you change its date.
 - Two range modes:
-  - `14 дней` (14 days) — a sliding window, the first column is always «Сегодня» (today).
+  - `14 дней` (14 days) — a sliding window that always holds «Сегодня» (today),
+    starting from yesterday — see below.
   - `Лента` (feed) — infinite scroll of days to the left and to the right, days load as you go.
     It has a «Сегодня» button that scrolls back to the current date; the 14-day window
     does not need one, today is always inside it. It opens where that button
@@ -264,7 +265,14 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
 - Login by email and password. There is one account.
 - Offline: reading and editing. Local cache in IndexedDB, the queue of edits goes out
   once there is network.
-- Conflict resolution is last-write-wins by `updated_at`.
+- Conflict resolution is last-write-wins by `updated_at`, over the whole row, and
+  the server is the judge: it refuses an update older than the row it holds.
+  Left to the devices, the edit that *arrived* last won instead — an offline
+  edit from the morning overwrote the afternoon's, and a deleted task came back.
+- Signing out never loses an edit silently. What is queued is sent first; what
+  cannot be sent is named, and the owner is asked before it goes.
+- The local cache belongs to one account. A device that finds someone else's
+  rows in it at sign-in starts clean rather than showing them.
 - Export of all data to JSON. There is no import.
 
 ### PWA
@@ -346,22 +354,31 @@ tasks        id, user_id, workspace_id, title, description,
              created_at, updated_at, deleted
 notes        id, user_id, workspace_id, parent_id, kind (folder|file),
              name, content, position, created_at, updated_at, deleted
+
+every table  synced_at — stamped by the server as it writes the row
 ```
 
-All tables are under RLS, bound to `auth.uid()`.
+All tables are under RLS, bound to `auth.uid()`. A label, a task or a note can
+only be written into a workspace of the same user: the foreign key alone checks
+that the workspace exists, not whose it is.
 
 Dates use the `date` type, not `timestamp`. No task has a time of day and none ever
 will. The one clock in the database is `gcal.time`, which belongs to a calendar
 event rather than to the task carrying it, is never read by any view, and would
-leave with the integration. The exception is the housekeeping `created_at` / `updated_at`:
-they are never shown in the interface and are only needed for conflict resolution.
+leave with the integration. The exception is the housekeeping `created_at` /
+`updated_at` / `synced_at`: they are never shown in the interface. `updated_at` is
+the device's, and settles conflicts; `synced_at` is the server's, and is what a
+device pulls by — an edit made offline keeps the time it was made, and a device
+that pulled by `updated_at` would never ask for anything that old again.
 
 Labels are stored as a `label_ids` array in the task itself, there is no join table.
 There is a single user, referential integrity buys nothing here
 and makes sync twice as complicated.
 
 Deletion is soft: `deleted = true`. Otherwise a deletion made on the phone would never
-reach the laptop that was offline at that moment.
+reach the laptop that was offline at that moment. A deleted workspace takes its
+rows with it on the server, including one another device added while it was
+being deleted.
 
 ---
 
