@@ -104,6 +104,37 @@ function isSameMoment(a: string, b: string): boolean {
   return Date.parse(a) === Date.parse(b)
 }
 
+/*
+ * The same value however it was written down. Postgres hands `jsonb` back with
+ * its keys in its own order, and a timestamp as `+00:00` where this device wrote
+ * `Z`: neither is a change, and treating either as one would rewrite the row on
+ * every pull and wake every view watching it.
+ */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    return `{${Object.keys(obj)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(obj[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value ?? null)
+}
+
+/** Whether the server's copy says anything this device's copy does not. */
+function sameRow(table: SyncedTable, local: object, remote: Record<string, unknown>): boolean {
+  const mine = local as Record<string, unknown>
+  for (const column of Object.keys(SYNCED_COLUMNS[table])) {
+    const a = mine[column]
+    const b = remote[column]
+    if (column.endsWith('_at') && typeof a === 'string' && typeof b === 'string') {
+      if (!isSameMoment(a, b)) return false
+    } else if (canonical(a) !== canonical(b)) return false
+  }
+  return true
+}
+
 /** A row of any of the four tables, seen from here: an id and the stamp that decides. */
 type AnyRow = Local<{ id: string; updated_at: string }>
 
@@ -193,14 +224,22 @@ async function push(): Promise<void> {
 
           const landed = new Set((data ?? []).map((row) => (row as { id: string }).id))
 
-          // A row that changed while the push was in flight stays dirty.
+          /*
+           * A row that changed while the push was in flight stays dirty. The
+           * whole row is compared, not its stamp: the calendar records where an
+           * event stands without re-stamping the task — a stamp would make that
+           * bookkeeping outrank a real edit made on another device — so a
+           * placement written mid-push leaves `updated_at` as it was, and a
+           * stamp-only check would mark it sent when it never went.
+           */
+          const sentAs = new Map(batch.map((row, i) => [row.id, JSON.stringify(payload[i])]))
           await db.transaction('rw', db[table], async () => {
             for (const sent of batch) {
               if (!landed.has(sent.id)) continue
               const current = await db[table].get(sent.id)
-              if (current && current.updated_at === sent.updated_at) {
-                await db[table].put({ ...current, _dirty: 0 } as never)
-              }
+              if (!current) continue
+              const now = JSON.stringify({ ...forServer(table, current), user_id: userId })
+              if (now === sentAs.get(sent.id)) await db[table].put({ ...current, _dirty: 0 } as never)
             }
           })
 
@@ -365,10 +404,13 @@ async function mergeRows(table: SyncedTable, rows: Record<string, unknown>[]): P
        * the same moment written two ways: this device writes `…Z` and the
        * server answers `…+00:00`, so comparing the strings called every row
        * this device had sent a change and rewrote it for nothing.
+       *
+       * The whole row is compared, not only the stamp: where a calendar event
+       * stands is recorded without re-stamping the task, so a second device
+       * holding the same `updated_at` would otherwise never learn that the
+       * first had placed one — and could then never take it away.
        */
-      if (local?._dirty === 0 && isSameMoment(local.updated_at, clean.updated_at as string)) {
-        continue
-      }
+      if (local?._dirty === 0 && sameRow(table, local, clean)) continue
 
       await db[table].put({ ...clean, _dirty: 0 } as never)
     }
