@@ -34,6 +34,30 @@
   gap: var(--sp-3);
 }
 
+/*
+ * The desk. The window holds one sentence and two answers, and it is the last
+ * thing between a click and something gone — so it gets a little more room
+ * than a form row, and the answer that takes something away is marked as that
+ * by its edge as well as its word. It is not filled: the focus starts on
+ * «Отмена», and a solid red button would pull the eye to the other one.
+ */
+@media (min-width: 721px) {
+  .ask {
+    gap: var(--sp-6);
+    max-width: 380px;
+    padding: var(--sp-6);
+  }
+
+  .ask .btn--danger {
+    border-color: color-mix(in srgb, var(--danger) 50%, var(--border));
+  }
+
+  .ask .btn--danger:hover {
+    border-color: var(--danger);
+    background: var(--overdue-bg);
+  }
+}
+
 /* Both answers are the size of a fingertip, and the destructive one is not
    the one under the thumb by accident — it stays on the right, where the
    window's own buttons are. */
