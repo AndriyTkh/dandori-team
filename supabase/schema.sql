@@ -16,6 +16,10 @@ create table if not exists public.workspaces (
   user_id     uuid not null references auth.users (id) on delete cascade,
   name        text not null default '',
   position    double precision not null default 0,
+  -- Put every dated task of this workspace into Google Calendar, with one set of
+  -- defaults: { "time": "10:00", "calendar_id": ..., "color_id": ..., "reminders": [...] }
+  gcal_sync   boolean not null default false,
+  gcal        jsonb,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   deleted     boolean not null default false
@@ -55,6 +59,13 @@ create table if not exists public.tasks (
   label_ids           jsonb not null default '[]'::jsonb,
   -- Custom fields of the card: [{ "name": "...", "value": "..." }]
   custom_fields       jsonb not null default '[]'::jsonb,
+  -- The Google Calendar event mirroring this task, and how it is made:
+  -- { "time": "10:00", "calendar_id": "primary", "color_id": null,
+  --   "reminders": [{ "method": "popup", "minutes": 30 }] }
+  -- `time` is the one clock in this database. It belongs to the event, never to
+  -- the task: no view reads it and nothing sorts by it.
+  gcal_event_id       text,
+  gcal                jsonb,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   deleted             boolean not null default false

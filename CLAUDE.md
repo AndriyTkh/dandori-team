@@ -138,6 +138,45 @@ One schema for all workspaces. No per-workspace schemas.
   apart. It shows deadlines, not spans — duration is what the rows above are for.
 - On the phone it scrolls horizontally, on the laptop it fits entirely.
 
+### Google Calendar
+
+Added at the owner's explicit request, against two entries of the closed list
+below — and those entries are amended to match. The reason is narrow and worth
+naming: the app has no way to reach him when it is closed, and building one means
+a background service on the phone. Google Calendar already is that service. This
+is not an integration for its own sake; it is the reminder the banner cannot give.
+
+- Signing in to Google is a row in the settings window and is optional. The app
+  keeps working untouched without it.
+- A task carries a «Синхронизировать с Google Calendar» checkbox. Ticking it opens
+  a small window: the time of the event, up to three reminders (how long before,
+  and whether a notification or an e-mail), which calendar, and the event's colour.
+  Saving creates the event. Beside a ticked checkbox stands «Править», which opens
+  the same window again.
+- **Time of day belongs to the event, never to the task.** A reminder has to name
+  a moment, so the event has a clock time — but the task does not, and no view
+  ever shows one. The board and the timeline stay date-only, and nothing sorts,
+  groups or filters by time. The schema keeps that promise: the clock lives in the
+  event's own record, beside the event's id.
+- An event lasts 30 minutes. Nothing in the app says how long a task takes, and a
+  reminder needs an event, not a guess at a duration.
+- The event follows the task. Change the title, the description or the deadline
+  and the event is rewritten in place — dragged to another day, it moves there
+  with the same time and the same reminders. Finish the task or delete it and the
+  event goes: a reminder for something already done is noise.
+- A workspace can be synced whole: one checkbox in its settings puts every task
+  that has a deadline and is not yet synced into the calendar, all of them with
+  the same time and reminders. Those defaults are set in the same place, and they
+  belong to the workspace — sync is per workspace, so its defaults are too.
+- The exchange runs in the browser while the app is open, like the rest of the
+  sync. There is no server and no client secret anywhere: Google's token client
+  hands the page an access token, and renews it silently for as long as the
+  browser is signed in to Google. An edit made with the app closed reaches the
+  calendar the next time it is opened.
+- One-way, always. The calendar is told what the task says; what happens to the
+  event in Google is never read back. Two directions would need a server to
+  listen, and a second answer to every conflict.
+
 ### Notes
 
 - A sidebar with a tree of folders and files, feels like the file tree in VS Code.
@@ -149,7 +188,8 @@ One schema for all workspaces. No per-workspace schemas.
 - Only a banner at the top inside the app: overdue / today / the next few days.
 - The banner **can be dismissed** and does not come back during the current session.
   It shows up again the next time the app is opened.
-- No push notifications. No integration with external calendars.
+- No push notifications of our own. What has to reach the owner with the app shut
+  goes through Google Calendar — see above.
 
 ### Interface
 
@@ -168,6 +208,18 @@ One schema for all workspaces. No per-workspace schemas.
   board or the timeline was navigating the browser back, and nothing in a single-page
   app is reached by going back — the gesture only ever lost the user's place.
 - Three tabs: `Доска` (board) · `Таймлайн` (timeline) · `Заметки` (notes).
+- Settings are a window, not a menu. The gear opens a panel over the page — its
+  own sections down the side, the way an editor's settings work — and everything
+  that used to hang off the gear lives in it: theme, language, the workspace's
+  name and deletion, the export, signing out, and Google Calendar. A menu could
+  hold five items; it cannot hold a form. It is a part of the page, never a
+  second browser window.
+- Two interface languages, Russian and English, picked in the settings window and
+  remembered per device. Russian is the default. The project is shown to people
+  who do not read it, and a planner whose every label is unreadable cannot be
+  looked at at all. Neither language is a translation of the other in the code:
+  both live side by side in one dictionary, and a string with only one of them is
+  a bug.
 - Sync status dot in the header: 7×7 px, visible only during an exchange, when offline
   or on error. The app writes to the local database and does not wait for the network,
   so without the dot a silently failed send would look like success.
@@ -198,13 +250,19 @@ One schema for all workspaces. No per-workspace schemas.
 The list is closed. Any item from here, in the code or in the interface, is a bug.
 
 - Collaboration: users, roles, invites, assignees, comments, mentions.
-- Time tracking, estimates in hours, time reports, time of day in any form.
+- Time tracking, estimates in hours, time reports. Time of day in any form —
+  except the clock a Google Calendar event is given, which lives in the event's
+  record and appears in no view of the app.
 - Sprints, cycles, modules, epics, backlogs, story points.
-- Automations, rules, webhooks, integrations with external services.
+- Automations, rules, webhooks, integrations with external services — except
+  Google Calendar, and only in the shape described above. It exists to deliver a
+  reminder the app cannot deliver itself; anything else routed through it is a
+  finding.
 - AI features of any kind.
 - Dashboards with metrics, productivity charts, statistics.
 - Onboarding tours, empty states with illustrations, teaching hints.
-- Push notifications.
+- Push notifications of our own. Google Calendar's reminders are the whole point
+  of the integration above, and they are Google's to deliver.
 - Configurable field schemas per workspace.
 - Any indicators and counters except the sync status dot, and the number of
   chosen labels on the header's filter button. That number is the control's own
@@ -239,13 +297,17 @@ Justify it in the commit message.
 ## Database schema
 
 ```
-workspaces   id, user_id, name, position, created_at, updated_at, deleted
+workspaces   id, user_id, name, position, gcal_sync boolean,
+             gcal jsonb {time, calendar_id, color_id, reminders},
+             created_at, updated_at, deleted
 labels       id, user_id, workspace_id, name, color, position,
              created_at, updated_at, deleted
 tasks        id, user_id, workspace_id, title, description,
              start_date, due_date, done, remind_days_before, muted,
              note_id, position,
              label_ids jsonb [uuid], custom_fields jsonb [{name, value}],
+             gcal_event_id text, gcal jsonb {time, calendar_id, color_id,
+                                             reminders [{method, minutes}]},
              created_at, updated_at, deleted
 notes        id, user_id, workspace_id, parent_id, kind (folder|file),
              name, content, position, created_at, updated_at, deleted
@@ -253,8 +315,10 @@ notes        id, user_id, workspace_id, parent_id, kind (folder|file),
 
 All tables are under RLS, bound to `auth.uid()`.
 
-Dates use the `date` type, not `timestamp`. There is no time of day in the schema
-and there never will be. The exception is the housekeeping `created_at` / `updated_at`:
+Dates use the `date` type, not `timestamp`. No task has a time of day and none ever
+will. The one clock in the database is `gcal.time`, which belongs to a calendar
+event rather than to the task carrying it, is never read by any view, and would
+leave with the integration. The exception is the housekeeping `created_at` / `updated_at`:
 they are never shown in the interface and are only needed for conflict resolution.
 
 Labels are stored as a `label_ids` array in the task itself, there is no join table.
@@ -294,7 +358,7 @@ Not enough information — ask the coordinator.
 
 ### `data` — data and sync
 
-Owns: `supabase/`, `src/db/`, `src/sync/`, `src/auth/`.
+Owns: `supabase/`, `src/db/`, `src/sync/`, `src/auth/`, `src/gcal/`.
 
 - Postgres schema, migrations, RLS policies.
 - Supabase client, authentication, session.
@@ -333,7 +397,8 @@ smallest markup change a style genuinely needs. Never `src/db/`, `src/sync/`,
 - Adds nothing. The "What must not exist" list applies to it in full, and so does
   every product decision above: restyling what exists is design, adding an element
   is a finding. Reordering what is already on screen needs the owner's word.
-- Russian interface text is not translated, reworded or shortened.
+- Interface text is not reworded, shortened or retranslated. Both languages live
+  in `src/i18n/`, and a string is changed there or not at all.
 
 ### `reviewer` — review and minimalism control
 
