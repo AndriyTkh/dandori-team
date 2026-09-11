@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { deleteWorkspace, exportAll, renameWorkspace } from '../db/api'
 import { today } from '../db/dates'
 import { flushQueue } from '../sync/sync'
+import { holdGcal } from '../gcal/sync'
 import { signOut } from '../auth/useSession'
 import { useAutosave } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
@@ -210,11 +211,20 @@ function AccountSection({ t }: { t: T }) {
    * owner is the only one who can say it may be lost.
    */
   async function leave() {
+    // The calendar first: an event it is making has to be recorded before the
+    // queue that carries the record goes out.
+    const release = await holdGcal()
     const left = await flushQueue()
     if (left > 0) {
+      release()
       setUnsent(left)
       return
     }
+    await signOut()
+  }
+
+  async function leaveAnyway() {
+    await holdGcal()
     await signOut()
   }
 
@@ -232,7 +242,7 @@ function AccountSection({ t }: { t: T }) {
           question={t.n('settings.confirmSignOut', unsent)}
           action={t('settings.signOut')}
           onCancel={() => setUnsent(0)}
-          onConfirm={() => void signOut()}
+          onConfirm={() => void leaveAnyway()}
         />
       )}
     </div>

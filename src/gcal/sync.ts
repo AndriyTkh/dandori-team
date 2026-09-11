@@ -184,43 +184,72 @@ function spent(err: GcalError): boolean {
 
 let running = false
 let until = 0
+/** The pass in hand, for a sign-out to wait on. */
+let current: Promise<void> | null = null
+/** Set while a sign-out is on its way: no new task is started. */
+let held = false
+
+/*
+ * Lets a sign-out wait for the pass instead of cutting it off.
+ *
+ * Checking the session stops a pass at the next step, but a call to Google
+ * already on the wire cannot be recalled: the event it makes lands after the
+ * wipe, with nowhere left to record where it stands, and nothing can ever take
+ * it away again. So the pass is stopped between two tasks and the one in hand
+ * is finished — its event, and the record of it — before the queue goes out.
+ * Returns the way to let it run again, for a sign-out that does not happen.
+ */
+export async function holdGcal(): Promise<() => void> {
+  held = true
+  await current
+  return () => {
+    held = false
+  }
+}
 
 /** One pass over every task that has an event or wants one. */
 export async function reconcile(): Promise<void> {
-  if (running || Date.now() < until) return
+  if (held || running || Date.now() < until) return
   if (!isConnected()) return
   if ((await getToken()) === null) return
 
   running = true
-  const mine = currentSession()
+  current = pass()
   try {
-    const spaces = new Map((await db.workspaces.toArray()).map((w) => [w.id, w]))
-    const notes = await sentNotes()
-
-    for (const task of await db.tasks.toArray()) {
-      const cfg = configFor(task, spaces.get(task.workspace_id))
-      const sent = notes.get(task.id) ?? null
-      // Nothing wanted and nothing standing: the overwhelming majority of rows.
-      if (!cfg && task.gcal_placed === null && !sent) continue
-      try {
-        await reconcileTask(task, cfg, sent, mine)
-      } catch (err) {
-        if (err instanceof SignedOut) return
-        if (err instanceof GcalError && spent(err)) {
-          // Out of quota: every other task would collect the same answer, so the
-          // pass stops rather than spend the rest of itself on it.
-          until = Date.now() + BACKOFF_MS
-          console.error('[gcal] backing off', err.message)
-          return
-        }
-        // One task refused — a calendar gone read-only, say. That is this task's
-        // own trouble: dropping the whole pass over it would leave every task
-        // after it unwritten, and the order never changes, so for good.
-        console.error('[gcal] task failed', task.id, err)
-      }
-    }
+    await current
   } finally {
+    current = null
     running = false
+  }
+}
+
+async function pass(): Promise<void> {
+  const mine = currentSession()
+  const spaces = new Map((await db.workspaces.toArray()).map((w) => [w.id, w]))
+  const notes = await sentNotes()
+
+  for (const task of await db.tasks.toArray()) {
+    if (held) return
+    const cfg = configFor(task, spaces.get(task.workspace_id))
+    const sent = notes.get(task.id) ?? null
+    // Nothing wanted and nothing standing: the overwhelming majority of rows.
+    if (!cfg && task.gcal_placed === null && !sent) continue
+    try {
+      await reconcileTask(task, cfg, sent, mine)
+    } catch (err) {
+      if (err instanceof SignedOut) return
+      if (err instanceof GcalError && spent(err)) {
+        // Out of quota: every other task would collect the same answer, so the
+        // pass stops rather than spend the rest of itself on it.
+        until = Date.now() + BACKOFF_MS
+        console.error('[gcal] backing off', err.message)
+        return
+      }
+      // One task refused — a calendar gone read-only, say. That is this task's
+      // own trouble: dropping the whole pass over it would leave every task
+      // after it unwritten, and the order never changes, so for good.
+      console.error('[gcal] task failed', task.id, err)
+    }
   }
 }
 
@@ -230,6 +259,8 @@ export interface GcalHandle {
 
 /** Runs the reconciliation for as long as the app is open. */
 export function startGcal(): GcalHandle {
+  // A new sign-in: whatever the last sign-out was waiting on is over.
+  held = false
   let stopped = false
   const tick = () => {
     if (!stopped) void reconcile()
