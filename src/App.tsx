@@ -35,7 +35,8 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
   const [tab, setTab] = useTab()
   const [boardMode, setBoardMode] = useBoardMode()
 
-  const labels = useLabels(workspaceId) ?? emptyOf<Label>()
+  const labelList = useLabels(workspaceId)
+  const labels = labelList ?? emptyOf<Label>()
   const allTasks = useTasks(workspaceId) ?? emptyOf<Task>()
 
   const [activeLabels, setActiveLabels] = useState<ID[]>([])
@@ -54,6 +55,16 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
   if (filteredFor !== workspaceId) {
     setFilteredFor(workspaceId)
     setActiveLabels([])
+  }
+
+  /*
+   * A label deleted — here or on the other device — takes its place in the filter
+   * with it. Left behind, it goes on hiding every task while the filter button,
+   * which disappears with the last label, is no longer there to clear it: three
+   * cards became none and nothing on the screen could bring them back.
+   */
+  if (labelList && activeLabels.some((id) => !labelList.some((l) => l.id === id))) {
+    setActiveLabels((prev) => prev.filter((id) => labelList.some((l) => l.id === id)))
   }
 
   const tasks = useMemo(() => {
