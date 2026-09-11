@@ -100,10 +100,15 @@ export async function pendingCount(): Promise<number> {
  * it can belong to.
  */
 export async function claimCache(userId: string): Promise<void> {
-  const owner = await getMeta('owner')
-  if (owner === userId) return
-  if (owner) await wipeLocal()
-  await setMeta('owner', userId)
+  // One transaction: the sign-in and the first push both claim, and a check
+  // and a wipe from the two of them interleaved would each see the other's
+  // half-done work.
+  await db.transaction('rw', db.workspaces, db.labels, db.tasks, db.notes, db.meta, async () => {
+    const owner = await getMeta('owner')
+    if (owner === userId) return
+    if (owner) await wipeLocal()
+    await setMeta('owner', userId)
+  })
 }
 
 /** Wipes all local data — used on sign-out. */

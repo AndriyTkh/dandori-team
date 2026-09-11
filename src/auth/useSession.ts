@@ -24,19 +24,32 @@ export interface SessionState {
   loading: boolean
 }
 
-/** A session Supabase persisted earlier, whether or not it can be refreshed now. */
-function hasStoredSession(): boolean {
+/** Whose session Supabase persisted earlier, whether or not it can be refreshed now. */
+function storedUserId(): string | null {
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
       if (!key?.startsWith('sb-') || !key.endsWith('-auth-token')) continue
       const raw = localStorage.getItem(key)
-      if (raw && JSON.parse(raw)?.user) return true
+      const id = raw ? JSON.parse(raw)?.user?.id : null
+      if (typeof id === 'string') return id
     }
   } catch {
     // Private mode or storage denied: treat it as signed out.
   }
-  return false
+  return null
+}
+
+/*
+ * Signed in only once the cache is settled as this account's. Supabase reports
+ * a sign-in before `signIn` below gets to claim the cache, and the app opened on
+ * whatever the database held in between — the previous account's workspaces,
+ * drawn on the next account's screen, and read by the calendar's first pass.
+ */
+async function settledFor(userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false
+  await claimCache(userId)
+  return true
 }
 
 export function useSession(): SessionState {
@@ -50,9 +63,11 @@ export function useSession(): SessionState {
       setTimeout(() => resolve('timeout'), AUTH_TIMEOUT_MS),
     )
 
-    void Promise.race([supabase.auth.getSession(), timeout]).then((result) => {
+    void Promise.race([supabase.auth.getSession(), timeout]).then(async (result) => {
+      const id = result === 'timeout' ? storedUserId() : result.data.session?.user.id
+      const on = await settledFor(id)
       if (!alive) return
-      setSignedIn(result === 'timeout' ? hasStoredSession() : Boolean(result.data.session))
+      setSignedIn(on)
       setLoading(false)
     })
 
@@ -61,8 +76,13 @@ export function useSession(): SessionState {
       if (!alive) return
       // Refresh failures offline arrive as a null session; the stored one is still good.
       if (!session && event === 'TOKEN_REFRESHED') return
-      setSignedIn(Boolean(session))
-      setLoading(false)
+      // Not awaited inside the callback: supabase-js holds its auth lock while
+      // it runs, and this only touches the local database.
+      void settledFor(session?.user.id).then((on) => {
+        if (!alive) return
+        setSignedIn(on)
+        setLoading(false)
+      })
     })
 
     return () => {

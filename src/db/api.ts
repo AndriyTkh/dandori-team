@@ -66,10 +66,18 @@ export async function createWorkspace(name: string): Promise<ID> {
   return row.id
 }
 
+/*
+ * Every edit below reads its row and writes it back inside one transaction.
+ * Closing the task card saves the title and the description at the same moment;
+ * each read the row before either wrote, and the second put back the title the
+ * first had just changed.
+ */
 export async function renameWorkspace(id: ID, name: string): Promise<void> {
-  const row = await db.workspaces.get(id)
-  if (!row) return
-  await db.workspaces.put(touch({ ...row, name: name.trim() || row.name }))
+  await db.transaction('rw', db.workspaces, async () => {
+    const row = await db.workspaces.get(id)
+    if (!row) return
+    await db.workspaces.put(touch({ ...row, name: name.trim() || row.name }))
+  })
   queue()
 }
 
@@ -123,9 +131,11 @@ export async function updateLabel(
   id: ID,
   patch: Partial<Pick<Label, 'name' | 'color'>>,
 ): Promise<void> {
-  const row = await db.labels.get(id)
-  if (!row) return
-  await db.labels.put(touch({ ...row, ...patch }))
+  await db.transaction('rw', db.labels, async () => {
+    const row = await db.labels.get(id)
+    if (!row) return
+    await db.labels.put(touch({ ...row, ...patch }))
+  })
   queue()
 }
 
@@ -211,21 +221,25 @@ export type TaskPatch = Partial<
 >
 
 export async function updateTask(id: ID, patch: TaskPatch): Promise<void> {
-  const row = await db.tasks.get(id)
-  if (!row) return
-  const next = { ...row, ...patch }
-  // Changing the day means changing the column, so the task goes to its end.
-  if (patch.due_date !== undefined && patch.due_date !== row.due_date) {
-    next.position = await nextTaskPosition(row.workspace_id, patch.due_date)
-  }
-  await db.tasks.put(touch(next))
+  await db.transaction('rw', db.tasks, async () => {
+    const row = await db.tasks.get(id)
+    if (!row) return
+    const next = { ...row, ...patch }
+    // Changing the day means changing the column, so the task goes to its end.
+    if (patch.due_date !== undefined && patch.due_date !== row.due_date) {
+      next.position = await nextTaskPosition(row.workspace_id, patch.due_date)
+    }
+    await db.tasks.put(touch(next))
+  })
   queue()
 }
 
 export async function toggleTaskDone(id: ID): Promise<void> {
-  const row = await db.tasks.get(id)
-  if (!row) return
-  await db.tasks.put(touch({ ...row, done: !row.done }))
+  await db.transaction('rw', db.tasks, async () => {
+    const row = await db.tasks.get(id)
+    if (!row) return
+    await db.tasks.put(touch({ ...row, done: !row.done }))
+  })
   queue()
 }
 
@@ -239,9 +253,11 @@ export async function toggleTaskDone(id: ID): Promise<void> {
 
 /** Turns the calendar on for one task, or off again with `null`. */
 export async function setTaskGcal(id: ID, cfg: GcalSetting | null): Promise<void> {
-  const row = await db.tasks.get(id)
-  if (!row) return
-  await db.tasks.put(touch({ ...row, gcal: cfg }))
+  await db.transaction('rw', db.tasks, async () => {
+    const row = await db.tasks.get(id)
+    if (!row) return
+    await db.tasks.put(touch({ ...row, gcal: cfg }))
+  })
   queue()
 }
 
@@ -249,16 +265,20 @@ export async function setWorkspaceGcal(
   id: ID,
   patch: { gcal_sync?: boolean; gcal?: GcalConfig | null },
 ): Promise<void> {
-  const row = await db.workspaces.get(id)
-  if (!row) return
-  await db.workspaces.put(touch({ ...row, ...patch }))
+  await db.transaction('rw', db.workspaces, async () => {
+    const row = await db.workspaces.get(id)
+    if (!row) return
+    await db.workspaces.put(touch({ ...row, ...patch }))
+  })
   queue()
 }
 
 export async function deleteTask(id: ID): Promise<void> {
-  const row = await db.tasks.get(id)
-  if (!row) return
-  await db.tasks.put(touch({ ...row, deleted: true }))
+  await db.transaction('rw', db.tasks, async () => {
+    const row = await db.tasks.get(id)
+    if (!row) return
+    await db.tasks.put(touch({ ...row, deleted: true }))
+  })
   queue()
 }
 
@@ -333,9 +353,11 @@ export async function updateNote(
   id: ID,
   patch: Partial<Pick<Note, 'name' | 'content' | 'parent_id'>>,
 ): Promise<void> {
-  const row = await db.notes.get(id)
-  if (!row) return
-  await db.notes.put(touch({ ...row, ...patch }))
+  await db.transaction('rw', db.notes, async () => {
+    const row = await db.notes.get(id)
+    if (!row) return
+    await db.notes.put(touch({ ...row, ...patch }))
+  })
   queue()
 }
 
