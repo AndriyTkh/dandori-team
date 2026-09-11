@@ -31,9 +31,34 @@ export interface Synced {
   deleted: boolean
 }
 
+/** How a task's event is made in Google Calendar. */
+export interface GcalConfig {
+  /**
+   * When the event starts, `HH:MM`. The one clock in the whole app: it belongs
+   * to the event, never to the task, and no view reads it. A reminder has to
+   * name a moment, and a date on its own does not.
+   */
+  time: string
+  /** Which of the owner's calendars the event goes in. `primary` is the default one. */
+  calendar_id: string
+  /** Google's own palette, `1`–`11`; `null` leaves the calendar's colour. */
+  color_id: string | null
+  reminders: GcalReminder[]
+}
+
+export interface GcalReminder {
+  method: 'popup' | 'email'
+  /** How long before the event it fires. */
+  minutes: number
+}
+
 export interface Workspace extends Synced {
   name: string
   position: number
+  /** Put every dated task of this workspace into the calendar, all alike. */
+  gcal_sync: boolean
+  /** The defaults that whole-workspace sync hands out. */
+  gcal: GcalConfig | null
 }
 
 export interface Label extends Synced {
@@ -76,6 +101,14 @@ export interface Task extends Synced {
   position: number
   label_ids: ID[]
   custom_fields: CustomField[]
+  /**
+   * The event mirroring this task, once it has been created. The id is derived
+   * from the task's own: Google takes an id on insert, so two devices reaching
+   * for the calendar at once land on one event instead of two.
+   */
+  gcal_event_id: string | null
+  /** `null` when the task is not synced at all. */
+  gcal: GcalConfig | null
 }
 
 export type NoteKind = 'folder' | 'file'

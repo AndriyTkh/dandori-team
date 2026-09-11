@@ -1,6 +1,7 @@
 import { db, type Local } from './local'
 import { requestPush } from '../sync/sync'
 import type {
+  GcalConfig,
   ID,
   ISODate,
   Label,
@@ -46,6 +47,8 @@ export async function createWorkspace(name: string): Promise<ID> {
   const row: Local<Workspace> = {
     id: uid(),
     name: name.trim() || 'Без названия',
+    gcal_sync: false,
+    gcal: null,
     position: (existing.at(-1)?.position ?? 0) + POS_STEP,
     created_at: ts,
     updated_at: ts,
@@ -168,6 +171,8 @@ export async function createTask(workspaceId: ID, input: NewTask): Promise<ID> {
     position: await nextTaskPosition(workspaceId, due),
     label_ids: input.label_ids ?? [],
     custom_fields: [],
+    gcal_event_id: null,
+    gcal: null,
     created_at: ts,
     updated_at: ts,
     deleted: false,
@@ -216,6 +221,52 @@ export async function toggleTaskDone(id: ID): Promise<void> {
   if (!row) return
   await db.tasks.put(touch({ ...row, done: !row.done }))
   queue()
+}
+
+/*
+ * Google Calendar.
+ *
+ * Only the wish is written here — which task should have an event and how it
+ * should look. Whether the calendar has caught up is `src/gcal/` business, and
+ * it works it out by looking, so nothing on this side has to be told twice.
+ */
+
+/** Turns the calendar on for one task, or off again with `null`. */
+export async function setTaskGcal(id: ID, cfg: GcalConfig | null): Promise<void> {
+  const row = await db.tasks.get(id)
+  if (!row) return
+  // The event's id is derived from the task's, so forgetting it costs nothing
+  // and leaving it behind would claim an event that is about to be deleted.
+  await db.tasks.put(touch({ ...row, gcal: cfg, gcal_event_id: cfg ? row.gcal_event_id : null }))
+  queue()
+}
+
+export async function setWorkspaceGcal(
+  id: ID,
+  patch: { gcal_sync?: boolean; gcal?: GcalConfig | null },
+): Promise<void> {
+  const row = await db.workspaces.get(id)
+  if (!row) return
+  await db.workspaces.put(touch({ ...row, ...patch }))
+  queue()
+}
+
+/**
+ * Puts every dated task of the workspace into the calendar on one set of terms.
+ *
+ * Tasks that already carry their own settings are left alone: the whole-workspace
+ * switch is for the ones nobody has decided about, and overwriting a deliberate
+ * choice with a default is not a bulk action, it is a loss.
+ */
+export async function syncWorkspaceTasks(workspaceId: ID, cfg: GcalConfig): Promise<number> {
+  const rows = (await listTasks(workspaceId)).filter(
+    (t) => t.due_date !== null && !t.done && t.gcal === null,
+  )
+  await db.transaction('rw', db.tasks, async () => {
+    for (const row of rows) await db.tasks.put(touch({ ...row, gcal: { ...cfg } }))
+  })
+  queue()
+  return rows.length
 }
 
 export async function deleteTask(id: ID): Promise<void> {
