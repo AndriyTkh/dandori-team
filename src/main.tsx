@@ -24,7 +24,9 @@ registerSW({
   immediate: true,
   onRegisteredSW(_url, registration) {
     if (!registration) return
-    setInterval(() => void registration.update(), UPDATE_EVERY_MS)
+    // Offline the check simply fails, which is not news and not something to
+    // leave lying in the console as a rejection nobody handled: the next hour asks again.
+    setInterval(() => void registration.update().catch(() => {}), UPDATE_EVERY_MS)
   },
 })
 

@@ -473,10 +473,6 @@
     box-shadow: none;
   }
 
-  .board__list {
-    padding: var(--sp-3);
-  }
-
   /* The head of the day is the one line that says which day this is, now that
      no neighbour is visible to place it against. */
   .board__col-head {
@@ -505,7 +501,6 @@
     gap: var(--sp-3);
     padding: var(--sp-3) var(--sp-4);
   }
-
 
   /*
    * The card is the thing the whole tab exists to show, so it is the biggest

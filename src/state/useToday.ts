@@ -25,6 +25,10 @@ export function useToday(): ISODate {
     }
 
     const schedule = () => {
+      // Every return to the tab checks the date, and a check schedules the next
+      // midnight — so the one already pending has to go, or ten returns leave
+      // ten timers running and the cleanup below only ever clears the last.
+      clearTimeout(timer)
       const now = new Date()
       const midnight = new Date(now)
       midnight.setHours(24, 0, 0, 0)

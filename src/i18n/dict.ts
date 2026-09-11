@@ -49,7 +49,6 @@ export const TEXT = {
 
   // ---------------------------------------------------------------- sync
 
-  'sync.idle': { ru: 'Всё сохранено', en: 'Everything saved' },
   'sync.syncing': { ru: 'Синхронизация…', en: 'Syncing…' },
   'sync.offline': {
     ru: 'Офлайн, изменения сохранятся локально',
