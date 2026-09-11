@@ -3,7 +3,9 @@
 
 -- All tables are built the same way:
 --   user_id     — the owner, checked by the RLS policies;
---   updated_at  — the time of the edit, set by the device: it decides conflicts;
+--   updated_at  — the time of the edit, set by the device: it decides conflicts,
+--                 and an update carrying one older than the row's own is refused
+--                 here, so last-write-wins does not come down to who arrives last;
 --   synced_at   — the time the server saw the row, set here by a trigger: the pull
 --                 cursor runs on it, because an edit made offline keeps an
 --                 `updated_at` older than the cursor of a device that has been
@@ -131,8 +133,99 @@ end $$;
 create index if not exists tasks_workspace_idx on public.tasks (workspace_id, due_date);
 create index if not exists notes_workspace_idx on public.notes (workspace_id, parent_id);
 
+-- Last write wins, and the server is the judge of it. A device pushes its queue
+-- whenever it can, so without this the winner was whoever arrived last: an edit
+-- made offline at 10:05 overwrote the one made at 10:09 on the other device.
+-- Equal stamps are accepted on purpose — a device rewrites a row of its own
+-- without touching `updated_at` when all it records is where the calendar event
+-- ended up.
+create or replace function public.keep_newer() returns trigger
+language plpgsql
+as $$
+begin
+  -- Returning null abandons the row: nothing is written and `synced_at` is not
+  -- moved either, so the row is not handed out again for nothing.
+  if new.updated_at < old.updated_at then
+    return null;
+  end if;
+  return new;
+end;
+$$;
+
+-- A deleted workspace takes its rows with it, including the ones another device
+-- was adding at the same moment: they would otherwise stay live on the server
+-- under a workspace that is gone — out of reach in the app, present in the export.
+create or replace function public.follow_workspace_delete() returns trigger
+language plpgsql
+as $$
+begin
+  if new.deleted and not old.deleted then
+    -- `now()`, not the workspace's own stamp: the delete is the latest thing
+    -- known about these rows and has to outrank the edit each carries, or the
+    -- device that made that edit would push it back as the newer one.
+    update public.labels set deleted = true, updated_at = greatest(updated_at, now())
+      where workspace_id = new.id and not deleted;
+    update public.tasks set deleted = true, updated_at = greatest(updated_at, now())
+      where workspace_id = new.id and not deleted;
+    update public.notes set deleted = true, updated_at = greatest(updated_at, now())
+      where workspace_id = new.id and not deleted;
+  end if;
+  return null;
+end;
+$$;
+
+create or replace function public.stay_deleted_with_workspace() returns trigger
+language plpgsql
+as $$
+begin
+  -- The trigger above catches what is already on the server; this one catches
+  -- what is still on the way.
+  if not new.deleted and exists (
+    select 1 from public.workspaces w where w.id = new.workspace_id and w.deleted
+  ) then
+    new.deleted = true;
+  end if;
+  return new;
+end;
+$$;
+
+do $$
+declare
+  t text;
+begin
+  -- The names decide the order: triggers fire alphabetically, so an older write
+  -- is thrown out before anything else looks at it, and `synced_at` is stamped
+  -- last of all.
+  foreach t in array array['workspaces', 'labels', 'tasks', 'notes'] loop
+    execute format('drop trigger if exists %I on public.%I', t || '_keep_newer', t);
+    execute format(
+      'create trigger %I before update on public.%I
+         for each row execute function public.keep_newer()',
+      t || '_keep_newer', t);
+  end loop;
+
+  foreach t in array array['labels', 'tasks', 'notes'] loop
+    execute format('drop trigger if exists %I on public.%I', t || '_stay_deleted', t);
+    execute format(
+      'create trigger %I before insert or update on public.%I
+         for each row execute function public.stay_deleted_with_workspace()',
+      t || '_stay_deleted', t);
+  end loop;
+end $$;
+
+drop trigger if exists workspaces_cascade_delete on public.workspaces;
+create trigger workspaces_cascade_delete after update on public.workspaces
+  for each row execute function public.follow_workspace_delete();
+
 -- Access to your own rows only. The app talks with the anon key,
 -- so all data protection rests on these policies.
+--
+-- A label, a task or a note also has to land in a workspace you own: the
+-- policies used to check `user_id` alone and the foreign keys never look at who
+-- owns what they point at, so anyone who learned a workspace id could put his
+-- own rows inside it. Reading stays `user_id` alone — rows of yours are yours
+-- whatever they point at, and a workspace that has not arrived yet must not
+-- hide them.
 do $$
 declare
   t text;
@@ -140,10 +233,23 @@ begin
   foreach t in array array['workspaces', 'labels', 'tasks', 'notes'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists own_rows on public.%I', t);
+  end loop;
+
+  execute
+    'create policy own_rows on public.workspaces
+       for all
+       using (auth.uid() = user_id)
+       with check (auth.uid() = user_id)';
+
+  foreach t in array array['labels', 'tasks', 'notes'] loop
     execute format(
       'create policy own_rows on public.%I
          for all
          using (auth.uid() = user_id)
-         with check (auth.uid() = user_id)', t);
+         with check (
+           auth.uid() = user_id
+           and exists (
+             select 1 from public.workspaces w
+              where w.id = workspace_id and w.user_id = auth.uid()))', t);
   end loop;
 end $$;
