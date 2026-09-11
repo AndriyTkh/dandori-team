@@ -63,6 +63,8 @@ export const TEXT = {
   'signin.submit': { ru: 'Войти', en: 'Sign in' },
   'signin.busy': { ru: 'Вход…', en: 'Signing in…' },
   'signin.failed': { ru: 'Не удалось войти', en: 'Could not sign in' },
+  'signin.wrong': { ru: 'Неверная почта или пароль', en: 'Wrong email or password' },
+  'signin.offline': { ru: 'Нет сети: войти не получится', en: 'No network, so there is no way in' },
 
   // ----------------------------------------------------------- reminders
 

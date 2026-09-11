@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { signIn } from '../auth/useSession'
 import { LANGS, setLang, useLang } from '../state/ui'
 import { LANG_TITLES, useT } from '../i18n'
+import type { TextKey } from '../i18n/dict'
 import './SignIn.css'
 
 /** Email and password sign-in. There is no sign-up: accounts are created in the Supabase dashboard. */
@@ -20,7 +21,7 @@ export function SignIn() {
     try {
       await signIn(email, password)
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('signin.failed'))
+      setError(t(reasonOf(err)))
       setBusy(false)
     }
   }
@@ -77,4 +78,23 @@ export function SignIn() {
       </div>
     </div>
   )
+}
+
+/*
+ * Why it did not work, in the app's own words. Supabase answers in English and
+ * only in English, and every string here lives in the dictionary in both
+ * languages — so what comes back is read, not shown.
+ *
+ * The two answers that have to stay apart are the wrong password and the missing
+ * network: one is retyped, the other is waited out, and «Не удалось войти» for
+ * both sends whoever mistyped his password off to look at the router.
+ */
+function reasonOf(err: unknown): TextKey {
+  const status =
+    typeof err === 'object' && err !== null && 'status' in err ? Number(err.status) : NaN
+  // What the server says on purpose when the pair does not match.
+  if (status === 400 || status === 401 || status === 422) return 'signin.wrong'
+  // A request that never landed anywhere has no status of its own: Supabase gives it a zero.
+  if (status === 0 || !navigator.onLine) return 'signin.offline'
+  return 'signin.failed'
 }
