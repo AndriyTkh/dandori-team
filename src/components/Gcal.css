@@ -191,6 +191,21 @@
   accent-color: var(--accent);
 }
 
+/*
+ * The desk: one left edge for the form. «Добавить напоминание» is a quiet
+ * button whose word stood 9px inside its invisible box, and the checkbox
+ * carried the browser's 4px margin; both now start where the labels do.
+ */
+@media (min-width: 721px) {
+  .gform__add {
+    margin-left: calc((var(--sp-4) + 1px) * -1);
+  }
+
+  .gsec__whole input {
+    margin: 0;
+  }
+}
+
 @media (max-width: 720px) {
   .gwin__scrim {
     align-items: stretch;
