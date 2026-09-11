@@ -53,7 +53,9 @@
   gap: var(--sp-2);
   height: 24px;
   padding-right: var(--sp-2);
-  cursor: default;
+  /* A row opens its note on a click, like every other row in the app that
+     does something when clicked — the pointer says so here as it does there. */
+  cursor: pointer;
   user-select: none;
   transition: background-color var(--t);
 }
@@ -114,7 +116,10 @@
   opacity: 0;
 }
 
+/* A keyboard reaches the menu too, and a focused control that is not drawn
+   leaves its focus ring nowhere on the screen. */
 .notes__row:hover .notes__more,
+.notes__row:focus-within .notes__more,
 .notes__row--on .notes__more {
   opacity: 1;
 }
@@ -166,6 +171,12 @@
  */
 
 .notes__editor {
+  /* The width a line of the note may run to, shared by the note and its bar. */
+  --notes-measure: 600px;
+  /* What is left of the editor's width past the measure, as padding on the
+     right: the box runs to the edge, what stands in it stops at the measure. */
+  --notes-rest: max(var(--sp-5), calc(100% - var(--notes-measure) - var(--sp-5)));
+
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -178,8 +189,12 @@
   align-items: center;
   gap: var(--sp-3);
   flex: none;
-  height: 32px;
-  padding: 0 var(--sp-5);
+  /* The tree's head beside it: a segmented-height button, its inset and its
+     rule. At 32 the two rules under them stood a pixel apart. */
+  height: calc(var(--seg-h) + var(--sp-2) * 2 + 1px);
+  /* The bar is the head of the text under it, so «Просмотр» stands over the
+     end of its lines rather than across the screen from them. */
+  padding: 0 var(--notes-rest) 0 var(--sp-5);
   border-bottom: 1px solid var(--border);
 }
 
@@ -219,16 +234,29 @@
   font-size: var(--fz-sm);
 }
 
+/*
+ * The note is read as a column of text, and a column past ninety characters is
+ * one the eye cannot carry back to its left edge: at 1440 the line ran to 163,
+ * and the wider the screen the worse. The text stops at a measure; the box
+ * still runs to the edge, so the scrollbar stays at the edge of the window and
+ * a click in the margin still lands in the note. It is set at the body size,
+ * the same as its own preview — pressing «Просмотр» used to change the size of
+ * the text as well as its form.
+ */
+.notes__textarea,
+.notes__markdown {
+  padding: var(--sp-4) var(--notes-rest) var(--sp-4) var(--sp-5);
+  font-size: var(--fz-md);
+  line-height: 1.55;
+}
+
 .notes__textarea {
   flex: 1;
   min-height: 0;
   width: 100%;
-  padding: var(--sp-4) var(--sp-5);
   border: none;
   background: var(--bg);
   font-family: var(--font-mono);
-  font-size: var(--fz-sm);
-  line-height: 1.55;
   resize: none;
 }
 
@@ -241,8 +269,6 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: var(--sp-4) var(--sp-5);
-  font-size: var(--fz-md);
 }
 
 /* Phone: master-detail, the tree and the editor take turns */
