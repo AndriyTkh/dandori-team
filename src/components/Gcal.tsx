@@ -5,6 +5,7 @@ import { reconcile } from '../gcal/sync'
 import { setTaskGcal, setWorkspaceGcal } from '../db/api'
 import { useEscape } from '../lib/useEscape'
 import type { T } from '../i18n'
+import type { TextKey } from '../i18n/dict'
 import type { GcalConfig, GcalReminder, ID, Workspace } from '../db/types'
 import './Gcal.css'
 
@@ -31,22 +32,22 @@ function defaultsOf(workspace: Workspace | null): GcalConfig {
 }
 
 /*
- * Google's own event palette. The ids are theirs and so are the names, which is
- * why the names are not in the dictionary: they are what the owner sees beside
- * the same colours in Google's own interface.
+ * Google's own event palette. The ids and the colours are theirs; the names are
+ * the ones its own interface uses in each language, so that a colour called one
+ * thing here is called the same thing there.
  */
-const COLORS: { id: string; name: string; hex: string }[] = [
-  { id: '1', name: 'Lavender', hex: '#7986cb' },
-  { id: '2', name: 'Sage', hex: '#33b679' },
-  { id: '3', name: 'Grape', hex: '#8e24aa' },
-  { id: '4', name: 'Flamingo', hex: '#e67c73' },
-  { id: '5', name: 'Banana', hex: '#f6bf26' },
-  { id: '6', name: 'Tangerine', hex: '#f4511e' },
-  { id: '7', name: 'Peacock', hex: '#039be5' },
-  { id: '8', name: 'Graphite', hex: '#616161' },
-  { id: '9', name: 'Blueberry', hex: '#3f51b5' },
-  { id: '10', name: 'Basil', hex: '#0b8043' },
-  { id: '11', name: 'Tomato', hex: '#d50000' },
+const COLORS: { id: string; name: TextKey; hex: string }[] = [
+  { id: '1', name: 'gcal.color.1', hex: '#7986cb' },
+  { id: '2', name: 'gcal.color.2', hex: '#33b679' },
+  { id: '3', name: 'gcal.color.3', hex: '#8e24aa' },
+  { id: '4', name: 'gcal.color.4', hex: '#e67c73' },
+  { id: '5', name: 'gcal.color.5', hex: '#f6bf26' },
+  { id: '6', name: 'gcal.color.6', hex: '#f4511e' },
+  { id: '7', name: 'gcal.color.7', hex: '#039be5' },
+  { id: '8', name: 'gcal.color.8', hex: '#616161' },
+  { id: '9', name: 'gcal.color.9', hex: '#3f51b5' },
+  { id: '10', name: 'gcal.color.10', hex: '#0b8043' },
+  { id: '11', name: 'gcal.color.11', hex: '#d50000' },
 ]
 
 /** How long before the event a reminder can fire, in minutes. */
@@ -219,8 +220,8 @@ function GcalForm({
               className={`gform__swatch${value.color_id === c.id ? ' gform__swatch--on' : ''}`}
               style={{ background: c.hex }}
               onClick={() => onChange({ ...value, color_id: c.id })}
-              aria-label={c.name}
-              title={c.name}
+              aria-label={t(c.name)}
+              title={t(c.name)}
             />
           ))}
         </div>

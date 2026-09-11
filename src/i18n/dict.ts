@@ -208,6 +208,19 @@ export const TEXT = {
 
   'gcal.defaults': { ru: 'Настройки воркспейса «{name}»', en: 'Defaults for “{name}”' },
   'gcal.workspaceSync': { ru: 'Синхронизировать воркспейс', en: 'Sync the whole workspace' },
+
+  /* Google's own names for its palette, as its own interface gives them. */
+  'gcal.color.1': { ru: 'Лаванда', en: 'Lavender' },
+  'gcal.color.2': { ru: 'Шалфей', en: 'Sage' },
+  'gcal.color.3': { ru: 'Виноград', en: 'Grape' },
+  'gcal.color.4': { ru: 'Фламинго', en: 'Flamingo' },
+  'gcal.color.5': { ru: 'Банан', en: 'Banana' },
+  'gcal.color.6': { ru: 'Мандарин', en: 'Tangerine' },
+  'gcal.color.7': { ru: 'Павлин', en: 'Peacock' },
+  'gcal.color.8': { ru: 'Графит', en: 'Graphite' },
+  'gcal.color.9': { ru: 'Черника', en: 'Blueberry' },
+  'gcal.color.10': { ru: 'Базилик', en: 'Basil' },
+  'gcal.color.11': { ru: 'Помидор', en: 'Tomato' },
 } as const satisfies Record<string, Text>
 
 export type TextKey = keyof typeof TEXT
