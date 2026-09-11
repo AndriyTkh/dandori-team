@@ -2,8 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { renderMarkdown } from '../lib/markdown'
 import { useAutosave } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
-import { createLabel, createNote, deleteLabel, deleteTask, updateLabel, updateTask } from '../db/api'
+import {
+  createLabel,
+  createNote,
+  deleteLabel,
+  deleteTask,
+  setTaskGcal,
+  updateLabel,
+  updateTask,
+} from '../db/api'
 import { useNotes, useTask } from '../db/hooks'
+import { reconcile } from '../gcal/sync'
+import { GcalEventDialog } from './Gcal'
 import { useT, type T } from '../i18n'
 import {
   LABEL_COLORS,
@@ -12,6 +22,8 @@ import {
   type Label,
   type LabelColor,
   type Note,
+  type Task,
+  type Workspace,
 } from '../db/types'
 import './TaskDialog.css'
 
@@ -21,6 +33,8 @@ const SAVE_DELAY = 500
 interface Props {
   taskId: ID
   workspaceId: ID
+  /** The workspace the task belongs to — it carries the calendar defaults. */
+  workspace: Workspace | null
   labels: Label[]
   /** Switches to the notes tab and opens the attached note. */
   onOpenNote: (id: ID) => void
@@ -28,11 +42,25 @@ interface Props {
 }
 
 /** The whole task card: title, description, dates, labels, custom fields. */
-export function TaskDialog({ taskId, workspaceId, labels, onOpenNote, onClose }: Props) {
+export function TaskDialog({
+  taskId,
+  workspaceId,
+  workspace,
+  labels,
+  onOpenNote,
+  onClose,
+}: Props) {
   const task = useTask(taskId)
   const [preview, setPreview] = useState(false)
+  const [eventOpen, setEventOpen] = useState(false)
 
-  useEscape(onClose)
+  // Escape belongs to the topmost window. With the event's settings open it is
+  // theirs, and the card stays where it is.
+  useEscape(
+    useCallback(() => {
+      if (!eventOpen) onClose()
+    }, [eventOpen, onClose]),
+  )
 
   // The task may have been deleted on another device while this dialog was open.
   // `undefined` means the database has not answered yet, `null` means it is really gone.
@@ -49,9 +77,12 @@ export function TaskDialog({ taskId, workspaceId, labels, onOpenNote, onClose }:
           key={task.id}
           task={task}
           workspaceId={workspaceId}
+          workspace={workspace}
           labels={labels}
           preview={preview}
           onSetPreview={setPreview}
+          eventOpen={eventOpen}
+          onSetEventOpen={setEventOpen}
           onOpenNote={onOpenNote}
           onClose={onClose}
         />
@@ -63,17 +94,23 @@ export function TaskDialog({ taskId, workspaceId, labels, onOpenNote, onClose }:
 function Body({
   task,
   workspaceId,
+  workspace,
   labels,
   preview,
   onSetPreview,
+  eventOpen,
+  onSetEventOpen,
   onOpenNote,
   onClose,
 }: {
   task: NonNullable<ReturnType<typeof useTask>>
   workspaceId: ID
+  workspace: Workspace | null
   labels: Label[]
   preview: boolean
   onSetPreview: (v: boolean) => void
+  eventOpen: boolean
+  onSetEventOpen: (v: boolean) => void
   onOpenNote: (id: ID) => void
   onClose: () => void
 }) {
@@ -191,6 +228,14 @@ function Body({
         <span>{t('task.mute')}</span>
       </label>
 
+      <GcalRow
+        task={task}
+        workspace={workspace}
+        open={eventOpen}
+        onSetOpen={onSetEventOpen}
+        t={t}
+      />
+
       <NoteLink task={task} workspaceId={workspaceId} onOpenNote={onOpenNote} t={t} />
 
       <LabelPicker
@@ -253,6 +298,66 @@ function Field({
       </div>
       {children}
     </div>
+  )
+}
+
+// ------------------------------------------------------------ google calendar
+
+/**
+ * The one way a task reaches the calendar. Ticking the box writes nothing — it
+ * opens the event's settings, because an event made by a stray click is a
+ * notification nobody asked for. Unticking takes the event away.
+ *
+ * An event is put on the deadline, so a task without one cannot have it. The
+ * line says that in place of a switch that would quietly do nothing.
+ */
+function GcalRow({
+  task,
+  workspace,
+  open,
+  onSetOpen,
+  t,
+}: {
+  task: Task
+  workspace: Workspace | null
+  open: boolean
+  onSetOpen: (v: boolean) => void
+  t: T
+}) {
+  if (!task.due_date) return <p className="dialog__gcal-none">{t('gcal.needsDue')}</p>
+
+  const on = task.gcal != null
+
+  function toggle(next: boolean) {
+    if (next) return onSetOpen(true)
+    // Off is a decision, not a draft: the event goes now rather than on the tick.
+    void setTaskGcal(task.id, null).then(reconcile)
+  }
+
+  return (
+    <>
+      <div className="dialog__gcal">
+        <label className="dialog__gcal-label">
+          <input type="checkbox" checked={on} onChange={(e) => toggle(e.target.checked)} />
+          <span>{t('gcal.sync')}</span>
+        </label>
+        {on && (
+          <button className="dialog__link" onClick={() => onSetOpen(true)}>
+            {t('gcal.edit')}
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <GcalEventDialog
+          taskId={task.id}
+          current={task.gcal ?? null}
+          workspace={workspace}
+          onClose={() => onSetOpen(false)}
+          t={t}
+        />
+      )}
+    </>
   )
 }
 

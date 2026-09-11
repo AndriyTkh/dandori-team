@@ -136,6 +136,7 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
             <TaskDialog
               taskId={openTaskId}
               workspaceId={workspaceId}
+              workspace={current}
               labels={labels}
               onOpenNote={(id) => {
                 // Opening a note means leaving the card: the two cannot share the screen.

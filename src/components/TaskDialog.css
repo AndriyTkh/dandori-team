@@ -234,9 +234,10 @@
   box-shadow: 0 0 0 2px var(--text);
 }
 
-/* Mute switch */
+/* Mute switch, and the calendar's tick beside it: the same checkbox on a line */
 
-.dialog__mute {
+.dialog__mute,
+.dialog__gcal-label {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-3);
@@ -245,10 +246,24 @@
   cursor: pointer;
 }
 
-.dialog__mute input {
+.dialog__mute input,
+.dialog__gcal-label input {
   width: 15px;
   height: 15px;
   accent-color: var(--accent);
+}
+
+.dialog__gcal {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/* No deadline, no event. The line stands where the tick would have been. */
+.dialog__gcal-none {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--fz-sm);
 }
 
 /* Attached note */
@@ -410,12 +425,14 @@
   }
 
   .dialog__done input,
-  .dialog__mute input {
+  .dialog__mute input,
+  .dialog__gcal-label input {
     width: 22px;
     height: 22px;
   }
 
-  .dialog__mute {
+  .dialog__mute,
+  .dialog__gcal-label {
     align-items: center;
     min-height: var(--tap);
     font-size: var(--fz-md);
