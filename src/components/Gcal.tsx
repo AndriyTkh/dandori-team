@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { listCalendars, type Calendar } from '../gcal/api'
 import { connect, disconnect, getGcalState, onGcalState, type GcalState } from '../gcal/client'
 import { reconcile } from '../gcal/sync'
@@ -199,7 +199,10 @@ function GcalForm({
             )}
             {list.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.summary}
+                {/* Google names the main calendar after the account's address.
+                    It is the one this app writes to unless it is told otherwise,
+                    and it is called the same here wherever it is drawn from. */}
+                {c.primary ? t('gcal.calendarPrimary') : c.summary}
               </option>
             ))}
           </select>
@@ -359,59 +362,108 @@ export function GcalEventDialog({
  */
 export function GcalSection({ workspace, t }: { workspace: Workspace | null; t: T }) {
   const state = useGcalState()
-  const defaults = defaultsOf(workspace)
-
-  /*
-   * The form writes on every change, and the time field changes on every key.
-   * Written straight through, one setting of an hour was a handful of dirty rows
-   * and a handful of pushes — every other field in the app waits half a second
-   * before it speaks, and so does this one.
-   */
-  const save = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => () => void (save.current !== null && clearTimeout(save.current)), [])
-
-  function saveDefaults(cfg: GcalConfig) {
-    if (!workspace) return
-    if (save.current !== null) clearTimeout(save.current)
-    save.current = setTimeout(() => {
-      save.current = null
-      void setWorkspaceGcal(workspace.id, { gcal: cfg })
-    }, SAVE_DELAY)
-  }
-
-  async function syncWhole(on: boolean) {
-    if (!workspace) return
-    // The switch is not a draft: whatever the form is holding goes in with it.
-    if (save.current !== null) clearTimeout(save.current)
-    save.current = null
-    // The defaults go in with the switch: they are the terms every task it
-    // touches is put into the calendar on, so they cannot stay unwritten.
-    await setWorkspaceGcal(workspace.id, { gcal_sync: on, gcal: defaults })
-    // The tick itself is the answer. Counting what it caught would be a third
-    // indicator, and one that speaks before the calendar has been told anything.
-    void reconcile()
-  }
 
   return (
     <div className="gsec">
       <GcalAccount state={state} t={t} />
 
       {state === 'ready' && workspace && (
-        <>
-          <div className="gsec__for">{t('gcal.defaults', { name: workspace.name })}</div>
-
-          <GcalForm value={defaults} onChange={saveDefaults} t={t} />
-
-          <label className="gsec__whole">
-            <input
-              type="checkbox"
-              checked={workspace.gcal_sync === true}
-              onChange={(e) => void syncWhole(e.target.checked)}
-            />
-            <span>{t('gcal.workspaceSync')}</span>
-          </label>
-        </>
+        /*
+         * Keyed by the workspace: the defaults are held as a draft, and the
+         * remount is what hands the one left behind its last edit before the
+         * next one's fields are drawn.
+         */
+        <GcalDefaults key={workspace.id} workspace={workspace} t={t} />
       )}
     </div>
+  )
+}
+
+/**
+ * The defaults one workspace hands out, and the switch that puts all its tasks
+ * on them.
+ *
+ * The form holds a draft of its own, exactly as the event's window does. Drawn
+ * straight from the stored value while the write waits out its pause, every key
+ * was taken back before the next one landed: «Время» could not be typed into at
+ * all, and two clicks within half a second added one reminder.
+ */
+function GcalDefaults({ workspace, t }: { workspace: Workspace; t: T }) {
+  const stored = defaultsOf(workspace)
+  const [draft, setDraft] = useState<GcalConfig>(stored)
+  const current = useRef(draft)
+  const synced = useRef(stored)
+  const dirty = useRef(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /*
+   * The pause before a write, so that one setting of an hour is one dirty row
+   * and one push rather than a handful of each — the same half second every
+   * other field in the app takes.
+   */
+  const flush = useCallback(() => {
+    if (timer.current !== null) {
+      clearTimeout(timer.current)
+      timer.current = null
+    }
+    if (!dirty.current) return
+    dirty.current = false
+    synced.current = current.current
+    void setWorkspaceGcal(workspace.id, { gcal: current.current })
+  }, [workspace.id])
+
+  function edit(next: GcalConfig) {
+    current.current = next
+    setDraft(next)
+    dirty.current = true
+    if (timer.current !== null) clearTimeout(timer.current)
+    timer.current = setTimeout(flush, SAVE_DELAY)
+  }
+
+  // An edit arriving from the other device is taken only while nothing local is
+  // waiting to be written; otherwise it would pull the field out from under him.
+  useEffect(() => {
+    if (stored === synced.current) return
+    synced.current = stored
+    if (dirty.current) return
+    current.current = stored
+    setDraft(stored)
+  }, [stored])
+
+  // Leaving the section, or closing the window, within the pause: the edit goes
+  // in rather than away with the form.
+  useEffect(() => flush, [flush])
+
+  async function syncWhole(on: boolean) {
+    // The switch is not a draft: whatever the form is holding goes in with it.
+    if (timer.current !== null) {
+      clearTimeout(timer.current)
+      timer.current = null
+    }
+    dirty.current = false
+    synced.current = current.current
+    // The defaults go in with the switch: they are the terms every task it
+    // touches is put into the calendar on, so they cannot stay unwritten.
+    await setWorkspaceGcal(workspace.id, { gcal_sync: on, gcal: current.current })
+    // The tick itself is the answer. Counting what it caught would be a third
+    // indicator, and one that speaks before the calendar has been told anything.
+    void reconcile()
+  }
+
+  return (
+    <>
+      <div className="gsec__for">{t('gcal.defaults', { name: workspace.name })}</div>
+
+      <GcalForm value={draft} onChange={edit} t={t} />
+
+      <label className="gsec__whole">
+        <input
+          type="checkbox"
+          checked={workspace.gcal_sync === true}
+          onChange={(e) => void syncWhole(e.target.checked)}
+        />
+        <span>{t('gcal.workspaceSync')}</span>
+      </label>
+    </>
   )
 }
