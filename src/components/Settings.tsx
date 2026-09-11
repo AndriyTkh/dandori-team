@@ -4,7 +4,7 @@ import { signOut } from '../auth/useSession'
 import { useAutosave } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
 import { useT, type T } from '../i18n'
-import { THEMES, type Theme } from '../state/ui'
+import { LANGS, setLang, THEMES, useLang, type Lang, type Theme } from '../state/ui'
 import type { Workspace } from '../db/types'
 import './Settings.css'
 
@@ -14,11 +14,21 @@ const THEME_TITLES = {
   dark: 'settings.themeDark',
 } as const
 
-const SECTIONS = ['theme', 'workspace', 'account'] as const
+/*
+ * Each language named in itself, and so not in the dictionary: someone who
+ * cannot read the current one still has to be able to find their own.
+ */
+const LANG_TITLES: Record<Lang, string> = {
+  ru: 'Русский',
+  en: 'English',
+}
+
+const SECTIONS = ['theme', 'language', 'workspace', 'account'] as const
 type Section = (typeof SECTIONS)[number]
 
 const SECTION_TITLES = {
   theme: 'settings.theme',
+  language: 'settings.language',
   workspace: 'settings.workspace',
   account: 'settings.account',
 } as const
@@ -68,6 +78,7 @@ export function Settings({ workspace, theme, onSetTheme, onClose }: Props) {
 
         <div className="swin__main">
           {section === 'theme' && <ThemeSection theme={theme} onSetTheme={onSetTheme} t={t} />}
+          {section === 'language' && <LanguageSection />}
           {section === 'workspace' && workspace && (
             <WorkspaceSection key={workspace.id} workspace={workspace} onClose={onClose} t={t} />
           )}
@@ -100,6 +111,28 @@ function ThemeSection({
             onChange={() => onSetTheme(option)}
           />
           {t(THEME_TITLES[option])}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------ language
+
+function LanguageSection() {
+  const lang = useLang()
+
+  return (
+    <div className="swin__rows">
+      {LANGS.map((option) => (
+        <label key={option} className="swin__opt">
+          <input
+            type="radio"
+            name="lang"
+            checked={option === lang}
+            onChange={() => setLang(option)}
+          />
+          {LANG_TITLES[option]}
         </label>
       ))}
     </div>

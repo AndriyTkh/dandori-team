@@ -11,8 +11,8 @@
 
 /*
  * Head across the top, sections down the side, the chosen section beside them —
- * the shape an editor's settings have. Three sections make a short list; it is
- * still the structure, because the list is what the next section joins.
+ * the shape an editor's settings have. The list is short; it is still the
+ * structure, because the list is what the next section joins.
  */
 .swin {
   display: grid;
