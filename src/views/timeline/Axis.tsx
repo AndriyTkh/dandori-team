@@ -175,8 +175,11 @@ function AxisMark({ mark, onOpen, t }: { mark: Mark; onOpen: (id: ID) => void; t
 }
 
 /**
- * Puts a dot and a callout on the axis for every row. `rows` are sorted by date,
- * so one pass left to right is enough.
+ * Puts a dot and a callout on the axis for every row. One pass left to right is
+ * enough, but it has to be left to right by the dot: the rows arrive sorted by
+ * the start date while the dot stands at the deadline, so a long task took the
+ * room far to the right before the deadlines between had asked for theirs, and
+ * they lost callouts there was space for.
  */
 function place(rows: Row[], levels: number, scale: Scale): Mark[] {
   const marks: Mark[] = []
@@ -186,9 +189,11 @@ function place(rows: Row[], levels: number, scale: Scale): Mark[] {
   // Which side to try first, so the callouts alternate around the axis.
   let prefer = 0
 
-  for (const row of rows) {
-    const x = midOf(scale, row.point)
+  const byPoint = rows
+    .map((row) => ({ row, x: midOf(scale, row.point) }))
+    .sort((a, b) => a.x - b.x)
 
+  for (const { row, x } of byPoint) {
     let slot = dots.findIndex((e) => x - e >= DOT_NEAR)
     if (slot < 0) slot = 0
     dots[slot] = x
