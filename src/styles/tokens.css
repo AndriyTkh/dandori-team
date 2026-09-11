@@ -64,6 +64,9 @@
   --bg: #f6f7f9;
   --bg-raised: #ffffff;
   --bg-sunken: #eceef1;
+  /* The weekend's recess on the board and the timeline. The same ground as
+     the sunken one, except on a dark desk — see the end of this file. */
+  --bg-weekend: var(--bg-sunken);
   --bg-hover: #e6e8ec;
   --bg-active: #dcdfe4;
 
@@ -161,6 +164,41 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-raise: 0 2px 6px rgba(0, 0, 0, 0.5);
   --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+/*
+ * The desk. Two values the laptop measured wrong and the phone was finished
+ * without; they are scoped here so the phone renders exactly as it did.
+ *
+ * `--text-faint` in light carries 11px text — the weekday letters, the field
+ * labels, the day numbers — and sat at 4.27:1 on the ground and 3.94:1 on a
+ * weekend, under the 4.5 AA asks of text that small. This is 5.07 and 4.68.
+ * The selectors are the light block's own: in either dark they lose on
+ * specificity and the dark value stands.
+ */
+@media (min-width: 721px) {
+  :root,
+  :root[data-theme="light"] {
+    --text-faint: #656a73;
+  }
+}
+
+/*
+ * In dark the weekend was 1.05:1 against a weekday — a step no screen renders,
+ * so Saturday could only be found by counting. Recessed further, it reads as a
+ * band without turning into a hole: the cards standing on it gain the same
+ * step, which is the elevation dark is drawn with.
+ */
+@media (min-width: 721px) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-weekend: #0e1014;
+  }
+}
+
+@media (min-width: 721px) {
+  :root[data-theme="dark"] {
+    --bg-weekend: #0e1014;
+  }
 }
 
 /*

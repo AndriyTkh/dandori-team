@@ -83,7 +83,7 @@
 }
 
 .timeline__day--weekend {
-  background: var(--bg-sunken);
+  background: var(--bg-weekend);
 }
 
 .timeline__day--week {

@@ -81,7 +81,7 @@
 }
 
 .board__col--weekend {
-  background: var(--bg-sunken);
+  background: var(--bg-weekend);
 }
 
 /* The pinned column stays put during horizontal scrolling, so its background
@@ -312,7 +312,7 @@
 }
 
 .board__cell--weekend {
-  background: var(--bg-sunken);
+  background: var(--bg-weekend);
 }
 
 .board__cell--outside .board__cell-num {
