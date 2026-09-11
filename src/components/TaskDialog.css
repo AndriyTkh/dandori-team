@@ -473,6 +473,15 @@
     min-height: var(--tap);
   }
 
+  /* The title is typed into, and a line of type is 32px. The padding carries it
+     up into the gap under the head row, stopping a pixel short of «Готово» and
+     the close; below, the focus underline is drawn on the box's bottom edge, so
+     that edge stays where it is. */
+  .dialog__title {
+    padding-top: 11px;
+    margin-top: -11px;
+  }
+
   .dialog__done {
     align-self: stretch;
     align-items: center;
@@ -523,6 +532,34 @@
     color: var(--accent-active);
   }
 
+  /*
+   * A head sits between two rows of controls — the pills or the field above,
+   * the content of its own field below — and a finger's 44 does not fit into
+   * the 36 between them. The 34 did, nearly: it reached two pixels too far down
+   * and sat a pixel into the pills, the text box, the attached note and a
+   * custom field's cross, so the edge of one answered for the other. The box
+   * the tap lands on is lifted two pixels instead, which leaves a pixel clear on
+   * both sides, and the element itself stops answering so the word does not
+   * move at all. «Открыть» is a word inside the note's own button and is left to it.
+   */
+  button.dialog__link {
+    position: relative;
+    pointer-events: none;
+  }
+
+  button.dialog__link::after {
+    content: '';
+    position: absolute;
+    inset: -2px 0 2px;
+    pointer-events: auto;
+  }
+
+  /* The calendar's «Править» stands in a row of its own, a finger tall and with
+     nothing above or below it inside that row, so it gets all of it. */
+  .dialog__gcal .dialog__link::after {
+    inset: -5px 0;
+  }
+
   .dialog__dates {
     grid-template-columns: 1fr;
   }
@@ -537,6 +574,22 @@
 
   .notelink__pick {
     grid-template-columns: 1fr;
+  }
+
+  /*
+   * The picker's two buttons are 40 tall, four short. They stand six apart and
+   * the last of them a pixel over the next field's links, so they grow upwards
+   * only and stop two pixels short of whatever is there. A button's box hangs
+   * off its padding edge, so the inset carries its rule's pixel as well.
+   */
+  .notelink__pick .btn {
+    position: relative;
+  }
+
+  .notelink__pick .btn::after {
+    content: '';
+    position: absolute;
+    inset: -5px -1px -1px;
   }
 
   .labels__pill {
@@ -591,10 +644,27 @@
   }
 
   /*
+   * The two inputs of a field are a line of type each, and the box around them
+   * is what reads as the field. So the name takes the box's padding above it and
+   * the value the padding below: the text stays where it is, and a tap anywhere
+   * in the box but its cross lands in one of the two.
+   */
+  .cfield__name {
+    padding-top: var(--sp-3);
+    margin-top: calc(var(--sp-3) * -1);
+  }
+
+  .cfield__value {
+    padding-bottom: var(--sp-4);
+    margin-bottom: calc(var(--sp-4) * -1);
+  }
+
+  /*
    * A custom field's cross has no hover to come out of here: it either stands
    * there or the field cannot be removed from a phone at all.
    */
   .cfield__del {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -603,6 +673,22 @@
     margin: -11px calc(var(--sp-3) * -1) -11px 0;
     font-size: var(--fz-lg);
     opacity: 1;
+    /* See below: the box is drawn where it was, the tap lands on less of it. */
+    pointer-events: none;
+  }
+
+  /*
+   * The cross was a full finger square hung over the head row, and it hung ten
+   * pixels into the value under it and four into «Добавить» above: the one
+   * control on the card that throws something away, answering for a tap meant
+   * for the text beside it. It answers for its own row now — the height of the
+   * name, from the field's top edge down to a pixel and a half above the value.
+   */
+  .cfield__del::after {
+    content: '';
+    position: absolute;
+    inset: 4px 0 12px;
+    pointer-events: auto;
   }
 
   .dialog__foot {
