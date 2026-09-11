@@ -7,6 +7,7 @@ import {
   type Ref,
   type RefObject,
 } from 'react'
+import { createPortal } from 'react-dom'
 import {
   closestCenter,
   DndContext,
@@ -50,6 +51,8 @@ export interface BoardProps {
   mode: BoardMode
   onSetMode: (mode: BoardMode) => void
   onOpenTask: (id: ID) => void
+  /** The header's place for the board's own controls on the desk. */
+  tools: HTMLElement | null
 }
 
 /*
@@ -135,7 +138,15 @@ function columnUnderPointer(at: { x: number; y: number }, containers: Container[
   return null
 }
 
-export function Board({ workspaceId, tasks, labels, mode, onSetMode, onOpenTask }: BoardProps) {
+export function Board({
+  workspaceId,
+  tasks,
+  labels,
+  mode,
+  onSetMode,
+  onOpenTask,
+  tools,
+}: BoardProps) {
   const now = useToday()
   const t = useT()
   const groups = useMemo(() => groupByDay(tasks), [tasks])
@@ -205,26 +216,38 @@ export function Board({ workspaceId, tasks, labels, mode, onSetMode, onOpenTask 
 
   const active = dragged ? tasks.find((x) => x.id === dragged) : undefined
 
+  const controls = (
+    <>
+      <div className="board__modes">
+        {BOARD_MODES.map((m) => (
+          <button
+            key={m}
+            className={`board__mode${m === mode ? ' board__mode--on' : ''}`}
+            onClick={() => onSetMode(m)}
+          >
+            {t(`board.mode.${m}`)}
+          </button>
+        ))}
+      </div>
+      {mode === 'ribbon' && (
+        <button className="btn" onClick={() => ribbon.current?.toToday()}>
+          {t('board.today')}
+        </button>
+      )}
+    </>
+  )
+
+  /*
+   * The same controls in two places, one of them hidden, as the tabs are. On a
+   * phone they are a bar of their own under the header, three thirds of the
+   * screen for a thumb. On the desk that bar was 41px of height holding 200px
+   * of buttons, under a header with a thousand empty pixels in its middle — so
+   * there they stand in the header, beside the tabs they belong to.
+   */
   return (
     <div className="board">
-      <div className="board__bar">
-        <div className="board__modes">
-          {BOARD_MODES.map((m) => (
-            <button
-              key={m}
-              className={`board__mode${m === mode ? ' board__mode--on' : ''}`}
-              onClick={() => onSetMode(m)}
-            >
-              {t(`board.mode.${m}`)}
-            </button>
-          ))}
-        </div>
-        {mode === 'ribbon' && (
-          <button className="btn" onClick={() => ribbon.current?.toToday()}>
-            {t('board.today')}
-          </button>
-        )}
-      </div>
+      <div className="board__bar">{controls}</div>
+      {tools && createPortal(controls, tools)}
 
       <DndContext
         sensors={sensors}

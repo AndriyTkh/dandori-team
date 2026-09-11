@@ -17,9 +17,11 @@ interface Props {
   activeLabels: ID[]
   onToggleLabel: (id: ID) => void
   onOpenSettings: () => void
+  /** Where the open view puts controls of its own: the board's range modes. */
+  toolsSlot: (el: HTMLDivElement | null) => void
 }
 
-export function Header(props: Props) {
+export function Header({ toolsSlot, ...props }: Props) {
   const t = useT()
   const current = props.workspaces.find((w) => w.id === props.currentId) ?? null
 
@@ -45,6 +47,8 @@ export function Header(props: Props) {
             </button>
           ))}
       </nav>
+
+      <div className="header__tools" ref={toolsSlot} />
 
       <div className="header__right">
         {props.tab !== 'notes' && (

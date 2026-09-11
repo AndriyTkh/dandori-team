@@ -44,6 +44,8 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
   const [openNoteId, setOpenNoteId] = useState<ID | null>(null)
   const [remindersHidden, setRemindersHidden] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // The header's place for the open view's own controls, handed to the view.
+  const [tools, setTools] = useState<HTMLDivElement | null>(null)
 
   useSync()
 
@@ -85,6 +87,7 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
         activeLabels={activeLabels}
         onToggleLabel={toggleLabel}
         onOpenSettings={() => setSettingsOpen(true)}
+        toolsSlot={setTools}
       />
 
       {/* Over the whole page, and reachable with no workspace to open it from. */}
@@ -116,6 +119,7 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
                 mode={boardMode}
                 onSetMode={setBoardMode}
                 onOpenTask={setOpenTaskId}
+                tools={tools}
               />
             )}
             {tab === 'timeline' && (

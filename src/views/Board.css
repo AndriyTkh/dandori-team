@@ -9,8 +9,10 @@
   min-height: 0;
 }
 
+/* The phone's bar for the range modes. On the desk the same controls stand in
+   the header and the bar is not drawn — see Board.tsx. */
 .board__bar {
-  display: flex;
+  display: none;
   flex: 0 0 auto;
   align-items: center;
   gap: var(--sp-4);
@@ -537,6 +539,7 @@
    * rather than at a corner of it.
    */
   .board__bar {
+    display: flex;
     gap: var(--sp-3);
     padding: var(--sp-3) max(var(--sp-4), env(safe-area-inset-right)) var(--sp-3)
       max(var(--sp-4), env(safe-area-inset-left));

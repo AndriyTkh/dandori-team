@@ -8,11 +8,27 @@
   background: var(--bg-raised);
 }
 
+/*
+ * When the bar runs short — a long workspace name on a narrow laptop — the name
+ * is what gives way, in an ellipsis. Everything else in the bar is a control
+ * whose words have to be read whole, and none of it shrinks.
+ */
+.header > .menu {
+  min-width: 0;
+  max-width: 190px;
+}
+
+.header__tabs,
+.header__tools,
+.header__right {
+  flex-shrink: 0;
+}
+
 .header__ws {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  max-width: 190px;
+  max-width: 100%;
   height: var(--ctl-h);
   padding: 0 var(--sp-3);
   border-radius: var(--radius);
@@ -70,6 +86,22 @@
   box-shadow: var(--shadow-card);
   color: var(--text);
   font-weight: 500;
+}
+
+/*
+ * The open view's own controls — the board's range modes, and «Сегодня» in the
+ * feed. They stand after the tabs with a wider gap than the tabs' own, so the
+ * two segmented controls read as two groups: which view, then how it is drawn.
+ */
+.header__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-left: var(--sp-5);
+}
+
+.header__tools:empty {
+  display: none;
 }
 
 .header__right {
@@ -132,7 +164,8 @@
 
 /* Phone: the tabs move down into their own bar */
 @media (max-width: 720px) {
-  .header__tabs {
+  .header__tabs,
+  .header__tools {
     display: none;
   }
 
