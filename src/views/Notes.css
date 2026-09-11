@@ -321,10 +321,19 @@
   }
 
   .notes__head-btn {
+    position: relative;
     height: var(--ctl-h);
     min-width: var(--tap);
     padding: 0 var(--sp-4);
     font-size: var(--fz-lg);
+  }
+
+  /* The two pixels the button is short of a fingertip come out of the head's own
+     padding, above and below. The four between the two buttons stay theirs. */
+  .notes__head-btn::after {
+    content: '';
+    position: absolute;
+    inset: -2px 0;
   }
 
   .notes__head-btn:active {
