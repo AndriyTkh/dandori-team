@@ -136,3 +136,17 @@ begin
               where w.id = workspace_id and w.user_id = auth.uid()))', t);
   end loop;
 end $$;
+
+-- ------------------------------------------------ what was left before today
+
+-- The triggers above catch every row from now on. Rows orphaned before this
+-- migration existed — a task added on one device while another deleted its
+-- workspace — are still live under a workspace that is gone; this sends them
+-- after it once. Run as the owner of the database, it reaches every account's
+-- rows; it only ever touches rows whose workspace is already deleted.
+update public.labels set deleted = true, updated_at = greatest(updated_at, now())
+  where not deleted and workspace_id in (select id from public.workspaces where deleted);
+update public.tasks set deleted = true, updated_at = greatest(updated_at, now())
+  where not deleted and workspace_id in (select id from public.workspaces where deleted);
+update public.notes set deleted = true, updated_at = greatest(updated_at, now())
+  where not deleted and workspace_id in (select id from public.workspaces where deleted);
