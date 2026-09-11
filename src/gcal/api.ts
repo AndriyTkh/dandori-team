@@ -8,7 +8,7 @@
  * devices reaching for the calendar at the same moment write one event instead
  * of two.
  */
-import { getToken } from './client'
+import { forgetToken, getToken } from './client'
 import type { GcalConfig, Task } from '../db/types'
 
 const BASE = 'https://www.googleapis.com/calendar/v3'
@@ -35,6 +35,7 @@ async function call(path: string, init: RequestInit = {}, retry = true): Promise
   const token = await getToken()
   if (!token) throw new GcalError(401, 'no google token')
 
+
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
@@ -44,7 +45,13 @@ async function call(path: string, init: RequestInit = {}, retry = true): Promise
     },
   })
 
-  if (res.status === 401 && retry) return call(path, init, false)
+  if (res.status === 401 && retry) {
+    // Asking again without throwing the refused token away would only send the
+    // same string a second time, which is how the retry used to pass its own
+    // test and fail in the field.
+    forgetToken()
+    return call(path, init, false)
+  }
   return res
 }
 
@@ -70,8 +77,13 @@ export function eventIdOf(taskId: string): string {
  * zone travels beside it: the owner reads his calendar where he is, and an event
  * pinned to UTC would drift an hour twice a year.
  */
+/** The zone the event is written in: the one the device reading it lives in. */
+export function currentZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
 function body(task: Task, cfg: GcalConfig): Record<string, unknown> {
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const zone = currentZone()
   const start = `${task.due_date}T${cfg.time}:00`
   const end = plusMinutes(start, EVENT_MINUTES)
 

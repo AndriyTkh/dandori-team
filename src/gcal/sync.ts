@@ -13,9 +13,9 @@
  * write it can well afford to repeat.
  */
 import { db, getMeta, setMeta } from '../db/local'
-import { deleteEvent, GcalError, putEvent } from './api'
+import { currentZone, deleteEvent, GcalError, putEvent } from './api'
 import { getToken, isConnected } from './client'
-import type { GcalConfig, ID, Task, Workspace } from '../db/types'
+import { gcalConfigOf, type GcalConfig, type ID, type Task, type Workspace } from '../db/types'
 
 /** How often the whole set is looked over, when nothing else prompts it. */
 const TICK_MS = 60_000
@@ -49,6 +49,10 @@ function signature(task: Task, cfg: GcalConfig): string {
     cfg.time,
     cfg.color_id ?? '',
     reminders,
+    // The event is written in the zone of whichever device wrote it. Leave it
+    // out of the signature and it freezes at that device's while every other
+    // field goes on being brought up to date.
+    currentZone(),
   ].join(SEP)
 }
 
@@ -63,32 +67,44 @@ function signature(task: Task, cfg: GcalConfig): string {
  */
 function configFor(task: Task, workspace: Workspace | undefined): GcalConfig | null {
   if (task.deleted || task.done || task.due_date === null) return null
-  if (task.gcal) return task.gcal
+  if (task.gcal) return gcalConfigOf(task.gcal)
   if (workspace?.gcal_sync && workspace.gcal) return workspace.gcal
   return null
 }
 
+/** Records which calendar the task's event stands in, `null` for none. */
+async function placed(taskId: ID, calendar: string | null): Promise<void> {
+  const row = await db.tasks.get(taskId)
+  if (!row || row.gcal_placed === calendar) return
+  await db.tasks.put({ ...row, gcal_placed: calendar, updated_at: nowStamp(), _dirty: 1 })
+}
+
+const nowStamp = () => new Date().toISOString()
+
 async function reconcileTask(task: Task, cfg: GcalConfig | null): Promise<void> {
   const raw = await getMeta(sentKey(task.id))
   const sent = raw ? (JSON.parse(raw) as Sent) : null
+  // Where the event stands, whoever put it there. The local note is only this
+  // device's shortcut for skipping work it has already done.
+  const standing = task.gcal_placed
 
   if (!cfg) {
-    if (sent) {
-      await deleteEvent(sent.cal, task.id)
-      await db.meta.delete(sentKey(task.id))
-    }
+    if (standing) await deleteEvent(standing, task.id)
+    if (sent) await db.meta.delete(sentKey(task.id))
+    if (standing) await placed(task.id, null)
     return
   }
 
   const sig = signature(task, cfg)
-  if (sent && sent.cal === cfg.calendar_id && sent.sig === sig) return
+  if (standing === cfg.calendar_id && sent?.sig === sig) return
 
   // Moved to another calendar. Google keeps events per calendar, so the old copy
   // has to go before the new one is written, or both would stand there.
-  if (sent && sent.cal !== cfg.calendar_id) await deleteEvent(sent.cal, task.id)
+  if (standing && standing !== cfg.calendar_id) await deleteEvent(standing, task.id)
 
   await putEvent(task, cfg)
   await setMeta(sentKey(task.id), JSON.stringify({ cal: cfg.calendar_id, sig }))
+  await placed(task.id, cfg.calendar_id)
 }
 
 let running = false
@@ -106,8 +122,8 @@ export async function reconcile(): Promise<void> {
 
     for (const task of await db.tasks.toArray()) {
       const cfg = configFor(task, spaces.get(task.workspace_id))
-      // Nothing wanted and nothing sent: the overwhelming majority of the rows.
-      if (!cfg && (await getMeta(sentKey(task.id))) === null) continue
+      // Nothing wanted and nothing standing: the overwhelming majority of rows.
+      if (!cfg && task.gcal_placed === null) continue
       try {
         await reconcileTask(task, cfg)
       } catch (err) {

@@ -46,6 +46,22 @@ export interface GcalConfig {
   reminders: GcalReminder[]
 }
 
+/**
+ * A task deliberately kept out of a workspace that syncs whole. Without it the
+ * switch is all or nothing: clearing a task's own settings only drops it back
+ * under the workspace's, and there is no way to say "this one, no".
+ */
+export interface GcalOff {
+  off: true
+}
+
+export type GcalSetting = GcalConfig | GcalOff
+
+/** The terms a task is synced on, or `null` if it has none of its own. */
+export function gcalConfigOf(setting: GcalSetting | null | undefined): GcalConfig | null {
+  return setting && !('off' in setting) ? setting : null
+}
+
 export interface GcalReminder {
   method: 'popup' | 'email'
   /** How long before the event it fires. */
@@ -102,12 +118,24 @@ export interface Task extends Synced {
   label_ids: ID[]
   custom_fields: CustomField[]
   /**
-   * How this task's event is made, or `null` when it is not synced at all. The
-   * event's own id is not stored: it is the task's id with the dashes taken out,
-   * so it is always at hand, and Google takes an id on insert — two devices
+   * The terms this task is synced on: its own, `{ off: true }` to stay out of a
+   * workspace that syncs whole, or `null` to follow whatever the workspace says.
+   *
+   * The event's own id is not stored — it is the task's id with the dashes taken
+   * out, so it is always at hand, and Google takes an id on insert: two devices
    * reaching for the calendar at once land on one event instead of two.
    */
-  gcal: GcalConfig | null
+  gcal: GcalSetting | null
+  /**
+   * The calendar an event was actually put in, or `null` if there is none.
+   *
+   * This is the only durable record that an event exists. Without it a device
+   * that never created the event — a second one, or the same one after signing
+   * out cleared its local notes — has no way to know there is anything to take
+   * away, and turning the sync off would strand the events in the calendar for
+   * good.
+   */
+  gcal_placed: string | null
 }
 
 export type NoteKind = 'folder' | 'file'

@@ -65,6 +65,10 @@ create table if not exists public.tasks (
   -- `time` is the one clock in this database. It belongs to the event, never to
   -- the task: no view reads it and nothing sorts by it.
   gcal                jsonb,
+  -- The calendar an event was actually put in; null when there is none. The one
+  -- durable record that the event exists — a device that did not create it has
+  -- no other way to know there is something to take away.
+  gcal_placed         text,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   deleted             boolean not null default false

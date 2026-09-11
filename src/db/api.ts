@@ -3,6 +3,7 @@ import { requestPush } from '../sync/sync'
 import { translate } from '../i18n'
 import type {
   GcalConfig,
+  GcalSetting,
   ID,
   ISODate,
   Label,
@@ -177,6 +178,7 @@ export async function createTask(workspaceId: ID, input: NewTask): Promise<ID> {
     label_ids: input.label_ids ?? [],
     custom_fields: [],
     gcal: null,
+    gcal_placed: null,
     created_at: ts,
     updated_at: ts,
     deleted: false,
@@ -236,7 +238,7 @@ export async function toggleTaskDone(id: ID): Promise<void> {
  */
 
 /** Turns the calendar on for one task, or off again with `null`. */
-export async function setTaskGcal(id: ID, cfg: GcalConfig | null): Promise<void> {
+export async function setTaskGcal(id: ID, cfg: GcalSetting | null): Promise<void> {
   const row = await db.tasks.get(id)
   if (!row) return
   // The event's id is derived from the task's, so forgetting it costs nothing
@@ -254,7 +256,6 @@ export async function setWorkspaceGcal(
   await db.workspaces.put(touch({ ...row, ...patch }))
   queue()
 }
-
 
 export async function deleteTask(id: ID): Promise<void> {
   const row = await db.tasks.get(id)

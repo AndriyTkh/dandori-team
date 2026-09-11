@@ -16,6 +16,7 @@ import { reconcile } from '../gcal/sync'
 import { GcalEventDialog } from './Gcal'
 import { useT, type T } from '../i18n'
 import {
+  gcalConfigOf,
   LABEL_COLORS,
   type CustomField,
   type ID,
@@ -329,12 +330,25 @@ function GcalRow({
   // moment a deadline does.
   if (!task.due_date) return null
 
-  const on = task.gcal != null
+  /*
+   * Ticked when this task has an event, whatever put it there. A workspace that
+   * syncs whole covers its tasks without writing anything on them, so reading
+   * the task's own settings alone showed an unticked box beside an event that
+   * existed — and unticking it offered to make a second one.
+   */
+  const byWorkspace = task.gcal === null && workspace?.gcal_sync === true && workspace.gcal !== null
+  const own = gcalConfigOf(task.gcal)
+  const on = own !== null || byWorkspace
 
   function toggle(next: boolean) {
     if (next) return onSetOpen(true)
-    // Off is a decision, not a draft: the event goes now rather than on the tick.
-    void setTaskGcal(task.id, null).then(reconcile)
+    /*
+     * Off is a decision, not a draft, so the event goes now rather than on the
+     * next tick. Inside a workspace that syncs whole it has to be said out
+     * loud: clearing the task's own terms would only drop it back under the
+     * workspace's.
+     */
+    void setTaskGcal(task.id, byWorkspace ? { off: true } : null).then(reconcile)
   }
 
   return (
@@ -354,7 +368,7 @@ function GcalRow({
       {open && (
         <GcalEventDialog
           taskId={task.id}
-          current={task.gcal ?? null}
+          current={own}
           workspace={workspace}
           onClose={() => onSetOpen(false)}
           t={t}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { listCalendars, type Calendar } from '../gcal/api'
 import { connect, disconnect, getGcalState, onGcalState, type GcalState } from '../gcal/client'
 import { reconcile } from '../gcal/sync'
@@ -52,6 +52,9 @@ const COLORS: { id: string; name: TextKey; hex: string }[] = [
 
 /** How long before the event a reminder can fire, in minutes. */
 const OFFSETS = [0, 10, 30, 60, 120, 1440, 2880]
+/** The same pause every other field in the app takes before it writes. */
+const SAVE_DELAY = 500
+
 /** Google takes five; the owner asked for three. */
 const MAX_REMINDERS = 3
 
@@ -358,8 +361,29 @@ export function GcalSection({ workspace, t }: { workspace: Workspace | null; t: 
   const state = useGcalState()
   const defaults = defaultsOf(workspace)
 
+  /*
+   * The form writes on every change, and the time field changes on every key.
+   * Written straight through, one setting of an hour was a handful of dirty rows
+   * and a handful of pushes — every other field in the app waits half a second
+   * before it speaks, and so does this one.
+   */
+  const save = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => void (save.current !== null && clearTimeout(save.current)), [])
+
+  function saveDefaults(cfg: GcalConfig) {
+    if (!workspace) return
+    if (save.current !== null) clearTimeout(save.current)
+    save.current = setTimeout(() => {
+      save.current = null
+      void setWorkspaceGcal(workspace.id, { gcal: cfg })
+    }, SAVE_DELAY)
+  }
+
   async function syncWhole(on: boolean) {
     if (!workspace) return
+    // The switch is not a draft: whatever the form is holding goes in with it.
+    if (save.current !== null) clearTimeout(save.current)
+    save.current = null
     // The defaults go in with the switch: they are the terms every task it
     // touches is put into the calendar on, so they cannot stay unwritten.
     await setWorkspaceGcal(workspace.id, { gcal_sync: on, gcal: defaults })
@@ -376,11 +400,7 @@ export function GcalSection({ workspace, t }: { workspace: Workspace | null; t: 
         <>
           <div className="gsec__for">{t('gcal.defaults', { name: workspace.name })}</div>
 
-          <GcalForm
-            value={defaults}
-            onChange={(cfg) => void setWorkspaceGcal(workspace.id, { gcal: cfg })}
-            t={t}
-          />
+          <GcalForm value={defaults} onChange={saveDefaults} t={t} />
 
           <label className="gsec__whole">
             <input

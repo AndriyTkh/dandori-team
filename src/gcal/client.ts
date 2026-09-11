@@ -121,7 +121,10 @@ let loading: Promise<Gis> | null = null
 
 function loadGis(): Promise<Gis> {
   if (loading) return loading
-  loading = new Promise<Gis>((resolve, reject) => {
+  // A refusal is forgotten, not cached: the script is usually refused because
+  // the network was down, and remembering that would make the failure outlive
+  // its cause for as long as the tab is open.
+  const attempt = new Promise<Gis>((resolve, reject) => {
     const existing = (window as unknown as { google?: Gis }).google
     if (existing?.accounts?.oauth2) return resolve(existing)
 
@@ -136,45 +139,70 @@ function loadGis(): Promise<Gis> {
     el.onerror = () => reject(new Error('google identity services failed to load'))
     document.head.append(el)
   })
-  return loading
+
+  loading = attempt
+  attempt.catch(() => {
+    if (loading === attempt) loading = null
+  })
+  return attempt
 }
 
 let client: TokenClient | null = null
 /** One request at a time: two writes landing together must not open two popups. */
 let pending: Promise<string | null> | null = null
+/*
+ * Whoever is waiting on the request in flight.
+ *
+ * The token client is built once and kept, so its callback outlives the call
+ * that created it — a callback closing over that first call's `resolve` would
+ * answer the first request over and over and leave every later one hanging for
+ * good. It answers whatever is waiting now instead.
+ */
+let waiting: ((value: string | null) => void) | null = null
+
+function answer(value: string | null): void {
+  const fn = waiting
+  waiting = null
+  pending = null
+  fn?.(value)
+}
 
 async function request(interactive: boolean): Promise<string | null> {
   if (!CLIENT_ID) return null
-  const gis = await loadGis()
+
+  let gis: Gis
+  try {
+    gis = await loadGis()
+  } catch {
+    // Offline, or the script blocked. Neither is permanent, and `loadGis` has
+    // already forgotten the failure, so the next click tries again.
+    pending = null
+    return null
+  }
 
   return new Promise<string | null>((resolve) => {
-    const finish = (value: string | null) => {
-      pending = null
-      resolve(value)
-    }
+    waiting = resolve
 
-    if (!client) {
-      client = gis.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPE,
-        callback: (r) => {
-          if (r.access_token && r.expires_in) {
-            token = { value: r.access_token, expires: Date.now() + r.expires_in * 1000 }
-            setConnected(true)
-            setState('ready')
-            finish(r.access_token)
-            return
-          }
-          // A silent request that Google would not answer without the owner.
-          setState(connected() ? 'needs-consent' : 'signed-out')
-          finish(null)
-        },
-        error_callback: () => {
-          setState(connected() ? 'needs-consent' : 'signed-out')
-          finish(null)
-        },
-      })
-    }
+    client ??= gis.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPE,
+      callback: (r) => {
+        if (r.access_token && r.expires_in) {
+          token = { value: r.access_token, expires: Date.now() + r.expires_in * 1000 }
+          setConnected(true)
+          setState('ready')
+          answer(r.access_token)
+          return
+        }
+        // A silent request Google would not answer without the owner.
+        setState(connected() ? 'needs-consent' : 'signed-out')
+        answer(null)
+      },
+      error_callback: () => {
+        setState(connected() ? 'needs-consent' : 'signed-out')
+        answer(null)
+      },
+    })
 
     // An empty prompt is the silent path: Google answers it without a dialog
     // while the browser's Google session is alive and the scope already granted.
@@ -195,6 +223,11 @@ export function getToken(interactive = false): Promise<string | null> {
   return pending
 }
 
+/** Throws away the token in hand, so the next call has to fetch a new one. */
+export function forgetToken(): void {
+  token = null
+}
+
 /** The owner's click: connect the account, or allow it again after a silent refusal. */
 export function connect(): Promise<boolean> {
   return getToken(true).then((t) => t !== null)
@@ -204,6 +237,10 @@ export function connect(): Promise<boolean> {
 export async function disconnect(): Promise<void> {
   const held = token?.value
   token = null
+  // The token client holds the grant it was built with. Kept across a
+  // disconnect, it would hand the next owner the last one's session.
+  client = null
+  answer(null)
   setConnected(false)
   setState(CLIENT_ID ? 'signed-out' : 'unconfigured')
   if (!held) return

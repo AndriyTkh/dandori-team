@@ -57,6 +57,7 @@ export class DandoriDB extends Dexie {
         .toCollection()
         .modify((t: Partial<Task>) => {
           t.gcal ??= null
+          t.gcal_placed ??= null
         })
     })
   }
