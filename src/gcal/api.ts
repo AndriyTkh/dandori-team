@@ -160,11 +160,11 @@ export async function putEvent(task: Task, cfg: GcalConfig, standing: boolean): 
 
   const first = await (standing ? update() : insert())
   if (first.ok) return
-  // The two ways of being wrong about it: nothing there to rewrite, or
-  // something there already — a second device's event, or the cancelled husk
-  // Google keeps of a deleted one.
-  const expected = standing ? 404 : 409
-  if (first.status !== expected) throw await refusal(first, standing ? 'update' : 'insert')
+  // The two ways the record can be wrong: nothing there to rewrite — gone, or
+  // swept away for good — or something there already, which is either a second
+  // device's event or the cancelled one Google keeps after a delete.
+  const expected = standing ? [404, 410] : [409]
+  if (!expected.includes(first.status)) throw await refusal(first, standing ? 'update' : 'insert')
 
   const second = await (standing ? insert() : update())
   if (!second.ok) throw await refusal(second, standing ? 'insert' : 'update')
