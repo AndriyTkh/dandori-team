@@ -6,6 +6,7 @@ import {
 } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { toggleTaskDone } from '../../db/api'
+import { useT } from '../../i18n'
 import { labelColors, labelVar } from '../../lib/labels'
 import type { ID, Label, Task } from '../../db/types'
 import { accent, cardClass } from './model'
@@ -65,6 +66,7 @@ export function TaskCard({ task, labels, column, compact, onOpen }: Props) {
 /** Card body: the same markup is drawn under the finger in the DragOverlay. */
 export function CardBody({ task, labels }: { task: Task; labels: Label[] }) {
   const colors = labelColors(task, labels)
+  const t = useT()
 
   return (
     <>
@@ -72,7 +74,7 @@ export function CardBody({ task, labels }: { task: Task; labels: Label[] }) {
         type="checkbox"
         className="board__check"
         checked={task.done}
-        aria-label="Готово"
+        aria-label={t('common.done')}
         // Swallow mousedown, touchstart and pointerdown alike: the card's drag start hangs off them.
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}

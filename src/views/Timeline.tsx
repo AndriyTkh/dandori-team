@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { addDays, dayLabel, diffDays, monthNameNominative } from '../db/dates'
+import { addDays, diffDays } from '../db/dates'
+import { useT, type T } from '../i18n'
+import { dayLabel, monthName } from '../i18n/dates'
 import { useToday } from '../state/useToday'
-import { useTimelineZoom } from '../state/ui'
+import { useTimelineZoom, type Lang } from '../state/ui'
 import type { ID, ISODate, Label, Task } from '../db/types'
 import { Axis } from './timeline/Axis'
 import {
@@ -56,6 +58,7 @@ const MIN_BAR_W = 5
 /** Every dated task on one scale: where it starts, where the deadline is, what is overdue. */
 export function Timeline({ tasks, labels, onOpenTask }: TimelineProps) {
   const now = useToday()
+  const t = useT()
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
@@ -84,8 +87,8 @@ export function Timeline({ tasks, labels, onOpenTask }: TimelineProps) {
    */
   const range = compact ? 'month' : zoom
   const scale = useMemo(
-    () => buildScale(span.from, span.to, free, free * SCREENS, range),
-    [span, free, range],
+    () => buildScale(span.from, span.to, free, free * SCREENS, range, t.lang),
+    [span, free, range, t.lang],
   )
 
   /*
@@ -132,8 +135,8 @@ export function Timeline({ tasks, labels, onOpenTask }: TimelineProps) {
               </div>
               <div className="timeline__days">
                 {scale.cells.map((c) => (
-                  <div key={c.date} className={cellClass(c)} title={dayLabel(c.date)}>
-                    {cellLabel(c, scale)}
+                  <div key={c.date} className={cellClass(c)} title={dayLabel(c.date, t.lang)}>
+                    {cellLabel(c, scale, t.lang)}
                   </div>
                 ))}
               </div>
@@ -151,7 +154,7 @@ export function Timeline({ tasks, labels, onOpenTask }: TimelineProps) {
             <div className="timeline__gutter" />
             <div className="timeline__rows-list">
               {rows.map((row) => (
-                <TimelineRow key={row.task.id} row={row} scale={scale} onOpen={onOpenTask} />
+                <TimelineRow key={row.task.id} row={row} scale={scale} onOpen={onOpenTask} t={t} />
               ))}
             </div>
           </div>
@@ -164,6 +167,7 @@ export function Timeline({ tasks, labels, onOpenTask }: TimelineProps) {
             zoom={compact ? null : zoom}
             onZoom={setZoom}
             onOpen={onOpenTask}
+            t={t}
           />
         </div>
       </div>
@@ -175,13 +179,15 @@ function TimelineRow({
   row,
   scale,
   onOpen,
+  t,
 }: {
   row: Row
   scale: Scale
   onOpen: (id: ID) => void
+  t: T
 }) {
   const { task } = row
-  const range = rangeLabel(row)
+  const range = rangeLabel(row, t.lang)
 
   const classes = ['timeline__row']
   if (row.overdue) classes.push('timeline__row--overdue')
@@ -257,8 +263,8 @@ function firstTileOffset(scale: Scale): number {
   return at < 0 ? 0 : at * scale.cellW
 }
 
-function cellLabel(cell: Cell, scale: Scale): string {
-  if (scale.unit === 'month') return monthNameNominative(cell.date).slice(0, 3).toLowerCase()
+function cellLabel(cell: Cell, scale: Scale, lang: Lang): string {
+  if (scale.unit === 'month') return monthName(cell.date, lang).slice(0, 3).toLowerCase()
   if (scale.unit === 'week') return String(Number(cell.date.slice(8)))
   return scale.cellW >= DAY_LABEL_W || cell.week ? String(Number(cell.date.slice(8))) : ''
 }

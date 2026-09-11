@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useT } from '../i18n'
 import type { ID, Label } from '../db/types'
 import './LabelFilter.css'
 
@@ -11,6 +12,7 @@ interface Props {
 /** Label filter. It applies to every view of the current workspace at once. */
 export function LabelFilter({ labels, active, onToggle }: Props) {
   const [open, setOpen] = useState(false)
+  const t = useT()
   if (labels.length === 0) return null
 
   return (
@@ -19,7 +21,8 @@ export function LabelFilter({ labels, active, onToggle }: Props) {
         className={`btn btn--quiet lfilter__btn${active.length ? ' lfilter__btn--on' : ''}`}
         onClick={() => setOpen((v) => !v)}
       >
-        Метки{active.length > 0 && ` · ${active.length}`}
+        {t('label.plural')}
+        {active.length > 0 && ` · ${active.length}`}
       </button>
 
       {open && (

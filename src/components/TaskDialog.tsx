@@ -4,7 +4,7 @@ import { useAutosave } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
 import { createLabel, createNote, deleteLabel, deleteTask, updateLabel, updateTask } from '../db/api'
 import { useNotes, useTask } from '../db/hooks'
-import { pluralDays } from '../db/dates'
+import { useT, type T } from '../i18n'
 import {
   LABEL_COLORS,
   type CustomField,
@@ -78,6 +78,7 @@ function Body({
   onClose: () => void
 }) {
   const id = task.id
+  const t = useT()
   const patch = useCallback(
     (p: Parameters<typeof updateTask>[1]) => void updateTask(id, p),
     [id],
@@ -107,7 +108,7 @@ function Body({
   }
 
   async function remove() {
-    if (!confirm(`Удалить задачу «${task.title}»?`)) return
+    if (!confirm(t('task.confirmDelete', { name: task.title }))) return
     await deleteTask(task.id)
     onClose()
   }
@@ -121,7 +122,7 @@ function Body({
             checked={task.done}
             onChange={(e) => patch({ done: e.target.checked })}
           />
-          <span>Готово</span>
+          <span>{t('common.done')}</span>
         </label>
         <button className="btn btn--quiet dialog__close" onClick={onClose}>
           ✕
@@ -131,12 +132,12 @@ function Body({
       <input
         className="dialog__title"
         value={title}
-        placeholder="Название"
+        placeholder={t('task.title')}
         onChange={(e) => setTitle(e.target.value)}
       />
 
       <div className="dialog__dates">
-        <Field label="Начало">
+        <Field label={t('task.start')}>
           <input
             className="field"
             type="date"
@@ -146,7 +147,7 @@ function Body({
             onChange={(e) => patchDate('start_date', e.target.value)}
           />
         </Field>
-        <Field label="Дедлайн">
+        <Field label={t('task.due')}>
           <input
             className="field"
             type="date"
@@ -156,7 +157,7 @@ function Body({
             onChange={(e) => patchDate('due_date', e.target.value)}
           />
         </Field>
-        <Field label="Напомнить">
+        <Field label={t('task.remind')}>
           <select
             className="field"
             value={task.remind_days_before ?? ''}
@@ -165,10 +166,10 @@ function Body({
             }
             disabled={!task.due_date}
           >
-            <option value="">Не напоминать</option>
+            <option value="">{t('task.remindNever')}</option>
             {[1, 2, 3, 7, 14, 30].map((n) => (
               <option key={n} value={n}>
-                За {pluralDays(n)}
+                {t.n('task.remindBefore', n)}
               </option>
             ))}
           </select>
@@ -187,23 +188,24 @@ function Body({
           checked={task.muted}
           onChange={(e) => patch({ muted: e.target.checked })}
         />
-        <span>Не показывать в напоминаниях</span>
+        <span>{t('task.mute')}</span>
       </label>
 
-      <NoteLink task={task} workspaceId={workspaceId} onOpenNote={onOpenNote} />
+      <NoteLink task={task} workspaceId={workspaceId} onOpenNote={onOpenNote} t={t} />
 
       <LabelPicker
         workspaceId={workspaceId}
         labels={labels}
         selected={task.label_ids}
         onChange={(label_ids) => patch({ label_ids })}
+        t={t}
       />
 
       <Field
-        label="Описание"
+        label={t('task.description')}
         aside={
           <button className="dialog__link" onClick={() => onSetPreview(!preview)}>
-            {preview ? 'Править' : 'Просмотр'}
+            {preview ? t('md.edit') : t('md.preview')}
           </button>
         }
       >
@@ -222,11 +224,12 @@ function Body({
       <CustomFields
         fields={task.custom_fields}
         onChange={(custom_fields) => patch({ custom_fields })}
+        t={t}
       />
 
       <div className="dialog__foot">
         <button className="btn btn--quiet btn--danger" onClick={() => void remove()}>
-          Удалить задачу
+          {t('task.delete')}
         </button>
       </div>
     </>
@@ -264,10 +267,12 @@ function NoteLink({
   task,
   workspaceId,
   onOpenNote,
+  t,
 }: {
   task: { id: ID; title: string; note_id: ID | null }
   workspaceId: ID
   onOpenNote: (id: ID) => void
+  t: T
 }) {
   const notes = useNotes(workspaceId)
   const [picking, setPicking] = useState(false)
@@ -285,13 +290,13 @@ function NoteLink({
   return (
     <div className="dialog__field">
       <div className="dialog__field-head">
-        <span className="dialog__field-label">Заметка</span>
+        <span className="dialog__field-label">{t('task.note')}</span>
         {linked && (
           <button
             className="dialog__link"
             onClick={() => void updateTask(task.id, { note_id: null })}
           >
-            Отвязать
+            {t('task.noteUnlink')}
           </button>
         )}
       </div>
@@ -299,8 +304,8 @@ function NoteLink({
       {linked ? (
         <button className="notelink" onClick={() => onOpenNote(linked.id)}>
           <span className="notelink__icon">📄</span>
-          <span className="notelink__name">{linked.name.trim() || 'Без названия'}</span>
-          <span className="dialog__link">Открыть</span>
+          <span className="notelink__name">{linked.name.trim() || t('common.untitled')}</span>
+          <span className="dialog__link">{t('task.noteOpen')}</span>
         </button>
       ) : picking ? (
         <div className="notelink__pick">
@@ -314,23 +319,23 @@ function NoteLink({
               setPicking(false)
             }}
           >
-            <option value="">Выбрать заметку</option>
+            <option value="">{t('task.notePick')}</option>
             {files.map((n) => (
               <option key={n.id} value={n.id}>
-                {n.name.trim() || 'Без названия'}
+                {n.name.trim() || t('common.untitled')}
               </option>
             ))}
           </select>
           <button className="btn" onClick={() => void create()}>
-            Создать
+            {t('task.noteCreate')}
           </button>
           <button className="btn btn--quiet" onClick={() => setPicking(false)}>
-            Отмена
+            {t('common.cancel')}
           </button>
         </div>
       ) : (
         <button className="btn btn--quiet notelink__add" onClick={() => setPicking(true)}>
-          Привязать заметку
+          {t('task.noteAttach')}
         </button>
       )}
     </div>
@@ -346,11 +351,13 @@ function LabelPicker({
   labels,
   selected,
   onChange,
+  t,
 }: {
   workspaceId: ID
   labels: Label[]
   selected: ID[]
   onChange: (ids: ID[]) => void
+  t: T
 }) {
   const [mode, setMode] = useState<LabelMode>('pick')
   const [name, setName] = useState('')
@@ -369,28 +376,28 @@ function LabelPicker({
   }
 
   async function remove(label: Label) {
-    if (!confirm(`Удалить метку «${label.name}»? Она снимется со всех задач.`)) return
+    if (!confirm(t('label.confirmDelete', { name: label.name }))) return
     await deleteLabel(label.id)
   }
 
   return (
     <div className="dialog__field">
       <div className="dialog__field-head">
-        <span className="dialog__field-label">Метки</span>
+        <span className="dialog__field-label">{t('label.plural')}</span>
         <span className="dialog__links">
           {labels.length > 0 && (
             <button
               className="dialog__link"
               onClick={() => setMode(mode === 'manage' ? 'pick' : 'manage')}
             >
-              {mode === 'manage' ? 'Готово' : 'Правка'}
+              {mode === 'manage' ? t('common.done') : t('label.manage')}
             </button>
           )}
           <button
             className="dialog__link"
             onClick={() => setMode(mode === 'new' ? 'pick' : 'new')}
           >
-            {mode === 'new' ? 'Отмена' : 'Новая'}
+            {mode === 'new' ? t('common.cancel') : t('label.new')}
           </button>
         </span>
       </div>
@@ -398,7 +405,7 @@ function LabelPicker({
       {mode === 'manage' ? (
         <div className="labels__manage">
           {labels.map((label) => (
-            <LabelRow key={label.id} label={label} onRemove={() => void remove(label)} />
+            <LabelRow key={label.id} label={label} onRemove={() => void remove(label)} t={t} />
           ))}
         </div>
       ) : (
@@ -422,13 +429,13 @@ function LabelPicker({
           <input
             className="field"
             value={name}
-            placeholder="Название метки"
+            placeholder={t('label.name')}
             autoFocus
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void add()}
           />
           <button className="btn btn--primary" onClick={() => void add()}>
-            Добавить
+            {t('common.add')}
           </button>
         </div>
       )}
@@ -436,7 +443,7 @@ function LabelPicker({
   )
 }
 
-function LabelRow({ label, onRemove }: { label: Label; onRemove: () => void }) {
+function LabelRow({ label, onRemove, t }: { label: Label; onRemove: () => void; t: T }) {
   const [name, setName] = useAutosave(label.name, (v) => {
     if (v.trim()) void updateLabel(label.id, { name: v.trim() })
   })
@@ -448,7 +455,7 @@ function LabelRow({ label, onRemove }: { label: Label; onRemove: () => void }) {
         onChange={(color) => void updateLabel(label.id, { color })}
       />
       <input className="field" value={name} onChange={(e) => setName(e.target.value)} />
-      <button className="btn btn--quiet labels__del" onClick={onRemove} aria-label="Удалить метку">
+      <button className="btn btn--quiet labels__del" onClick={onRemove} aria-label={t('label.delete')}>
         ✕
       </button>
     </div>
@@ -490,9 +497,11 @@ function ColorPicker({
 function CustomFields({
   fields,
   onChange,
+  t,
 }: {
   fields: CustomField[]
   onChange: (f: CustomField[]) => void
+  t: T
 }) {
   // Rows written before ids existed get one now, so editing state cannot follow
   // the wrong row after a deletion.
@@ -508,9 +517,9 @@ function CustomFields({
   return (
     <div className="dialog__field">
       <div className="dialog__field-head">
-        <span className="dialog__field-label">Поля</span>
+        <span className="dialog__field-label">{t('task.fields')}</span>
         <button className="dialog__link" onClick={add}>
-          Добавить
+          {t('common.add')}
         </button>
       </div>
 
@@ -521,6 +530,7 @@ function CustomFields({
           autoFocus={field.name === '' && field.value === ''}
           onChange={(next) => onChange(fields.map((f, j) => (i === j ? next : f)))}
           onRemove={() => onChange(fields.filter((_, j) => j !== i))}
+          t={t}
         />
       ))}
     </div>
@@ -532,11 +542,13 @@ function CustomFieldRow({
   autoFocus,
   onChange,
   onRemove,
+  t,
 }: {
   field: CustomField
   autoFocus: boolean
   onChange: (f: CustomField) => void
   onRemove: () => void
+  t: T
 }) {
   const [draft, setDraft] = useState(field)
   const current = useRef(field)
@@ -608,11 +620,11 @@ function CustomFieldRow({
         <input
           className="cfield__name"
           value={draft.name}
-          placeholder="Имя поля"
+          placeholder={t('task.fieldName')}
           autoFocus={autoFocus}
           onChange={(e) => edit({ name: e.target.value })}
         />
-        <button className="cfield__del" onClick={remove} aria-label="Удалить поле">
+        <button className="cfield__del" onClick={remove} aria-label={t('task.fieldDelete')}>
           ✕
         </button>
       </div>
@@ -620,7 +632,7 @@ function CustomFieldRow({
       <input
         className="cfield__value"
         value={draft.value}
-        placeholder="Значение"
+        placeholder={t('task.fieldValue')}
         onChange={(e) => edit({ value: e.target.value })}
       />
     </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { ID } from '../db/types'
 
 /*
@@ -12,6 +12,7 @@ const KEYS = {
   theme: 'dandori.theme',
   boardMode: 'dandori.boardMode',
   timelineZoom: 'dandori.timelineZoom',
+  lang: 'dandori.lang',
 } as const
 
 function read(key: string): string | null {
@@ -52,12 +53,6 @@ function usePersisted<T extends string>(key: string, fallback: T, allowed: reado
 export const TABS = ['board', 'timeline', 'notes'] as const
 export type Tab = (typeof TABS)[number]
 
-export const TAB_TITLES: Record<Tab, string> = {
-  board: 'Доска',
-  timeline: 'Таймлайн',
-  notes: 'Заметки',
-}
-
 export function useTab() {
   return usePersisted<Tab>(KEYS.tab, 'board', TABS)
 }
@@ -67,12 +62,6 @@ export function useTab() {
 export const BOARD_MODES = ['days', 'ribbon', 'month'] as const
 export type BoardMode = (typeof BOARD_MODES)[number]
 
-export const BOARD_MODE_TITLES: Record<BoardMode, string> = {
-  days: '14 дней',
-  ribbon: 'Лента',
-  month: 'Месяц',
-}
-
 export function useBoardMode() {
   return usePersisted<BoardMode>(KEYS.boardMode, 'days', BOARD_MODES)
 }
@@ -81,11 +70,6 @@ export function useBoardMode() {
 
 export const TIMELINE_ZOOMS = ['all', 'month'] as const
 export type TimelineZoom = (typeof TIMELINE_ZOOMS)[number]
-
-export const TIMELINE_ZOOM_TITLES: Record<TimelineZoom, string> = {
-  all: 'Всё',
-  month: 'Месяц',
-}
 
 export function useTimelineZoom() {
   return usePersisted<TimelineZoom>(KEYS.timelineZoom, 'all', TIMELINE_ZOOMS)
@@ -106,6 +90,50 @@ export function useTheme() {
   }, [theme])
 
   return [theme, setTheme] as const
+}
+
+// ------------------------------------------------------------------ language
+
+export const LANGS = ['ru', 'en'] as const
+export type Lang = (typeof LANGS)[number]
+
+/*
+ * The language is the one setting that is not read through a single component.
+ * Every view asks for it, and so does the database layer, where a row takes its
+ * default name at the moment it is created. So it is one shared value with
+ * subscribers rather than a `usePersisted` per caller: those each hold their own
+ * copy, and only the one that was clicked would have changed.
+ */
+let lang: Lang = (() => {
+  const stored = read(KEYS.lang) as Lang | null
+  return stored && LANGS.includes(stored) ? stored : 'ru'
+})()
+
+const langWatchers = new Set<() => void>()
+
+// What a screen reader and the browser's own spell-checker go by. `index.html`
+// ships `ru`; put the stored choice in before the first paint.
+document.documentElement.lang = lang
+
+export function getLang(): Lang {
+  return lang
+}
+
+export function setLang(next: Lang): void {
+  if (next === lang) return
+  lang = next
+  write(KEYS.lang, next)
+  document.documentElement.lang = next
+  for (const watcher of langWatchers) watcher()
+}
+
+function watchLang(fn: () => void): () => void {
+  langWatchers.add(fn)
+  return () => void langWatchers.delete(fn)
+}
+
+export function useLang(): Lang {
+  return useSyncExternalStore(watchLang, getLang)
 }
 
 // --------------------------------------------------------------- workspaces

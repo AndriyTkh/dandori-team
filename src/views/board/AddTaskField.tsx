@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { createTask } from '../../db/api'
+import { useT } from '../../i18n'
 import { useEscape } from '../../lib/useEscape'
 import type { ID, ISODate } from '../../db/types'
 
@@ -14,6 +15,7 @@ interface Props {
 export function AddTaskField({ workspaceId, date, onClose }: Props) {
   const [title, setTitle] = useState('')
   const field = useRef<HTMLInputElement>(null)
+  const t = useT()
   useEscape(onClose)
 
   /*
@@ -41,7 +43,7 @@ export function AddTaskField({ workspaceId, date, onClose }: Props) {
       ref={field}
       className="field board__new"
       value={title}
-      placeholder="Задача"
+      placeholder={t('board.taskPlaceholder')}
       onChange={(e) => setTitle(e.target.value)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') void submit()

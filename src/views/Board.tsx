@@ -23,10 +23,11 @@ import {
 } from '@dnd-kit/core'
 import { moveTask } from '../db/api'
 import { addDays, dateRange } from '../db/dates'
+import { useT } from '../i18n'
 import { emptyOf } from '../lib/empty'
 import { useToday } from '../state/useToday'
 import type { ID, ISODate, Label, Task } from '../db/types'
-import { BOARD_MODES, BOARD_MODE_TITLES, type BoardMode } from '../state/ui'
+import { BOARD_MODES, type BoardMode } from '../state/ui'
 import { DayColumn } from './board/DayColumn'
 import { MonthView } from './board/MonthView'
 import { CardBody } from './board/TaskCard'
@@ -136,6 +137,7 @@ function columnUnderPointer(at: { x: number; y: number }, containers: Container[
 
 export function Board({ workspaceId, tasks, labels, mode, onSetMode, onOpenTask }: BoardProps) {
   const now = useToday()
+  const t = useT()
   const groups = useMemo(() => groupByDay(tasks), [tasks])
 
   const days = useMemo(
@@ -161,7 +163,7 @@ export function Board({ workspaceId, tasks, labels, mode, onSetMode, onOpenTask 
     if (!over) return
 
     const id = String(active.id)
-    const task = tasks.find((t) => t.id === id)
+    const task = tasks.find((x) => x.id === id)
     if (!task) return
 
     const overId = String(over.id)
@@ -171,7 +173,7 @@ export function Board({ workspaceId, tasks, labels, mode, onSetMode, onOpenTask 
     if (key === null) return
 
     const column = groups.get(key) ?? emptyOf<Task>()
-    const rest = column.filter((t) => t.id !== id)
+    const rest = column.filter((x) => x.id !== id)
 
     // The place is named by the task that will follow, not by an index: with a
     // filter on, the index in the visible list does not match the index in the
@@ -181,11 +183,11 @@ export function Board({ workspaceId, tasks, labels, mode, onSetMode, onOpenTask 
       // Dropped on empty space in the column — the task goes to the end.
       beforeId = null
     } else {
-      const at = rest.findIndex((t) => t.id === overId)
+      const at = rest.findIndex((x) => x.id === overId)
       if (at < 0) return
       // Moving down inside its own column puts the card after the one it was released over.
-      const from = column.findIndex((t) => t.id === id)
-      const to = column.findIndex((t) => t.id === overId)
+      const from = column.findIndex((x) => x.id === id)
+      const to = column.findIndex((x) => x.id === overId)
       beforeId = rest[from >= 0 && from < to ? at + 1 : at]?.id ?? null
     }
 
@@ -194,14 +196,14 @@ export function Board({ workspaceId, tasks, labels, mode, onSetMode, onOpenTask 
     // task still follows it.
     const date = dateFromKey(key)
     if (task.due_date === date) {
-      const now = column.findIndex((t) => t.id === id)
+      const now = column.findIndex((x) => x.id === id)
       if (now >= 0 && (column[now + 1]?.id ?? null) === beforeId) return
     }
 
     void moveTask(id, date, beforeId)
   }
 
-  const active = dragged ? tasks.find((t) => t.id === dragged) : undefined
+  const active = dragged ? tasks.find((x) => x.id === dragged) : undefined
 
   return (
     <div className="board">
@@ -213,13 +215,13 @@ export function Board({ workspaceId, tasks, labels, mode, onSetMode, onOpenTask 
               className={`board__mode${m === mode ? ' board__mode--on' : ''}`}
               onClick={() => onSetMode(m)}
             >
-              {BOARD_MODE_TITLES[m]}
+              {t(`board.mode.${m}`)}
             </button>
           ))}
         </div>
         {mode === 'ribbon' && (
           <button className="btn" onClick={() => ribbon.current?.toToday()}>
-            Сегодня
+            {t('board.today')}
           </button>
         )}
       </div>

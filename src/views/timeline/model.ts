@@ -1,14 +1,14 @@
 import {
   addDays,
   addMonths,
-  dayLabel,
   diffDays,
   isWeekend,
-  monthLabel,
   startOfMonth,
   startOfWeek,
   today,
 } from '../../db/dates'
+import { dayLabel, monthLabel } from '../../i18n/dates'
+import type { Lang } from '../../state/ui'
 import type { ISODate, Label, Task } from '../../db/types'
 import { labelVar, taskLabels } from '../../lib/labels'
 
@@ -73,8 +73,9 @@ export function buildRows(tasks: Task[], labels: Label[], now: ISODate): Row[] {
 }
 
 /** Dates of a row as one string — goes into the tooltip on the bar. */
-export function rangeLabel(row: Row): string {
-  return row.milestone ? dayLabel(row.from) : `${dayLabel(row.from)} — ${dayLabel(row.to)}`
+export function rangeLabel(row: Row, lang: Lang): string {
+  const from = dayLabel(row.from, lang)
+  return row.milestone ? from : `${from} — ${dayLabel(row.to, lang)}`
 }
 
 export function clamp(v: number, lo: number, hi: number): number {
@@ -163,6 +164,7 @@ export function buildScale(
   free: number,
   budget: number,
   zoom: 'all' | 'month',
+  lang: Lang,
 ): Scale {
   /*
    * `Месяц` always draws days: the month on screen is what the mode is for.
@@ -198,7 +200,7 @@ export function buildScale(
     first,
     days,
     cells,
-    brackets: bracketsOf(step.unit, cells),
+    brackets: bracketsOf(step.unit, cells, lang),
     cellW,
     trackW: cellW * cells.length,
     cellOfDay,
@@ -233,7 +235,7 @@ function cellsOf(unit: Unit, from: ISODate, to: ISODate): Cell[] {
   return cells
 }
 
-function bracketsOf(unit: Unit, cells: Cell[]): Bracket[] {
+function bracketsOf(unit: Unit, cells: Cell[], lang: Lang): Bracket[] {
   const brackets: Bracket[] = []
 
   for (const [i, cell] of cells.entries()) {
@@ -243,7 +245,7 @@ function bracketsOf(unit: Unit, cells: Cell[]): Bracket[] {
     else {
       brackets.push({
         key,
-        label: unit === 'month' ? key : monthLabel(cell.date),
+        label: unit === 'month' ? key : monthLabel(cell.date, lang),
         start: i,
         span: 1,
       })

@@ -3,24 +3,25 @@ import { deleteWorkspace, exportAll, renameWorkspace } from '../db/api'
 import { signOut } from '../auth/useSession'
 import { useAutosave } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
+import { useT, type T } from '../i18n'
 import { THEMES, type Theme } from '../state/ui'
 import type { Workspace } from '../db/types'
 import './Settings.css'
 
-const THEME_TITLES: Record<Theme, string> = {
-  system: 'Как в системе',
-  light: 'Светлая',
-  dark: 'Тёмная',
-}
+const THEME_TITLES = {
+  system: 'settings.themeSystem',
+  light: 'settings.themeLight',
+  dark: 'settings.themeDark',
+} as const
 
 const SECTIONS = ['theme', 'workspace', 'account'] as const
 type Section = (typeof SECTIONS)[number]
 
-const SECTION_TITLES: Record<Section, string> = {
-  theme: 'Тема',
-  workspace: 'Воркспейс',
-  account: 'Аккаунт',
-}
+const SECTION_TITLES = {
+  theme: 'settings.theme',
+  workspace: 'settings.workspace',
+  account: 'settings.account',
+} as const
 
 interface Props {
   workspace: Workspace | null
@@ -34,6 +35,7 @@ interface Props {
  * beside them. A menu held five items; a form does not fit in one.
  */
 export function Settings({ workspace, theme, onSetTheme, onClose }: Props) {
+  const t = useT()
   useEscape(onClose)
 
   // With no workspace there is nothing to rename or delete, so the section is
@@ -46,7 +48,7 @@ export function Settings({ workspace, theme, onSetTheme, onClose }: Props) {
     <div className="swin__scrim" onMouseDown={onClose}>
       <div className="swin" onMouseDown={(e) => e.stopPropagation()}>
         <div className="swin__head">
-          <span className="swin__title">Настройки</span>
+          <span className="swin__title">{t('settings.title')}</span>
           <button className="btn btn--quiet swin__close" onClick={onClose}>
             ✕
           </button>
@@ -59,17 +61,17 @@ export function Settings({ workspace, theme, onSetTheme, onClose }: Props) {
               className={`swin__section${s === section ? ' swin__section--on' : ''}`}
               onClick={() => setChosen(s)}
             >
-              {SECTION_TITLES[s]}
+              {t(SECTION_TITLES[s])}
             </button>
           ))}
         </nav>
 
         <div className="swin__main">
-          {section === 'theme' && <ThemeSection theme={theme} onSetTheme={onSetTheme} />}
+          {section === 'theme' && <ThemeSection theme={theme} onSetTheme={onSetTheme} t={t} />}
           {section === 'workspace' && workspace && (
-            <WorkspaceSection key={workspace.id} workspace={workspace} onClose={onClose} />
+            <WorkspaceSection key={workspace.id} workspace={workspace} onClose={onClose} t={t} />
           )}
-          {section === 'account' && <AccountSection />}
+          {section === 'account' && <AccountSection t={t} />}
         </div>
       </div>
     </div>
@@ -78,18 +80,26 @@ export function Settings({ workspace, theme, onSetTheme, onClose }: Props) {
 
 // --------------------------------------------------------------------- theme
 
-function ThemeSection({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => void }) {
+function ThemeSection({
+  theme,
+  onSetTheme,
+  t,
+}: {
+  theme: Theme
+  onSetTheme: (next: Theme) => void
+  t: T
+}) {
   return (
     <div className="swin__rows">
-      {THEMES.map((t) => (
-        <label key={t} className="swin__opt">
+      {THEMES.map((option) => (
+        <label key={option} className="swin__opt">
           <input
             type="radio"
             name="theme"
-            checked={t === theme}
-            onChange={() => onSetTheme(t)}
+            checked={option === theme}
+            onChange={() => onSetTheme(option)}
           />
-          {THEME_TITLES[t]}
+          {t(THEME_TITLES[option])}
         </label>
       ))}
     </div>
@@ -101,9 +111,11 @@ function ThemeSection({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: The
 function WorkspaceSection({
   workspace,
   onClose,
+  t,
 }: {
   workspace: Workspace
   onClose: () => void
+  t: T
 }) {
   // The same debounce the task card types into: one write per pause. An empty
   // name is refused by the database layer, so the workspace keeps the old one.
@@ -112,9 +124,7 @@ function WorkspaceSection({
   )
 
   async function remove() {
-    const ok = confirm(
-      `Удалить воркспейс «${workspace.name}»? Вместе с ним удалятся его задачи, метки и заметки.`,
-    )
+    const ok = confirm(t('settings.confirmRemove', { name: workspace.name }))
     if (!ok) return
     await deleteWorkspace(workspace.id)
     onClose()
@@ -123,12 +133,12 @@ function WorkspaceSection({
   return (
     <div className="swin__rows">
       <label className="swin__field">
-        <span className="swin__label">Переименовать воркспейс</span>
+        <span className="swin__label">{t('settings.rename')}</span>
         <input className="field" value={name} onChange={(e) => setName(e.target.value)} />
       </label>
 
       <button className="btn btn--danger" onClick={remove}>
-        Удалить воркспейс
+        {t('settings.remove')}
       </button>
     </div>
   )
@@ -136,7 +146,7 @@ function WorkspaceSection({
 
 // ------------------------------------------------------------------- account
 
-function AccountSection() {
+function AccountSection({ t }: { t: T }) {
   async function exportJson() {
     const json = await exportAll()
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
@@ -151,10 +161,10 @@ function AccountSection() {
   return (
     <div className="swin__rows">
       <button className="btn" onClick={exportJson}>
-        Экспорт в JSON
+        {t('settings.export')}
       </button>
       <button className="btn" onClick={() => void signOut()}>
-        Выйти
+        {t('settings.signOut')}
       </button>
     </div>
   )

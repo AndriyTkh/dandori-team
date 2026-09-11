@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { diffDays, pluralDays } from '../db/dates'
+import { diffDays } from '../db/dates'
+import { useT } from '../i18n'
 import { useToday } from '../state/useToday'
 import type { ID, Task } from '../db/types'
 import './ReminderBanner.css'
@@ -22,6 +23,7 @@ interface Entry {
 
 export function ReminderBanner({ tasks, onOpenTask, onDismiss }: Props) {
   const now = useToday()
+  const t = useT()
 
   const { overdue, dueToday, soon } = useMemo(() => {
     const overdue: Entry[] = []
@@ -58,25 +60,31 @@ export function ReminderBanner({ tasks, onOpenTask, onDismiss }: Props) {
             key={task.id}
             task={task}
             tone="overdue"
-            note={`просрочено на ${pluralDays(-days)}`}
+            note={t.n('reminder.overdue', -days)}
             onOpen={onOpenTask}
           />
         ))}
         {dueToday.map(({ task }) => (
-          <Chip key={task.id} task={task} tone="today" note="сегодня" onOpen={onOpenTask} />
+          <Chip
+            key={task.id}
+            task={task}
+            tone="today"
+            note={t('reminder.today')}
+            onOpen={onOpenTask}
+          />
         ))}
         {soon.map(({ task, days }) => (
           <Chip
             key={task.id}
             task={task}
             tone="soon"
-            note={`через ${pluralDays(days)}`}
+            note={t.n('reminder.soon', days)}
             onOpen={onOpenTask}
           />
         ))}
       </div>
 
-      <button className="reminders__close" onClick={onDismiss} title="Скрыть до следующего входа">
+      <button className="reminders__close" onClick={onDismiss} title={t('reminder.dismiss')}>
         ✕
       </button>
     </div>

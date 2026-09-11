@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getSyncState, onSyncState, type SyncState } from '../sync/sync'
+import { useT } from '../i18n'
 import './SyncBadge.css'
-
-const TITLES: Record<SyncState, string> = {
-  idle: 'Всё сохранено',
-  syncing: 'Синхронизация…',
-  offline: 'Офлайн, изменения сохранятся локально',
-  error: 'Не удалось синхронизироваться',
-}
 
 /**
  * The only network state indicator. It shows up only when something is wrong or
@@ -15,10 +9,12 @@ const TITLES: Record<SyncState, string> = {
  */
 export function SyncBadge() {
   const [state, setState] = useState<SyncState>(getSyncState)
+  const t = useT()
 
   useEffect(() => onSyncState(setState), [])
 
   if (state === 'idle') return null
 
-  return <span className={`sync sync--${state}`} title={TITLES[state]} aria-label={TITLES[state]} />
+  const title = t(`sync.${state}`)
+  return <span className={`sync sync--${state}`} title={title} aria-label={title} />
 }

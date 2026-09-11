@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { TIMELINE_ZOOMS, TIMELINE_ZOOM_TITLES, type TimelineZoom } from '../../state/ui'
+import { type T } from '../../i18n'
+import { TIMELINE_ZOOMS, type TimelineZoom } from '../../state/ui'
 import type { ID, ISODate } from '../../db/types'
 import { clamp, midOf, rangeLabel, type Row, type Scale } from './model'
 
@@ -54,9 +55,10 @@ export interface AxisProps {
   zoom: TimelineZoom | null
   onZoom: (zoom: TimelineZoom) => void
   onOpen: (id: ID) => void
+  t: T
 }
 
-export function Axis({ rows, scale, levels, today, zoom, onZoom, onOpen }: AxisProps) {
+export function Axis({ rows, scale, levels, today, zoom, onZoom, onOpen, t }: AxisProps) {
   const marks = useMemo(() => place(rows, levels, scale), [rows, levels, scale])
   /*
    * Ticks are sparse. With a day step only the week starts get one, otherwise
@@ -84,7 +86,7 @@ export function Axis({ rows, scale, levels, today, zoom, onZoom, onOpen }: AxisP
                 className={`timeline__zoom-btn${z === zoom ? ' timeline__zoom-btn--on' : ''}`}
                 onClick={() => onZoom(z)}
               >
-                {TIMELINE_ZOOM_TITLES[z]}
+                {t(`timeline.zoom.${z}`)}
               </button>
             ))}
           </div>
@@ -119,17 +121,17 @@ export function Axis({ rows, scale, levels, today, zoom, onZoom, onOpen }: AxisP
         <div className="timeline__axis-today" style={{ left: `${midOf(scale, today)}px` }} />
 
         {marks.map((mark) => (
-          <AxisMark key={mark.row.task.id} mark={mark} onOpen={onOpen} />
+          <AxisMark key={mark.row.task.id} mark={mark} onOpen={onOpen} t={t} />
         ))}
       </div>
     </div>
   )
 }
 
-function AxisMark({ mark, onOpen }: { mark: Mark; onOpen: (id: ID) => void }) {
+function AxisMark({ mark, onOpen, t }: { mark: Mark; onOpen: (id: ID) => void; t: T }) {
   const { row } = mark
   const { task } = row
-  const title = `${task.title} · ${rangeLabel(row)}`
+  const title = `${task.title} · ${rangeLabel(row, t.lang)}`
 
   const classes = ['timeline__mark', mark.side === 0 ? 'timeline__mark--up' : 'timeline__mark--down']
   if (row.overdue) classes.push('timeline__mark--overdue')

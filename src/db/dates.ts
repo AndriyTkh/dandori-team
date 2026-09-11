@@ -5,6 +5,9 @@ import type { ISODate } from './types'
  * A date is a `YYYY-MM-DD` string in the user's local time.
  * A Date object is only an intermediate representation, and it is always read
  * and written through its local components, never the UTC ones.
+ *
+ * Arithmetic only. Turning a date into words is a matter of language and lives
+ * in `src/i18n/dates.ts`.
  */
 
 export function toISODate(d: Date): ISODate {
@@ -91,52 +94,4 @@ export function isSameMonth(a: ISODate, b: ISODate): boolean {
 export function isWeekend(s: ISODate): boolean {
   const day = fromISODate(s).getDay()
   return day === 0 || day === 6
-}
-
-const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
-const MONTHS_GEN = [
-  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
-]
-const MONTHS_NOM = [
-  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
-]
-
-export function weekdayShort(s: ISODate): string {
-  return WEEKDAYS[(fromISODate(s).getDay() + 6) % 7]
-}
-
-export function monthNameNominative(s: ISODate): string {
-  return MONTHS_NOM[fromISODate(s).getMonth()]
-}
-
-/** Day number with the month name — for day column headers. */
-export function dayLabel(s: ISODate): string {
-  const d = fromISODate(s)
-  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}`
-}
-
-/** Month name with the year — for the month header. */
-export function monthLabel(s: ISODate): string {
-  return `${monthNameNominative(s)} ${fromISODate(s).getFullYear()}`
-}
-
-/** Relative day label for the day column header. */
-export function relativeDayLabel(s: ISODate, now: ISODate = today()): string | null {
-  const d = diffDays(now, s)
-  if (d === 0) return 'Сегодня'
-  if (d === 1) return 'Завтра'
-  if (d === -1) return 'Вчера'
-  return null
-}
-
-/** Russian plural forms for a number of days. */
-export function pluralDays(n: number): string {
-  const abs = Math.abs(n) % 100
-  const last = abs % 10
-  if (abs > 10 && abs < 20) return `${n} дней`
-  if (last === 1) return `${n} день`
-  if (last >= 2 && last <= 4) return `${n} дня`
-  return `${n} дней`
 }

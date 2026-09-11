@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createNote, deleteNote, updateNote } from '../db/api'
 import { useNotes } from '../db/hooks'
+import { useT, type T } from '../i18n'
 import { emptyOf } from '../lib/empty'
 import { renderMarkdown } from '../lib/markdown'
 import { useAutosave } from '../lib/useAutosave'
@@ -53,6 +54,7 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
   // The row to scroll to once the folders above it are open and it is in the DOM.
   const [scrollTo, setScrollTo] = useState<ID | null>(null)
   const rowsRef = useRef<HTMLDivElement>(null)
+  const t = useT()
 
   const selected = notes.find((n) => n.id === selectedId) ?? null
   const openFile = selected?.kind === 'file' ? selected : null
@@ -137,9 +139,8 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
   }
 
   function remove(note: Note) {
-    const what =
-      note.kind === 'folder' ? `папку «${note.name}» со всем содержимым` : `заметку «${note.name}»`
-    if (!confirm(`Удалить ${what}?`)) return
+    const key = note.kind === 'folder' ? 'notes.confirmDeleteFolder' : 'notes.confirmDeleteFile'
+    if (!confirm(t(key, { name: note.name }))) return
     // deleteNote takes down the subtree itself, no need to duplicate the walk here.
     void deleteNote(note.id)
   }
@@ -152,16 +153,16 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
         <div className="notes__head">
           <button
             className="notes__head-btn"
-            title="Новая заметка"
-            aria-label="Новая заметка"
+            title={t('notes.newFile')}
+            aria-label={t('notes.newFile')}
             onClick={() => void create('file')}
           >
             ＋📄
           </button>
           <button
             className="notes__head-btn"
-            title="Новая папка"
-            aria-label="Новая папка"
+            title={t('notes.newFolder')}
+            aria-label={t('notes.newFolder')}
             onClick={() => void create('folder')}
           >
             ＋📁
@@ -197,13 +198,13 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
                   onCancel={() => setRenamingId(null)}
                 />
               ) : (
-                <span className="notes__name">{note.name.trim() || 'Без названия'}</span>
+                <span className="notes__name">{note.name.trim() || t('common.untitled')}</span>
               )}
 
               <button
                 className="notes__more"
-                title="Действия"
-                aria-label="Действия"
+                title={t('notes.actions')}
+                aria-label={t('notes.actions')}
                 onClick={(e) => {
                   e.stopPropagation()
                   const box = e.currentTarget.getBoundingClientRect()
@@ -219,7 +220,7 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
 
       <section className="notes__editor">
         {openFile && (
-          <NoteEditor key={openFile.id} note={openFile} onBack={() => setDetail(false)} />
+          <NoteEditor key={openFile.id} note={openFile} onBack={() => setDetail(false)} t={t} />
         )}
       </section>
 
@@ -231,6 +232,7 @@ export function Notes({ workspaceId, openNoteId, onOpened }: NotesProps) {
           onClose={() => setMenu(null)}
           onRename={() => setRenamingId(menuNote.id)}
           onRemove={() => remove(menuNote)}
+          t={t}
         />
       )}
     </div>
@@ -331,6 +333,7 @@ function RowMenu({
   onClose,
   onRename,
   onRemove,
+  t,
 }: {
   x: number
   y: number
@@ -338,6 +341,7 @@ function RowMenu({
   onClose: () => void
   onRename: () => void
   onRemove: () => void
+  t: T
 }) {
   useEscape(onClose)
 
@@ -372,7 +376,7 @@ function RowMenu({
             onRename()
           }}
         >
-          Переименовать
+          {t('notes.rename')}
         </button>
         <button
           className="notes__menu-item notes__menu-item--danger"
@@ -381,7 +385,7 @@ function RowMenu({
             onRemove()
           }}
         >
-          Удалить
+          {t('notes.delete')}
         </button>
       </div>
     </>
@@ -390,7 +394,7 @@ function RowMenu({
 
 // -------------------------------------------------------------------- editor
 
-function NoteEditor({ note, onBack }: { note: Note; onBack: () => void }) {
+function NoteEditor({ note, onBack, t }: { note: Note; onBack: () => void; t: T }) {
   const [preview, setPreview] = useState(false)
   const [name, setName] = useAutosave(note.name, (value) => void updateNote(note.id, { name: value }))
   const [content, setContent] = useAutosave(note.content, (value) =>
@@ -402,17 +406,17 @@ function NoteEditor({ note, onBack }: { note: Note; onBack: () => void }) {
   return (
     <>
       <div className="notes__bar">
-        <button className="notes__back" onClick={onBack} aria-label="К дереву">
+        <button className="notes__back" onClick={onBack} aria-label={t('notes.back')}>
           ‹
         </button>
         <input
           className="notes__title"
           value={name}
-          placeholder="Название"
+          placeholder={t('notes.name')}
           onChange={(e) => setName(e.target.value)}
         />
         <button className="notes__link" onClick={() => setPreview((v) => !v)}>
-          {preview ? 'Править' : 'Просмотр'}
+          {preview ? t('md.edit') : t('md.preview')}
         </button>
       </div>
 

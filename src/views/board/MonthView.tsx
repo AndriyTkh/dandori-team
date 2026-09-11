@@ -1,15 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import {
-  addMonths,
-  fromISODate,
-  isSameMonth,
-  isWeekend,
-  monthGrid,
-  monthLabel,
-  weekdayShort,
-} from '../../db/dates'
+import { addMonths, fromISODate, isSameMonth, isWeekend, monthGrid } from '../../db/dates'
+import { useT, type T } from '../../i18n'
+import { monthLabel, weekdayShort } from '../../i18n/dates'
 import type { ID, ISODate, Label, Task } from '../../db/types'
 import { emptyOf } from '../../lib/empty'
 import { columnId } from './model'
@@ -27,6 +21,7 @@ interface Props {
 export function MonthView({ workspaceId, today, groups, labels, onOpenTask }: Props) {
   const [anchor, setAnchor] = useState(today)
   const cells = useMemo(() => monthGrid(anchor), [anchor])
+  const t = useT()
 
   return (
     <div className="board__month">
@@ -34,27 +29,27 @@ export function MonthView({ workspaceId, today, groups, labels, onOpenTask }: Pr
         <button
           className="btn btn--quiet"
           onClick={() => setAnchor(addMonths(anchor, -1))}
-          aria-label="Предыдущий месяц"
+          aria-label={t('board.prevMonth')}
         >
           ‹
         </button>
-        <span className="board__month-title">{monthLabel(anchor)}</span>
+        <span className="board__month-title">{monthLabel(anchor, t.lang)}</span>
         <button
           className="btn btn--quiet"
           onClick={() => setAnchor(addMonths(anchor, 1))}
-          aria-label="Следующий месяц"
+          aria-label={t('board.nextMonth')}
         >
           ›
         </button>
         <button className="btn" onClick={() => setAnchor(today)}>
-          Сегодня
+          {t('board.today')}
         </button>
       </div>
 
       <div className="board__weekdays">
         {cells.slice(0, 7).map((date) => (
           <span key={date} className="board__weekday">
-            {weekdayShort(date)}
+            {weekdayShort(date, t.lang)}
           </span>
         ))}
       </div>
@@ -70,6 +65,7 @@ export function MonthView({ workspaceId, today, groups, labels, onOpenTask }: Pr
             tasks={groups.get(date) ?? emptyOf<Task>()}
             labels={labels}
             onOpenTask={onOpenTask}
+            t={t}
           />
         ))}
       </div>
@@ -85,6 +81,7 @@ function MonthCell({
   tasks,
   labels,
   onOpenTask,
+  t,
 }: {
   workspaceId: ID
   date: ISODate
@@ -93,6 +90,7 @@ function MonthCell({
   tasks: Task[]
   labels: Label[]
   onOpenTask: (id: ID) => void
+  t: T
 }) {
   const [adding, setAdding] = useState(false)
   const { setNodeRef, isOver } = useDroppable({ id: columnId(date) })
@@ -111,7 +109,11 @@ function MonthCell({
     <div className={className} ref={setNodeRef}>
       <div className="board__cell-head">
         <span className="board__cell-num">{fromISODate(date).getDate()}</span>
-        <button className="board__add" onClick={() => setAdding(true)} aria-label="Новая задача">
+        <button
+          className="board__add"
+          onClick={() => setAdding(true)}
+          aria-label={t('board.newTask')}
+        >
           +
         </button>
       </div>

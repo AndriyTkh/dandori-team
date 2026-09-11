@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { signIn } from '../auth/useSession'
+import { useT } from '../i18n'
 import './SignIn.css'
 
 /** Email and password sign-in. There is no sign-up: accounts are created in the Supabase dashboard. */
@@ -8,6 +9,7 @@ export function SignIn() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const t = useT()
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -16,7 +18,7 @@ export function SignIn() {
     try {
       await signIn(email, password)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось войти')
+      setError(err instanceof Error ? err.message : t('signin.failed'))
       setBusy(false)
     }
   }
@@ -38,7 +40,7 @@ export function SignIn() {
         <input
           className="field"
           type="password"
-          placeholder="Пароль"
+          placeholder={t('signin.password')}
           autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -48,7 +50,7 @@ export function SignIn() {
         {error && <div className="signin__error">{error}</div>}
 
         <button className="btn btn--primary signin__submit" type="submit" disabled={busy}>
-          {busy ? 'Вход…' : 'Войти'}
+          {busy ? t('signin.busy') : t('signin.submit')}
         </button>
       </form>
     </div>

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { dayLabel, isWeekend, relativeDayLabel, weekdayShort } from '../../db/dates'
+import { isWeekend } from '../../db/dates'
+import { useT } from '../../i18n'
+import { dayLabel, relativeDayLabel, weekdayShort } from '../../i18n/dates'
 import type { ID, ISODate, Label, Task } from '../../db/types'
 import { columnId, columnKey } from './model'
 import { AddTaskField } from './AddTaskField'
@@ -20,8 +22,9 @@ interface Props {
 export function DayColumn({ workspaceId, date, today, tasks, labels, onOpenTask }: Props) {
   const [adding, setAdding] = useState(false)
   const { setNodeRef, isOver } = useDroppable({ id: columnId(date) })
+  const t = useT()
 
-  const relative = date ? relativeDayLabel(date, today) : null
+  const relative = date ? relativeDayLabel(date, t.lang, today) : null
   const className = [
     'board__col',
     date ? 'board__col--day' : 'board__col--nodate',
@@ -37,20 +40,24 @@ export function DayColumn({ workspaceId, date, today, tasks, labels, onOpenTask 
       <header className="board__col-head">
         {date ? (
           <>
-            <span className="board__col-date">{dayLabel(date)}</span>
-            <span className="board__col-wd">{weekdayShort(date)}</span>
+            <span className="board__col-date">{dayLabel(date, t.lang)}</span>
+            <span className="board__col-wd">{weekdayShort(date, t.lang)}</span>
             {relative && <span className="board__col-rel">{relative}</span>}
           </>
         ) : (
-          <span className="board__col-date">Без даты</span>
+          <span className="board__col-date">{t('board.noDate')}</span>
         )}
-        <button className="board__add" onClick={() => setAdding(true)} aria-label="Новая задача">
+        <button
+          className="board__add"
+          onClick={() => setAdding(true)}
+          aria-label={t('board.newTask')}
+        >
           +
         </button>
       </header>
 
       <div className="board__list">
-        <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={tasks.map((x) => x.id)} strategy={verticalListSortingStrategy}>
           {tasks.map((task) => (
             <TaskCard
               key={task.id}

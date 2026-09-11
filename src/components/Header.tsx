@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createWorkspace } from '../db/api'
 import type { ID, Label, Workspace } from '../db/types'
-import { TAB_TITLES, TABS, type Tab } from '../state/ui'
+import { useT, type T } from '../i18n'
+import { TABS, type Tab } from '../state/ui'
 import { LabelFilter } from './LabelFilter'
 import { SyncBadge } from './SyncBadge'
 import './Header.css'
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function Header(props: Props) {
+  const t = useT()
   const current = props.workspaces.find((w) => w.id === props.currentId) ?? null
 
   return (
@@ -27,6 +29,7 @@ export function Header(props: Props) {
         workspaces={props.workspaces}
         current={current}
         onSelect={props.onSelectWorkspace}
+        t={t}
       />
 
       {/* Nothing to switch between until there is a workspace. */}
@@ -38,7 +41,7 @@ export function Header(props: Props) {
               className={`header__tab${tab === props.tab ? ' header__tab--on' : ''}`}
               onClick={() => props.onSelectTab(tab)}
             >
-              {TAB_TITLES[tab]}
+              {t(`tab.${tab}`)}
             </button>
           ))}
       </nav>
@@ -68,17 +71,19 @@ function WorkspaceMenu({
   workspaces,
   current,
   onSelect,
+  t,
 }: {
   workspaces: Workspace[]
   current: Workspace | null
   onSelect: (id: ID) => void
+  t: T
 }) {
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
   const ref = useOutsideClick<HTMLDivElement>(close)
 
   async function add() {
-    const name = prompt('Название воркспейса')
+    const name = prompt(t('header.workspaceName'))
     if (name === null) return
     setOpen(false)
     onSelect(await createWorkspace(name))
@@ -107,7 +112,7 @@ function WorkspaceMenu({
           ))}
           <div className="menu__sep" />
           <button className="menu__item" onClick={add}>
-            Новый воркспейс
+            {t('header.newWorkspace')}
           </button>
         </div>
       )}
