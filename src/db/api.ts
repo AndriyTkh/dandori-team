@@ -1,5 +1,6 @@
 import { db, type Local } from './local'
 import { requestPush } from '../sync/sync'
+import { translate } from '../i18n'
 import type {
   GcalConfig,
   ID,
@@ -17,6 +18,10 @@ import type {
  * Everything is written to the local database right away; the push to the
  * server happens in the background.
  * Components must never talk to Supabase directly.
+ *
+ * A row created without a name takes a default one out of the dictionary and
+ * keeps it: the name is the thing's own from then on, and switching the
+ * interface to the other language does not rename what is already there.
  */
 
 const now = () => new Date().toISOString()
@@ -46,7 +51,7 @@ export async function createWorkspace(name: string): Promise<ID> {
   const ts = now()
   const row: Local<Workspace> = {
     id: uid(),
-    name: name.trim() || 'Без названия',
+    name: name.trim() || translate('common.untitled'),
     gcal_sync: false,
     gcal: null,
     position: (existing.at(-1)?.position ?? 0) + POS_STEP,
@@ -100,7 +105,7 @@ export async function createLabel(
   const row: Local<Label> = {
     id: uid(),
     workspace_id: workspaceId,
-    name: name.trim() || 'Метка',
+    name: name.trim() || translate('label.default'),
     color,
     position: (existing.at(-1)?.position ?? 0) + POS_STEP,
     created_at: ts,
@@ -160,7 +165,7 @@ export async function createTask(workspaceId: ID, input: NewTask): Promise<ID> {
   const row: Local<Task> = {
     id: uid(),
     workspace_id: workspaceId,
-    title: input.title.trim() || 'Без названия',
+    title: input.title.trim() || translate('common.untitled'),
     description: input.description ?? '',
     start_date: input.start_date ?? null,
     due_date: due,
@@ -330,7 +335,7 @@ export async function createNote(
     workspace_id: workspaceId,
     parent_id: parentId,
     kind,
-    name: name.trim() || (kind === 'folder' ? 'Новая папка' : 'Новая заметка'),
+    name: name.trim() || translate(kind === 'folder' ? 'notes.newFolder' : 'notes.newFile'),
     content: '',
     position: (siblings.at(-1)?.position ?? 0) + POS_STEP,
     created_at: ts,
