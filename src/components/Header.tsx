@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createWorkspace, deleteWorkspace, exportAll, renameWorkspace } from '../db/api'
+import { createWorkspace } from '../db/api'
 import type { ID, Label, Workspace } from '../db/types'
-import { signOut } from '../auth/useSession'
-import { TAB_TITLES, TABS, THEMES, type Tab, type Theme } from '../state/ui'
+import { TAB_TITLES, TABS, type Tab } from '../state/ui'
 import { LabelFilter } from './LabelFilter'
 import { SyncBadge } from './SyncBadge'
 import './Header.css'
@@ -16,14 +15,7 @@ interface Props {
   labels: Label[]
   activeLabels: ID[]
   onToggleLabel: (id: ID) => void
-  theme: Theme
-  onSetTheme: (theme: Theme) => void
-}
-
-const THEME_TITLES: Record<Theme, string> = {
-  system: 'Как в системе',
-  light: 'Светлая',
-  dark: 'Тёмная',
+  onOpenSettings: () => void
 }
 
 export function Header(props: Props) {
@@ -60,11 +52,11 @@ export function Header(props: Props) {
           />
         )}
         <SyncBadge />
-        <SettingsMenu
-          current={current}
-          theme={props.theme}
-          onSetTheme={props.onSetTheme}
-        />
+        {/* The gear opens the settings window — a panel over the page, drawn by
+            the app itself, not a menu hanging off the header. */}
+        <button className="btn btn--quiet header__gear" onClick={props.onOpenSettings}>
+          ⚙
+        </button>
       </div>
     </header>
   )
@@ -116,91 +108,6 @@ function WorkspaceMenu({
           <div className="menu__sep" />
           <button className="menu__item" onClick={add}>
             Новый воркспейс
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ----------------------------------------------------------------- settings
-
-function SettingsMenu({
-  current,
-  theme,
-  onSetTheme,
-}: {
-  current: Workspace | null
-  theme: Theme
-  onSetTheme: (t: Theme) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const close = useCallback(() => setOpen(false), [])
-  const ref = useOutsideClick<HTMLDivElement>(close)
-
-  async function rename() {
-    if (!current) return
-    const name = prompt('Новое название', current.name)
-    if (name === null) return
-    await renameWorkspace(current.id, name)
-    setOpen(false)
-  }
-
-  async function remove() {
-    if (!current) return
-    const ok = confirm(
-      `Удалить воркспейс «${current.name}»? Вместе с ним удалятся его задачи, метки и заметки.`,
-    )
-    if (!ok) return
-    await deleteWorkspace(current.id)
-    setOpen(false)
-  }
-
-  async function exportJson() {
-    const json = await exportAll()
-    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `dandori-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    // Revoking synchronously cancels the download in some browsers, so defer it.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
-    setOpen(false)
-  }
-
-  return (
-    <div className="menu" ref={ref}>
-      <button className="btn btn--quiet header__gear" onClick={() => setOpen((v) => !v)}>
-        ⚙
-      </button>
-
-      {open && (
-        <div className="menu__pop menu__pop--right">
-          <div className="menu__label">Тема</div>
-          {THEMES.map((t) => (
-            <button
-              key={t}
-              className={`menu__item${t === theme ? ' menu__item--on' : ''}`}
-              onClick={() => onSetTheme(t)}
-            >
-              {THEME_TITLES[t]}
-            </button>
-          ))}
-
-          <div className="menu__sep" />
-          <button className="menu__item" onClick={rename} disabled={!current}>
-            Переименовать воркспейс
-          </button>
-          <button className="menu__item menu__item--danger" onClick={remove} disabled={!current}>
-            Удалить воркспейс
-          </button>
-
-          <div className="menu__sep" />
-          <button className="menu__item" onClick={exportJson}>
-            Экспорт в JSON
-          </button>
-          <button className="menu__item" onClick={() => void signOut()}>
-            Выйти
           </button>
         </div>
       )}

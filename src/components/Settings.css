@@ -1,0 +1,219 @@
+.swin__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-7);
+  background: var(--scrim);
+}
+
+/*
+ * Head across the top, sections down the side, the chosen section beside them —
+ * the shape an editor's settings have. Three sections make a short list; it is
+ * still the structure, because the list is what the next section joins.
+ */
+.swin {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "head head"
+    "nav main";
+  width: 100%;
+  max-width: 620px;
+  min-height: 260px;
+  max-height: 100%;
+  overflow: hidden;
+  /* Over a dimmed page the plain border disappears; the window needs its own
+     edge in both themes, not the one the flat surfaces share. */
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-pop);
+}
+
+.swin__head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.swin__title {
+  font-size: var(--fz-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.swin__close {
+  width: 26px;
+  height: 26px;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.swin__nav {
+  grid-area: nav;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-4);
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--bg-sunken);
+}
+
+.swin__section {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: var(--fz-md);
+  text-align: left;
+  transition:
+    background-color var(--t),
+    color var(--t);
+}
+
+.swin__section:hover {
+  color: var(--text);
+}
+
+.swin__section--on {
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-card);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.swin__main {
+  grid-area: main;
+  padding: var(--sp-5) var(--sp-6);
+  overflow-y: auto;
+}
+
+.swin__rows {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-5);
+}
+
+.swin__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: 100%;
+}
+
+.swin__label {
+  color: var(--text-faint);
+  font-size: var(--fz-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.swin__opt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fz-md);
+  cursor: pointer;
+}
+
+.swin__opt input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+/* Phone: a full-screen sheet, and the side list lies down into a strip */
+@media (max-width: 720px) {
+  .swin__scrim {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .swin {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "head"
+      "nav"
+      "main";
+    max-width: none;
+    min-height: 100%;
+    border: none;
+    border-radius: 0;
+  }
+
+  /*
+   * A rail 168px wide would leave a form 220px to stand in. The same list runs
+   * across instead — one row of the sections, scrolled sideways once there are
+   * more of them than the screen holds.
+   */
+  .swin__nav {
+    flex-direction: row;
+    gap: var(--sp-2);
+    padding: var(--sp-2) max(var(--sp-4), env(safe-area-inset-left)) var(--sp-2)
+      max(var(--sp-4), env(safe-area-inset-right));
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .swin__section {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-height: var(--tap);
+    padding: 0 var(--sp-5);
+    white-space: nowrap;
+  }
+
+  .swin__section:active {
+    background: var(--bg-active);
+  }
+
+  .swin__head {
+    min-height: var(--tap);
+    padding-left: max(var(--sp-5), env(safe-area-inset-left));
+    padding-right: max(var(--sp-5), env(safe-area-inset-right));
+  }
+
+  .swin__close {
+    width: var(--tap);
+    height: var(--tap);
+    margin-right: calc(var(--sp-3) * -1);
+    font-size: var(--fz-lg);
+  }
+
+  .swin__close:active {
+    background: var(--bg-active);
+    color: var(--text);
+  }
+
+  .swin__main {
+    padding: var(--sp-5) max(var(--sp-5), env(safe-area-inset-right))
+      /* Full-bleed: the last control must clear the home bar. */
+      calc(var(--sp-7) + env(safe-area-inset-bottom)) max(var(--sp-5), env(safe-area-inset-left));
+  }
+
+  .swin__opt {
+    min-height: var(--tap);
+    font-size: var(--fz-md);
+  }
+
+  .swin__opt input {
+    width: 22px;
+    height: 22px;
+  }
+
+  .swin__rows .btn {
+    min-height: var(--tap);
+  }
+}

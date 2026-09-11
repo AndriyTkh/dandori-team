@@ -4,6 +4,7 @@ import { Header } from './components/Header'
 import { TabBar } from './components/TabBar'
 import { ReminderBanner } from './components/ReminderBanner'
 import { TaskDialog } from './components/TaskDialog'
+import { Settings } from './components/Settings'
 import { Board } from './views/Board'
 import { Timeline } from './views/Timeline'
 import { Notes } from './views/Notes'
@@ -41,6 +42,7 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
   // A note the task card asked to open. Cleared once the notes view honours it.
   const [openNoteId, setOpenNoteId] = useState<ID | null>(null)
   const [remindersHidden, setRemindersHidden] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useSync()
 
@@ -62,6 +64,8 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
 
   if (!workspaces) return null
 
+  const current = workspaces.find((w) => w.id === workspaceId) ?? null
+
   /*
    * With no workspace there is nothing for a tab or a view to stand on, so only
    * the header is drawn: its menu is where the first workspace gets made. The app
@@ -79,9 +83,18 @@ function Shell({ theme, onSetTheme }: { theme: Theme; onSetTheme: (t: Theme) => 
         labels={labels}
         activeLabels={activeLabels}
         onToggleLabel={toggleLabel}
-        theme={theme}
-        onSetTheme={onSetTheme}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
+
+      {/* Over the whole page, and reachable with no workspace to open it from. */}
+      {settingsOpen && (
+        <Settings
+          workspace={current}
+          theme={theme}
+          onSetTheme={onSetTheme}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
 
       {workspaceId && (
         <>
