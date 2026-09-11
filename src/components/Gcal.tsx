@@ -157,9 +157,13 @@ function GcalForm({
 }) {
   const calendars = useCalendars()
   const list = calendars ?? []
+  // Terms saved before the main calendar was called `primary` name it by the
+  // account's address. It is the same calendar, so it is shown as that one
+  // entry rather than as a second, unnamed one beside it.
+  const chosen = list.find((c) => c.listedAs === value.calendar_id)?.id ?? value.calendar_id
   // A calendar Google did not list — it is still what the event is set to, and
   // drawing the picker without it would quietly move the event somewhere else.
-  const missing = !list.some((c) => c.id === value.calendar_id)
+  const missing = !list.some((c) => c.id === chosen)
 
   function setReminder(i: number, patch: Partial<GcalReminder>) {
     onChange({
@@ -188,12 +192,12 @@ function GcalForm({
           <span className="gform__label">{t('gcal.calendar')}</span>
           <select
             className="field"
-            value={value.calendar_id}
+            value={chosen}
             onChange={(e) => onChange({ ...value, calendar_id: e.target.value })}
           >
             {missing && (
-              <option value={value.calendar_id}>
-                {value.calendar_id === 'primary' ? t('gcal.calendarPrimary') : value.calendar_id}
+              <option value={chosen}>
+                {chosen === 'primary' ? t('gcal.calendarPrimary') : chosen}
               </option>
             )}
             {list.map((c) => (

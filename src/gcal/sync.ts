@@ -13,7 +13,7 @@
  * write it can well afford to repeat.
  */
 import { db, setMeta } from '../db/local'
-import { requestPush } from '../sync/sync'
+import { currentSession, requestPush } from '../sync/sync'
 import { currentZone, deleteEvent, GcalError, putEvent } from './api'
 import { getToken, isConnected } from './client'
 import { gcalConfigOf, type GcalConfig, type ID, type Task, type Workspace } from '../db/types'
@@ -104,13 +104,35 @@ function configFor(task: Task, workspace: Workspace | undefined): GcalConfig | n
  * cache.
  */
 async function placed(taskId: ID, calendar: string | null): Promise<void> {
-  const row = await db.tasks.get(taskId)
-  if (!row || row.gcal_placed === calendar) return
-  await db.tasks.put({ ...row, gcal_placed: calendar, _dirty: 1 })
-  requestPush()
+  // Read and written as one step, or an edit saved in between is put back.
+  const changed = await db.transaction('rw', db.tasks, async () => {
+    const row = await db.tasks.get(taskId)
+    if (!row || row.gcal_placed === calendar) return false
+    await db.tasks.put({ ...row, gcal_placed: calendar, _dirty: 1 })
+    return true
+  })
+  if (changed) requestPush()
 }
 
-async function reconcileTask(task: Task, cfg: GcalConfig | null, sent: Sent | null): Promise<void> {
+/*
+ * The pass outlives a sign-out otherwise. Google answers slowly enough that a
+ * pass started before it went on creating events after it — events whose
+ * placement then had no row left to be written to — and wrote its notes, the
+ * titles in them, into the database the next account opens. Checked before
+ * every call to Google and every local write, like the sync's own exchange.
+ */
+class SignedOut extends Error {}
+
+function still(mine: number): void {
+  if (mine !== currentSession()) throw new SignedOut()
+}
+
+async function reconcileTask(
+  task: Task,
+  cfg: GcalConfig | null,
+  sent: Sent | null,
+  mine: number,
+): Promise<void> {
   /*
    * Where the event stands, whoever put it there. Carrying no stamp of its own,
    * the record is refused by the server when another device has edited the task
@@ -121,8 +143,11 @@ async function reconcileTask(task: Task, cfg: GcalConfig | null, sent: Sent | nu
   const standing = task.gcal_placed ?? sent?.cal ?? null
 
   if (!cfg) {
+    still(mine)
     if (standing) await deleteEvent(standing, task.id)
+    still(mine)
     if (sent) await db.meta.delete(sentKey(task.id))
+    still(mine)
     if (standing) await placed(task.id, null)
     return
   }
@@ -134,10 +159,14 @@ async function reconcileTask(task: Task, cfg: GcalConfig | null, sent: Sent | nu
 
   // Moved to another calendar. Google keeps events per calendar, so the old copy
   // has to go before the new one is written, or both would stand there.
+  still(mine)
   if (standing && standing !== cfg.calendar_id) await deleteEvent(standing, task.id)
 
+  still(mine)
   await putEvent(task, cfg, standing === cfg.calendar_id)
+  still(mine)
   await setMeta(sentKey(task.id), JSON.stringify({ cal: cfg.calendar_id, sig }))
+  still(mine)
   await placed(task.id, cfg.calendar_id)
 }
 
@@ -163,6 +192,7 @@ export async function reconcile(): Promise<void> {
   if ((await getToken()) === null) return
 
   running = true
+  const mine = currentSession()
   try {
     const spaces = new Map((await db.workspaces.toArray()).map((w) => [w.id, w]))
     const notes = await sentNotes()
@@ -173,8 +203,9 @@ export async function reconcile(): Promise<void> {
       // Nothing wanted and nothing standing: the overwhelming majority of rows.
       if (!cfg && task.gcal_placed === null && !sent) continue
       try {
-        await reconcileTask(task, cfg, sent)
+        await reconcileTask(task, cfg, sent, mine)
       } catch (err) {
+        if (err instanceof SignedOut) return
         if (err instanceof GcalError && spent(err)) {
           // Out of quota: every other task would collect the same answer, so the
           // pass stops rather than spend the rest of itself on it.

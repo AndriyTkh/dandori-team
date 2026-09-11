@@ -17,6 +17,8 @@ const EVENT_MINUTES = 30
 
 export interface Calendar {
   id: string
+  /** The id Google lists it under — for the main calendar, the account's address. */
+  listedAs: string
   summary: string
   primary: boolean
 }
@@ -86,6 +88,7 @@ export async function listCalendars(): Promise<Calendar[]> {
     // Left as two ids it is one calendar offered twice, and choosing the other
     // of them moves the event to where it already stands.
     id: c.primary === true ? 'primary' : c.id,
+    listedAs: c.id,
     summary: c.summary ?? c.id,
     primary: c.primary === true,
   }))
