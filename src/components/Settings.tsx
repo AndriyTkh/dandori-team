@@ -3,6 +3,7 @@ import { deleteWorkspace, exportAll, renameWorkspace } from '../db/api'
 import { signOut } from '../auth/useSession'
 import { useAutosave } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
+import { GcalSection } from './Gcal'
 import { useT, type T } from '../i18n'
 import { LANGS, setLang, THEMES, useLang, type Lang, type Theme } from '../state/ui'
 import type { Workspace } from '../db/types'
@@ -23,13 +24,14 @@ const LANG_TITLES: Record<Lang, string> = {
   en: 'English',
 }
 
-const SECTIONS = ['theme', 'language', 'workspace', 'account'] as const
+const SECTIONS = ['theme', 'language', 'workspace', 'gcal', 'account'] as const
 type Section = (typeof SECTIONS)[number]
 
 const SECTION_TITLES = {
   theme: 'settings.theme',
   language: 'settings.language',
   workspace: 'settings.workspace',
+  gcal: 'gcal.section',
   account: 'settings.account',
 } as const
 
@@ -82,6 +84,7 @@ export function Settings({ workspace, theme, onSetTheme, onClose }: Props) {
           {section === 'workspace' && workspace && (
             <WorkspaceSection key={workspace.id} workspace={workspace} onClose={onClose} t={t} />
           )}
+          {section === 'gcal' && <GcalSection workspace={workspace} t={t} />}
           {section === 'account' && <AccountSection t={t} />}
         </div>
       </div>
