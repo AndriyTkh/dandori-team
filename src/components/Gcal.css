@@ -191,11 +191,6 @@
   accent-color: var(--accent);
 }
 
-.gsec__count {
-  color: var(--text-dim);
-  font-size: var(--fz-sm);
-}
-
 @media (max-width: 720px) {
   .gwin__scrim {
     align-items: stretch;

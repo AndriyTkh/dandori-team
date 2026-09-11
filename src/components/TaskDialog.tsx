@@ -324,7 +324,10 @@ function GcalRow({
   onSetOpen: (v: boolean) => void
   t: T
 }) {
-  if (!task.due_date) return <p className="dialog__gcal-none">{t('gcal.needsDue')}</p>
+  // An event is made on the deadline's date, so a task without one has nothing
+  // to offer here. Nothing is drawn rather than explained: the row appears the
+  // moment a deadline does.
+  if (!task.due_date) return null
 
   const on = task.gcal != null
 

@@ -177,10 +177,6 @@ export const TEXT = {
     en: 'Sync with Google Calendar',
   },
   'gcal.edit': { ru: 'Править', en: 'Edit' },
-  'gcal.needsDue': {
-    ru: 'Событие создаётся на дату дедлайна — у задачи её нет',
-    en: 'An event needs a deadline, and this task has none',
-  },
 
   'gcal.event': { ru: 'Событие в календаре', en: 'Calendar event' },
   'gcal.time': { ru: 'Время', en: 'Time' },
@@ -266,15 +262,6 @@ export const PLURALS = {
       other: 'За {n} часов',
     },
     en: { one: '{n} hour before', other: '{n} hours before' },
-  },
-  'gcal.synced': {
-    ru: {
-      one: 'В календарь добавлена {n} задача',
-      few: 'В календарь добавлено {n} задачи',
-      many: 'В календарь добавлено {n} задач',
-      other: 'В календарь добавлено {n} задач',
-    },
-    en: { one: '{n} task added to the calendar', other: '{n} tasks added to the calendar' },
   },
 } as const satisfies Record<string, Plural>
 

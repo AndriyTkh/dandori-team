@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { listCalendars, type Calendar } from '../gcal/api'
 import { connect, disconnect, getGcalState, onGcalState, type GcalState } from '../gcal/client'
 import { reconcile } from '../gcal/sync'
-import { countWorkspaceGcalTasks, setTaskGcal, setWorkspaceGcal } from '../db/api'
+import { setTaskGcal, setWorkspaceGcal } from '../db/api'
 import { useEscape } from '../lib/useEscape'
 import type { T } from '../i18n'
 import type { GcalConfig, GcalReminder, ID, Workspace } from '../db/types'
@@ -355,7 +355,6 @@ export function GcalEventDialog({
  */
 export function GcalSection({ workspace, t }: { workspace: Workspace | null; t: T }) {
   const state = useGcalState()
-  const [added, setAdded] = useState<number | null>(null)
   const defaults = defaultsOf(workspace)
 
   async function syncWhole(on: boolean) {
@@ -363,8 +362,8 @@ export function GcalSection({ workspace, t }: { workspace: Workspace | null; t: 
     // The defaults go in with the switch: they are the terms every task it
     // touches is put into the calendar on, so they cannot stay unwritten.
     await setWorkspaceGcal(workspace.id, { gcal_sync: on, gcal: defaults })
-    if (!on) return setAdded(null)
-    setAdded(await countWorkspaceGcalTasks(workspace.id))
+    // The tick itself is the answer. Counting what it caught would be a third
+    // indicator, and one that speaks before the calendar has been told anything.
     void reconcile()
   }
 
@@ -390,8 +389,6 @@ export function GcalSection({ workspace, t }: { workspace: Workspace | null; t: 
             />
             <span>{t('gcal.workspaceSync')}</span>
           </label>
-
-          {added !== null && <div className="gsec__count">{t.n('gcal.synced', added)}</div>}
         </>
       )}
     </div>

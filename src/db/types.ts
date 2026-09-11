@@ -102,12 +102,11 @@ export interface Task extends Synced {
   label_ids: ID[]
   custom_fields: CustomField[]
   /**
-   * The event mirroring this task, once it has been created. The id is derived
-   * from the task's own: Google takes an id on insert, so two devices reaching
-   * for the calendar at once land on one event instead of two.
+   * How this task's event is made, or `null` when it is not synced at all. The
+   * event's own id is not stored: it is the task's id with the dashes taken out,
+   * so it is always at hand, and Google takes an id on insert — two devices
+   * reaching for the calendar at once land on one event instead of two.
    */
-  gcal_event_id: string | null
-  /** `null` when the task is not synced at all. */
   gcal: GcalConfig | null
 }
 

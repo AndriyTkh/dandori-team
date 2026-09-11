@@ -7,9 +7,10 @@
 -- reminders come from — the app itself cannot reach him with its tab closed.
 -- Two columns on each side carry it:
 --
---   tasks.gcal_event_id   the event this task owns, null until it has one
---   tasks.gcal            how that event is made: its clock time, which calendar
---                         it belongs to, its colour, and its reminders
+--   tasks.gcal            how the event is made: its clock time, which calendar
+--                         it belongs to, its colour, and its reminders.
+--                         The event's own id is not stored — it is the task's id
+--                         without the dashes, which Google accepts on insert.
 --   workspaces.gcal_sync  put every dated task of this workspace in the calendar
 --   workspaces.gcal       the defaults the whole-workspace sync hands out
 --
@@ -19,7 +20,6 @@
 -- `gcal.time` is the only clock in this database. It belongs to the event, not to
 -- the task: no view reads it, nothing sorts by it, and it leaves with the column.
 
-alter table public.tasks add column if not exists gcal_event_id text;
 alter table public.tasks add column if not exists gcal jsonb;
 
 alter table public.workspaces add column if not exists gcal_sync boolean not null default false;

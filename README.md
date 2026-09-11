@@ -51,6 +51,9 @@ npm run icons
    and Preview:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_GOOGLE_CLIENT_ID` — optional, and only for the Google Calendar
+     section. It is read at build time, so a deploy made without it ships a
+     build whose calendar reports itself unconfigured.
 
    The values come from Supabase → Project Settings → API. They are not in the
    repository and must not be: Vite inlines them into the bundle at build time,

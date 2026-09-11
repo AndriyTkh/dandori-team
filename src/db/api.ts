@@ -176,7 +176,6 @@ export async function createTask(workspaceId: ID, input: NewTask): Promise<ID> {
     position: await nextTaskPosition(workspaceId, due),
     label_ids: input.label_ids ?? [],
     custom_fields: [],
-    gcal_event_id: null,
     gcal: null,
     created_at: ts,
     updated_at: ts,
@@ -242,7 +241,7 @@ export async function setTaskGcal(id: ID, cfg: GcalConfig | null): Promise<void>
   if (!row) return
   // The event's id is derived from the task's, so forgetting it costs nothing
   // and leaving it behind would claim an event that is about to be deleted.
-  await db.tasks.put(touch({ ...row, gcal: cfg, gcal_event_id: cfg ? row.gcal_event_id : null }))
+  await db.tasks.put(touch({ ...row, gcal: cfg }))
   queue()
 }
 
@@ -256,20 +255,6 @@ export async function setWorkspaceGcal(
   queue()
 }
 
-/**
- * How many tasks the whole-workspace switch speaks for.
- *
- * It writes nothing. The switch is a standing arrangement, not a stamp on every
- * row: the calendar works out which tasks it covers each time it looks, so a
- * task made tomorrow joins on its own, changing the defaults changes them all,
- * and turning the switch off takes the events away again. Tasks that carry
- * settings of their own are not among these — those were decided deliberately
- * and the switch never speaks over them.
- */
-export async function countWorkspaceGcalTasks(workspaceId: ID): Promise<number> {
-  const rows = await listTasks(workspaceId)
-  return rows.filter((t) => t.due_date !== null && !t.done && t.gcal === null).length
-}
 
 export async function deleteTask(id: ID): Promise<void> {
   const row = await db.tasks.get(id)

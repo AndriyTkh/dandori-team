@@ -259,13 +259,6 @@
   gap: var(--sp-4);
 }
 
-/* No deadline, no event. The line stands where the tick would have been. */
-.dialog__gcal-none {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: var(--fz-sm);
-}
-
 /* Attached note */
 
 .notelink {

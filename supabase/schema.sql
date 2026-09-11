@@ -64,7 +64,6 @@ create table if not exists public.tasks (
   --   "reminders": [{ "method": "popup", "minutes": 30 }] }
   -- `time` is the one clock in this database. It belongs to the event, never to
   -- the task: no view reads it and nothing sorts by it.
-  gcal_event_id       text,
   gcal                jsonb,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),

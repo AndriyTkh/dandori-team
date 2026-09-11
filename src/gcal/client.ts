@@ -13,7 +13,16 @@
  */
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
-const SCOPE = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly'
+/*
+ * Exactly what the app does and no more: write its own events, and read the list
+ * of calendars to choose between. `calendar.readonly` would also hand it every
+ * event in every calendar, which it never reads — and the consent screen is the
+ * one place the owner actually sees what he is granting.
+ */
+const SCOPE = [
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+].join(' ')
 /** Ask for a new token a little before the old one dies, so a write never races it. */
 const EXPIRY_MARGIN_MS = 5 * 60 * 1000
 

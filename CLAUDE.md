@@ -164,10 +164,18 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   and the event is rewritten in place — dragged to another day, it moves there
   with the same time and the same reminders. Finish the task or delete it and the
   event goes: a reminder for something already done is noise.
-- A workspace can be synced whole: one checkbox in its settings puts every task
-  that has a deadline and is not yet synced into the calendar, all of them with
-  the same time and reminders. Those defaults are set in the same place, and they
-  belong to the workspace — sync is per workspace, so its defaults are too.
+- A workspace can be synced whole: one checkbox in its settings, and every dated
+  task in it goes into the calendar on the same terms. It is a standing
+  arrangement, not a sweep — a task made tomorrow joins by itself, changing the
+  terms changes all of them, and unticking takes the events away again. A task
+  the owner set up by hand is never spoken over by it. The terms are set in the
+  same place and belong to the workspace: sync is per workspace, so its defaults
+  are too.
+  This is the one rule in the app that acts on rows made after it was written,
+  which is close to the automations the list forbids. It is allowed because it
+  is a switch the owner holds and can see, on one workspace, doing one thing —
+  and because the alternative, ticking each new task by hand, is the chore the
+  switch exists to spare him.
 - The exchange runs in the browser while the app is open, like the rest of the
   sync. There is no server and no client secret anywhere: Google's token client
   hands the page an access token, and renews it silently for as long as the
@@ -215,7 +223,9 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   hold five items; it cannot hold a form. It is a part of the page, never a
   second browser window.
 - Two interface languages, Russian and English, picked in the settings window and
-  remembered per device. Russian is the default. The project is shown to people
+  remembered per device. Russian is the default. The two language names are the
+  exception to the dictionary: each is written in itself — «Русский», "English" —
+  so that someone who cannot read the current language can still find his own. The project is shown to people
   who do not read it, and a planner whose every label is unreadable cannot be
   looked at at all. Neither language is a translation of the other in the code:
   both live side by side in one dictionary, and a string with only one of them is
@@ -306,8 +316,8 @@ tasks        id, user_id, workspace_id, title, description,
              start_date, due_date, done, remind_days_before, muted,
              note_id, position,
              label_ids jsonb [uuid], custom_fields jsonb [{name, value}],
-             gcal_event_id text, gcal jsonb {time, calendar_id, color_id,
-                                             reminders [{method, minutes}]},
+             gcal jsonb {time, calendar_id, color_id,
+                         reminders [{method, minutes}]},
              created_at, updated_at, deleted
 notes        id, user_id, workspace_id, parent_id, kind (folder|file),
              name, content, position, created_at, updated_at, deleted

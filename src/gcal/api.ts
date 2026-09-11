@@ -86,7 +86,6 @@ function body(task: Task, cfg: GcalConfig): Record<string, unknown> {
       useDefault: false,
       overrides: cfg.reminders.map((r) => ({ method: r.method, minutes: r.minutes })),
     },
-    source: { title: 'Dandori', url: window.location.origin },
   }
 }
 

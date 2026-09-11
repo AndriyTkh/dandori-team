@@ -56,7 +56,6 @@ export class DandoriDB extends Dexie {
         .table('tasks')
         .toCollection()
         .modify((t: Partial<Task>) => {
-          t.gcal_event_id ??= null
           t.gcal ??= null
         })
     })
