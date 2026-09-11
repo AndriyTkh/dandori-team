@@ -105,11 +105,6 @@
   box-shadow: var(--shadow-pop);
 }
 
-.menu__pop--right {
-  left: auto;
-  right: 0;
-}
-
 .menu__item {
   display: block;
   width: 100%;
@@ -120,30 +115,13 @@
   transition: background-color var(--t);
 }
 
-.menu__item:hover:not(:disabled) {
+.menu__item:hover {
   background: var(--bg-hover);
-}
-
-.menu__item:disabled {
-  color: var(--text-faint);
-  cursor: default;
 }
 
 .menu__item--on {
   color: var(--accent);
   font-weight: 500;
-}
-
-.menu__item--danger {
-  color: var(--danger);
-}
-
-.menu__label {
-  padding: var(--sp-3) var(--sp-4) var(--sp-2);
-  color: var(--text-faint);
-  font-size: var(--fz-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .menu__sep {
@@ -171,16 +149,16 @@
   }
 
   /*
-   * None of the three buttons is a child of the bar: each sits in a wrapper that
-   * exists to anchor its dropdown. A wrapper that is only as tall as its content
-   * has no height to hand down, so the height comes from the bar through every
-   * box in turn — the wrapper stretches to the bar, the button stretches to the
-   * wrapper. The popups anchor to the wrapper and now hang off the bar's own
-   * edge instead of the middle of it.
+   * The workspace switcher and the label filter are not children of the bar:
+   * each sits in a wrapper that exists to anchor its dropdown. A wrapper that is
+   * only as tall as its content has no height to hand down, so the height comes
+   * from the bar through every box in turn — the wrapper stretches to the bar,
+   * the button stretches to the wrapper. The popups anchor to the wrapper and
+   * hang off the bar's own edge instead of the middle of it. The gear has no
+   * dropdown to anchor and stands in the bar itself.
    */
   .header__right,
   .header > .menu,
-  .header__right > .menu,
   .header__right > .lfilter {
     display: flex;
     align-self: stretch;
@@ -205,10 +183,10 @@
   }
 
   /*
-   * The menus stay under the buttons that open them: a workspace is switched
-   * from the header by decision, and everything else in here is rare enough to
-   * be allowed to sit far from the thumb. What they do get is rows a finger can
-   * land on and a width that cannot spill off the edge of a 360px screen.
+   * The menu stays under the button that opens it: a workspace is switched from
+   * the header by decision, and it is rare enough to be allowed to sit far from
+   * the thumb. What it does get is rows a finger can land on and a width that
+   * cannot spill off the edge of a 360px screen.
    */
   .menu__pop {
     min-width: 240px;
@@ -221,7 +199,7 @@
     min-height: var(--tap);
   }
 
-  .menu__item:active:not(:disabled) {
+  .menu__item:active {
     background: var(--bg-active);
   }
 }
