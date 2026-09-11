@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { deleteWorkspace, exportAll, renameWorkspace } from '../db/api'
+import { today } from '../db/dates'
+import { flushQueue } from '../sync/sync'
 import { signOut } from '../auth/useSession'
 import { useAutosave } from '../lib/useAutosave'
 import { useEscape } from '../lib/useEscape'
@@ -185,15 +187,35 @@ function WorkspaceSection({
 // ------------------------------------------------------------------- account
 
 function AccountSection({ t }: { t: T }) {
+  // How many edits the sign-out would take with it, once it is clear they
+  // cannot be sent. Zero while there is nothing to ask about.
+  const [unsent, setUnsent] = useState(0)
+
   async function exportJson() {
     const json = await exportAll()
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
     const a = document.createElement('a')
     a.href = url
-    a.download = `dandori-${new Date().toISOString().slice(0, 10)}.json`
+    // The owner's own day, not the UTC one: between midnight and three in the
+    // morning in Kyiv the file would otherwise be named after yesterday.
+    a.download = `dandori-${today()}.json`
     a.click()
     // Revoking synchronously cancels the download in some browsers, so defer it.
     setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  }
+
+  /*
+   * Signing out wipes this device, so the queue goes out first. What could not
+   * go — no network, or a server refusing it — exists nowhere else, and the
+   * owner is the only one who can say it may be lost.
+   */
+  async function leave() {
+    const left = await flushQueue()
+    if (left > 0) {
+      setUnsent(left)
+      return
+    }
+    await signOut()
   }
 
   return (
@@ -201,9 +223,18 @@ function AccountSection({ t }: { t: T }) {
       <button className="btn" onClick={exportJson}>
         {t('settings.export')}
       </button>
-      <button className="btn" onClick={() => void signOut()}>
+      <button className="btn" onClick={() => void leave()}>
         {t('settings.signOut')}
       </button>
+
+      {unsent > 0 && (
+        <Confirm
+          question={t.n('settings.confirmSignOut', unsent)}
+          action={t('settings.signOut')}
+          onCancel={() => setUnsent(0)}
+          onConfirm={() => void signOut()}
+        />
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { wipeLocal } from '../db/local'
+import { claimCache, wipeLocal } from '../db/local'
+import { forgetSession } from '../sync/sync'
 
 /*
  * Whether the app is signed in.
@@ -74,12 +75,24 @@ export function useSession(): SessionState {
 }
 
 export async function signIn(email: string, password: string): Promise<void> {
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
+  // Before a single row is shown or sent: the cache may belong to the account
+  // that was signed out of this device without ever being asked — a sign-out on
+  // the other device ends this session too, and this one only learns of it when
+  // its token runs out.
+  if (data.user) await claimCache(data.user.id)
 }
 
-/** The local cache is wiped: no data should be left behind on someone else's device. */
+/**
+ * The local cache is wiped: no data should be left behind on someone else's device.
+ * Whatever is still queued is sent by the settings window before it calls this,
+ * and the owner is asked first if it could not go.
+ */
 export async function signOut(): Promise<void> {
+  // First of all, so that an answer already on the wire cannot write itself
+  // into the database the next account will open.
+  forgetSession()
   await supabase.auth.signOut()
   await wipeLocal()
 }
