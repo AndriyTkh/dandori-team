@@ -34,10 +34,11 @@ export function Header({ toolsSlot, ...props }: Props) {
         t={t}
       />
 
-      {/* Nothing to switch between until there is a workspace. */}
-      <nav className="header__tabs">
-        {current &&
-          TABS.map((tab) => (
+      {/* Nothing to switch between until there is a workspace, and nothing for
+          the strip to be either: empty, it is a grey square in an empty header. */}
+      {current && (
+        <nav className="header__tabs">
+          {TABS.map((tab) => (
             <button
               key={tab}
               className={`header__tab${tab === props.tab ? ' header__tab--on' : ''}`}
@@ -46,7 +47,8 @@ export function Header({ toolsSlot, ...props }: Props) {
               {t(`tab.${tab}`)}
             </button>
           ))}
-      </nav>
+        </nav>
+      )}
 
       <div className="header__tools" ref={toolsSlot} />
 
