@@ -234,7 +234,10 @@ export function Board({
             key={m}
             className={`board__mode${m === mode ? ' board__mode--on' : ''}`}
             onClick={() => {
-              setOpenOn(null)
+              // Only a real change of mode forgets the day a month cell asked
+              // for: pressing «Лента» while it is already on would otherwise
+              // pull the feed back to today under the finger.
+              if (m !== mode) setOpenOn(null)
               onSetMode(m)
             }}
           >
