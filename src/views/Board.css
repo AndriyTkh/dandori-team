@@ -426,11 +426,17 @@
    * an affordance but a card sliced down the middle, and 22% of a 390px screen
    * taken away from the titles that are the point of the board.
    *
-   * The snap stays `proximity`. A mandatory one re-snaps every programmatic
-   * scroll, and the auto-scroll that carries a dragged card past the edge of
-   * the screen nudges the strip a few pixels at a time: every nudge would be
-   * answered with a whole column, and a card dragged towards tomorrow would
-   * land a fortnight out.
+   * The snap is mandatory. `proximity` only pulls a stop that already ended near
+   * a column edge, and the screen is 390 px against a column of 382: a swipe that
+   * ran out halfway had no edge near enough to be pulled to, and the strip stood
+   * on the seam with a day and a half of a day on it at once. Over 42 swipes of
+   * every speed and length, eight rested 134–187 px off an edge, and a slow one
+   * of under 110 px moved nothing at all. Mandatory put all 42 on a day: one day
+   * per swipe, two on a hard fling.
+   *
+   * A snap of either strictness also undoes a programmatic scroll of a few
+   * pixels, which is precisely what the auto-scroll does while a card is held at
+   * the edge of the screen — so `.board--dragging` lifts it for the drag.
    */
   /*
    * And the day is a card, inset from the edges of the screen instead of running
@@ -445,8 +451,12 @@
   .board__scroller {
     gap: var(--sp-4);
     padding: 0 var(--sp-4) var(--sp-4);
-    scroll-snap-type: x proximity;
+    scroll-snap-type: x mandatory;
     scroll-padding-left: var(--sp-4);
+  }
+
+  .board--dragging .board__scroller {
+    scroll-snap-type: none;
   }
 
   .board__col,
