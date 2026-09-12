@@ -302,13 +302,24 @@ export async function moveTask(id: ID, date: ISODate | null, beforeId: ID | null
     const moved = await db.tasks.get(id)
     if (!moved) return
 
-    // The drag moves the date the card was placed by, and invents no other: a
-    // task standing on its start date keeps standing on a start date, and
-    // dropping it on «Без даты» clears that one rather than a deadline it never
-    // had. With neither date it is given a deadline, as the column it came from
-    // says nothing either way.
+    /*
+     * The drag moves the date the card was placed by, and invents no other: a
+     * task standing on its start date keeps standing on a start date, and no
+     * deadline is made up for it. With neither date it is given a deadline, as
+     * the column it came from says nothing either way.
+     *
+     * «Без даты» is the exception, and it takes both: a task carrying a start
+     * date as well as a deadline would otherwise lose the deadline and land in
+     * its start date's column — anywhere but the column it was dropped on, which
+     * is the one promise the board makes.
+     */
     const byStart = moved.due_date === null && moved.start_date !== null
-    const next = byStart ? { ...moved, start_date: date } : { ...moved, due_date: date }
+    const next =
+      date === null
+        ? { ...moved, start_date: null, due_date: null }
+        : byStart
+          ? { ...moved, start_date: date }
+          : { ...moved, due_date: date }
 
     const column = (await db.tasks.where('workspace_id').equals(moved.workspace_id).toArray())
       .filter((t) => !t.deleted && taskDate(t) === date && t.id !== id)
@@ -416,8 +427,17 @@ export async function moveNote(id: ID, parentId: ID | null, beforeId: ID | null)
       }
     }
 
+    /*
+     * A note whose folder has not arrived yet counts as standing at the root —
+     * which is where the tree draws it. Counted by `parent_id` alone, the level
+     * here and the level on the screen were two different lists, and the slot
+     * the line promised was not the slot that got written.
+     */
+    const live = new Set(all.map((n) => n.id))
+    const levelOf = (n: Note) => (n.parent_id && live.has(n.parent_id) ? n.parent_id : null)
+
     const level = all
-      .filter((n) => n.parent_id === parentId && n.id !== id)
+      .filter((n) => levelOf(n) === parentId && n.id !== id)
       .sort((a, b) =>
         a.kind === b.kind ? a.position - b.position : a.kind === 'folder' ? -1 : 1,
       )
