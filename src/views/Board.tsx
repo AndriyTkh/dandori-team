@@ -376,19 +376,21 @@ function Strip({
    * fortnight in the past.
    */
   /*
-   * `days` is deliberately not a dependency. The feed rebuilds its window as it
-   * is scrolled, and re-running this on every rebuild threw the strip back to
-   * today from wherever it had been carried. The columns of the first render are
-   * already laid out when this runs, and the feed puts itself back after a
-   * rebuild on its own.
+   * The feed is put where it opens once and then left alone: it rebuilds its
+   * window of days as it is scrolled, and landing on the opening day again after
+   * every rebuild threw the strip back from wherever it had been carried. The
+   * feed puts itself back after a rebuild on its own. The window of «14 дней»
+   * changes only when the day does, and there it should land again.
    */
-  const firstDay = days[0]
+  const landed = useRef<ISODate | null>(null)
   useLayoutEffect(() => {
     const node = el.current
     if (!node) return
+    if (opensOn && landed.current === opensOn) return
+    landed.current = opensOn ?? null
     const atStart = !opensOn && pinnedWidth(node) > 0
-    scrollToDay(node, atStart ? (firstDay ?? today) : (opensOn ?? today))
-  }, [el, today, opensOn])
+    scrollToDay(node, atStart ? (days[0] ?? today) : (opensOn ?? today))
+  }, [el, today, days, opensOn])
 
   return (
     <div className="board__scroller" ref={el} onScroll={onScroll}>

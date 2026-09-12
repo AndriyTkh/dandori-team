@@ -763,7 +763,7 @@ function NoteEditor({ note, onBack, t }: { note: Note; onBack: () => void; t: T 
         <textarea
           className="notes__textarea"
           value={content}
-          placeholder="Markdown"
+          placeholder={t('md.placeholder')}
           onChange={(e) => setContent(e.target.value)}
         />
       )}
