@@ -34,7 +34,10 @@ export default defineConfig({
     // not race each other (schema apply, per-file account provisioning); the
     // local tier has no shared backend and keeps vitest's default
     // parallelism. Scoped via `projects` (not a global fileParallelism:
-    // false) so only tests/stack/** loses parallelism.
+    // false) so only tests/stack/** loses parallelism. Per-project
+    // `fileParallelism` alone is not honored in full multi-project runs
+    // (files were observed overlapping), so the stack project is
+    // additionally pinned to a single forked worker.
     projects: [
       {
         test: {
@@ -43,6 +46,8 @@ export default defineConfig({
           globalSetup: ['./tests/harness/global-setup.ts'],
           include: ['tests/stack/**/*.test.ts'],
           fileParallelism: false,
+          pool: 'forks',
+          poolOptions: { forks: { singleFork: true } },
         },
       },
       {

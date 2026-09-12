@@ -153,17 +153,15 @@ async function signInApp(user: TestUser): Promise<void> {
 /*
  * Harness trap (flagged by the coordinator, found by TG-3/US1): `push()`
  * enters `syncing` and calls its own `settle()` even with nothing dirty to
- * send (`src/sync/sync.ts:200-281`), *before* `pull()` ever runs. The
- * harness's `driveSyncCycle` (`tests/harness/sync.ts`) resolves on the first
- * post-`syncing` settle it sees — so a plain push-then-pull cycle can return
- * having only completed the push half. Rather than edit `tests/harness/`
- * (out of this task's write surface, and the fix belongs there, tracked
- * separately), every use of `driveSyncCycle` below forces that cycle's
- * *push* to see `navigator.onLine === false` for exactly its one check, so
- * only the pull half ever reaches `syncing`/`settle` and `driveSyncCycle`
- * genuinely waits for the pull this test cares about. This never touches
- * `src/` or `supabase/` — it only stubs a jsdom global for the scope of one
- * cycle.
+ * send (`src/sync/sync.ts:200-281`), *before* `pull()` ever runs. Every use
+ * of `driveSyncCycle` below forces that cycle's *push* to see
+ * `navigator.onLine === false` for exactly its one check, so push
+ * early-returns offline and never reaches `syncing` at all — only pull's
+ * settle ever lands, once. `driveSyncCycle` is called with `{ settles: 1 }`
+ * accordingly, so it genuinely waits for the pull this test cares about
+ * instead of timing out waiting for a second settle that will never come.
+ * This never touches `src/` or `supabase/` — it only stubs a jsdom global for
+ * the scope of one cycle.
  */
 function stubOnLineOnceFalse(): () => void {
   let used = false
@@ -183,7 +181,7 @@ function stubOnLineOnceFalse(): () => void {
 async function drivePullOnly(): Promise<void> {
   const restore = stubOnLineOnceFalse()
   try {
-    await driveSyncCycle()
+    await driveSyncCycle({ settles: 1 })
   } finally {
     restore()
   }

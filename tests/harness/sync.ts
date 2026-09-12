@@ -30,17 +30,24 @@ const SETTLES_PER_FULL_CYCLE = 2
  * `predicate` is satisfied by a Dexie poll — whichever comes first. Always
  * stops the handle in a `finally`, so the 60s interval and the DOM listeners
  * never leak into the next test file.
+ *
+ * A pull-only cycle — push forced offline for its one check — never enters
+ * `syncing` on push's side, so only pull's settle ever lands; callers of such
+ * a cycle pass `settles: 1`.
  */
 export async function driveSyncCycle(options?: {
   timeoutMs?: number
   /** Optional backstop: polled on an interval until it returns true, or timeout. */
   predicate?: () => Promise<boolean>
+  /** Number of post-`syncing` settles to wait for. Defaults to a full push+pull cycle. */
+  settles?: number
 }): Promise<void> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const settles = options?.settles ?? SETTLES_PER_FULL_CYCLE
   const handle: SyncHandle = startSync()
 
   try {
-    await waitForSettleOrPredicate(timeoutMs, options?.predicate)
+    await waitForSettleOrPredicate(timeoutMs, settles, options?.predicate)
   } finally {
     handle.stop()
   }
@@ -48,6 +55,7 @@ export async function driveSyncCycle(options?: {
 
 function waitForSettleOrPredicate(
   timeoutMs: number,
+  settles: number,
   predicate?: () => Promise<boolean>,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -81,7 +89,7 @@ function waitForSettleOrPredicate(
       // the second such settle so both `push()` and `pull()` have completed.
       if (!leftInitial) return
       rests += 1
-      if (rests >= SETTLES_PER_FULL_CYCLE) finish()
+      if (rests >= settles) finish()
     }
     unsubscribe = onSyncState(onState)
 

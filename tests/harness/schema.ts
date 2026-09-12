@@ -36,10 +36,22 @@ export async function applySchema(): Promise<void> {
   try {
     for (const file of SQL_FILES) {
       const sql = readFileSync(path.join(SUPABASE_DIR, file), 'utf8')
-      try {
-        await client.query(sql)
-      } catch (err) {
-        throw new Error(`Applying ${file} failed: ${(err as Error).message}`, { cause: err })
+      // A deadlock (40P01) between our re-apply and a background Supabase
+      // service is transient: the loser is killed and a bare re-run of the
+      // same file succeeds, so retry a bounded few times before giving up.
+      const MAX_ATTEMPTS = 3
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          await client.query(sql)
+          break
+        } catch (err) {
+          const isDeadlock = (err as { code?: string }).code === '40P01'
+          if (isDeadlock && attempt < MAX_ATTEMPTS) {
+            await new Promise((resolve) => setTimeout(resolve, 500))
+            continue
+          }
+          throw new Error(`Applying ${file} failed: ${(err as Error).message}`, { cause: err })
+        }
       }
     }
   } finally {
