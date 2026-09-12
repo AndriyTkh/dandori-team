@@ -9,6 +9,7 @@
  * of two.
  */
 import { forgetToken, getToken } from './client'
+import { taskDate } from '../db/types'
 import type { GcalConfig, Task } from '../db/types'
 
 const BASE = 'https://www.googleapis.com/calendar/v3'
@@ -110,7 +111,7 @@ export function currentZone(): string {
 
 function body(task: Task, cfg: GcalConfig): Record<string, unknown> {
   const zone = currentZone()
-  const start = `${task.due_date}T${cfg.time}:00`
+  const start = `${taskDate(task)}T${cfg.time}:00`
   const end = plusMinutes(start, EVENT_MINUTES)
 
   return {
