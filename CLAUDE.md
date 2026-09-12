@@ -487,6 +487,15 @@ Labels are stored as a `label_ids` array in the task itself, there is no join ta
 There is a single user, referential integrity buys nothing here
 and makes sync twice as complicated.
 
+`supabase/schema.sql` is the one place the database is written — tables,
+functions, triggers and policies alike — and it is idempotent, so a database is
+brought up to date by running it again. A migration file carries only what
+re-running cannot do: a column added to a table that already exists, and a
+one-off edit to rows already there. A definition copied into a migration is a
+second copy that agrees with the first only until someone changes one of them,
+and a disagreement in the rules that decide conflicts and deletions is one
+nothing in the app would show.
+
 Deletion is soft: `deleted = true`. Otherwise a deletion made on the phone would never
 reach the laptop that was offline at that moment. A deleted workspace takes its
 rows with it on the server, including one another device added while it was
