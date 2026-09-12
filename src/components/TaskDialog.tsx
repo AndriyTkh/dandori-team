@@ -19,6 +19,7 @@ import { useT, type T } from '../i18n'
 import {
   gcalConfigOf,
   LABEL_COLORS,
+  taskDate,
   type CustomField,
   type ID,
   type Label,
@@ -207,7 +208,7 @@ function Body({
             onChange={(e) =>
               patch({ remind_days_before: e.target.value === '' ? null : Number(e.target.value) })
             }
-            disabled={!task.due_date}
+            disabled={!task.due_date && !task.start_date}
           >
             <option value="">{t('task.remindNever')}</option>
             {[1, 2, 3, 7, 14, 30].map((n) => (
@@ -266,7 +267,7 @@ function Body({
           <textarea
             className="field dialog__textarea"
             value={description}
-            placeholder="Markdown"
+            placeholder={t('md.placeholder')}
             onChange={(e) => setDescription(e.target.value)}
           />
         )}
@@ -339,10 +340,10 @@ function GcalRow({
   onSetOpen: (v: boolean) => void
   t: T
 }) {
-  // An event is made on the deadline's date, so a task without one has nothing
-  // to offer here. Nothing is drawn rather than explained: the row appears the
-  // moment a deadline does.
-  if (!task.due_date) return null
+  // An event is made on the task's date — its deadline, or its start when it has
+  // no deadline — so a task with neither has nothing to offer here. Nothing is
+  // drawn rather than explained: the row appears the moment a date does.
+  if (!taskDate(task)) return null
 
   /*
    * Ticked when this task has an event, whatever put it there. A workspace that
@@ -385,6 +386,7 @@ function GcalRow({
         <GcalEventDialog
           taskId={task.id}
           current={own}
+          following={byWorkspace}
           workspace={workspace}
           onClose={() => onSetOpen(false)}
           t={t}
@@ -635,11 +637,11 @@ function ColorPicker({
 // --------------------------------------------------------------- custom fields
 
 /*
- * A custom field has to carry the same visual weight as the description box next
- * to it, otherwise it reads as something bolted onto the card. So the pair lives
- * inside one bordered box: the name on a dim line at the top, the value below in
- * the body. Both are plain inputs — nothing to click into an editing mode, and
- * nothing to save.
+ * A custom field is a field of the card like «Начало» or «Дедлайн»: its name is
+ * the small-caps label those carry, its value the same plain input. It used to
+ * be a bordered box holding two inputs, which said the opposite — that the name
+ * was a second thing to fill in, and the pair something bolted on beside the
+ * real fields. The name turns back into an input only while it is being named.
  */
 
 function CustomFields({
@@ -782,23 +784,39 @@ function CustomFieldRow({
     onRemove()
   }
 
+  /*
+   * The name is a button carrying the label, so it can be reached with the
+   * keyboard as well as with a click — a name that only a pointer can change is
+   * a name a phone cannot fix. A field just added opens straight into naming:
+   * an unnamed field says nothing about its value.
+   */
+  const [naming, setNaming] = useState(autoFocus)
+
   return (
-    <div className="cfield">
-      <div className="cfield__head">
-        <input
-          className="cfield__name"
-          value={draft.name}
-          placeholder={t('task.fieldName')}
-          autoFocus={autoFocus}
-          onChange={(e) => edit({ name: e.target.value })}
-        />
+    <div className="dialog__field">
+      <div className="dialog__field-head">
+        {naming ? (
+          <input
+            className="dialog__field-label cfield__name"
+            value={draft.name}
+            placeholder={t('task.fieldName')}
+            autoFocus
+            onChange={(e) => edit({ name: e.target.value })}
+            onBlur={() => setNaming(false)}
+            onKeyDown={(e) => e.key === 'Enter' && setNaming(false)}
+          />
+        ) : (
+          <button className="dialog__field-label cfield__name" onClick={() => setNaming(true)}>
+            {draft.name.trim() || t('task.fieldName')}
+          </button>
+        )}
         <button className="cfield__del" onClick={remove} aria-label={t('task.fieldDelete')}>
           ✕
         </button>
       </div>
 
       <input
-        className="cfield__value"
+        className="field"
         value={draft.value}
         placeholder={t('task.fieldValue')}
         onChange={(e) => edit({ value: e.target.value })}

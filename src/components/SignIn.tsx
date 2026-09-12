@@ -34,7 +34,7 @@ export function SignIn() {
         <input
           className="field"
           type="email"
-          placeholder="Email"
+          placeholder={t('signin.email')}
           autoComplete="username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
