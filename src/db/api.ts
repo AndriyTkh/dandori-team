@@ -375,6 +375,70 @@ export async function updateNote(
   queue()
 }
 
+/**
+ * Moves a note under `parentId` — `null` is the root of the tree — in front of
+ * sibling `beforeId`; `null` puts it last.
+ *
+ * The slot is named by the neighbour that will follow, not by an index, and the
+ * whole level is renumbered: a level of a note tree holds a handful of rows.
+ *
+ * The level is counted in the order the tree draws it — folders first, then by
+ * position — and laid back down in that same order. Counted by position alone,
+ * a slot named «in front of this file» put the row in front of the folders that
+ * are drawn above it, which is not the place the neighbour stands in.
+ *
+ * Two moves are refused rather than corrected. Only a folder holds children, so
+ * nothing is dropped into a file; and a folder put inside itself, or inside
+ * anything it already holds, would cut its whole subtree out of the tree — the
+ * rows would stay in the table with no path to the root and nowhere to be drawn.
+ */
+export async function moveNote(id: ID, parentId: ID | null, beforeId: ID | null): Promise<void> {
+  await db.transaction('rw', db.notes, async () => {
+    const moved = await db.notes.get(id)
+    if (!moved) return
+
+    const all = (await db.notes.where('workspace_id').equals(moved.workspace_id).toArray()).filter(
+      (n) => !n.deleted,
+    )
+
+    if (parentId !== null) {
+      const byId = new Map(all.map((n) => [n.id, n]))
+      if (byId.get(parentId)?.kind !== 'folder') return
+
+      // Walking up stops on a repeat as well: a chain that already loops back on
+      // itself is not a reason to spin here.
+      const seen = new Set<ID>()
+      let up: ID | null = parentId
+      while (up && !seen.has(up)) {
+        if (up === id) return
+        seen.add(up)
+        up = byId.get(up)?.parent_id ?? null
+      }
+    }
+
+    const level = all
+      .filter((n) => n.parent_id === parentId && n.id !== id)
+      .sort((a, b) =>
+        a.kind === b.kind ? a.position - b.position : a.kind === 'folder' ? -1 : 1,
+      )
+
+    const found = beforeId ? level.findIndex((n) => n.id === beforeId) : -1
+    const at = found >= 0 ? found : level.length
+    const next = { ...moved, parent_id: parentId }
+    level.splice(at, 0, next)
+
+    for (const [i, note] of level.entries()) {
+      const position = (i + 1) * POS_STEP
+      if (note.id === id) {
+        await db.notes.put(touch({ ...next, position }))
+      } else if (note.position !== position) {
+        await db.notes.put(touch({ ...note, position }))
+      }
+    }
+  })
+  queue()
+}
+
 /** A folder goes away together with its whole subtree. */
 export async function deleteNote(id: ID): Promise<void> {
   await db.transaction('rw', db.notes, db.tasks, async () => {
