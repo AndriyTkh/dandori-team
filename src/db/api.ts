@@ -416,14 +416,33 @@ export async function exportAll(): Promise<string> {
   const strip = <T extends { deleted: boolean }>(rows: Local<T>[]) =>
     rows.filter((r) => !r.deleted).map(stripLocal)
 
+  const labels = strip(await db.labels.toArray())
+  const notes = strip(await db.notes.toArray())
+
+  /*
+   * Ids of labels and notes that no longer exist are dropped as the file is
+   * written: a task edited offline can come back from a conflict still carrying
+   * the label deleted on the other device, and though no view ever draws it,
+   * the export is the one place it would be read. Only the copy is cleaned —
+   * rewriting the rows would be an edit of this device's own, and sync would
+   * carry it over to the other one.
+   */
+  const liveLabels = new Set(labels.map((l) => l.id))
+  const liveNotes = new Set(notes.map((n) => n.id))
+  const tasks = strip(await db.tasks.toArray()).map((task) => ({
+    ...task,
+    label_ids: task.label_ids.filter((id) => liveLabels.has(id)),
+    note_id: task.note_id !== null && liveNotes.has(task.note_id) ? task.note_id : null,
+  }))
+
   const data = {
     format: 'dandori-export',
     version: 1,
     exported_at: now(),
     workspaces: strip(await db.workspaces.toArray()),
-    labels: strip(await db.labels.toArray()),
-    tasks: strip(await db.tasks.toArray()),
-    notes: strip(await db.notes.toArray()),
+    labels,
+    tasks,
+    notes,
   }
   return JSON.stringify(data, null, 2)
 }
