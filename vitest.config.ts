@@ -25,7 +25,6 @@ const shared = {
 export default defineConfig({
   test: {
     ...shared,
-    globalSetup: ['./tests/harness/global-setup.ts'],
     include: ['tests/**/*.test.ts'],
     // TG-1 has no test files of its own yet — this and TG-2's later
     // stack-dependent suites are added by subsequent taskgroups; an empty
@@ -41,6 +40,7 @@ export default defineConfig({
         test: {
           ...shared,
           name: 'stack',
+          globalSetup: ['./tests/harness/global-setup.ts'],
           include: ['tests/stack/**/*.test.ts'],
           fileParallelism: false,
         },
