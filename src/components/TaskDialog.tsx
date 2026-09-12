@@ -54,12 +54,17 @@ export function TaskDialog({
   const [preview, setPreview] = useState(false)
   const [eventOpen, setEventOpen] = useState(false)
 
-  // Escape belongs to the topmost window. With the event's settings open it is
-  // theirs, and the card stays where it is.
+  /*
+   * Escape belongs to the topmost window. With the event's settings open it is
+   * theirs, and the card stays where it is — but the settings are drawn only
+   * while the task has a date at all, and a date cleared on the other device
+   * would otherwise leave Escape answering a window that is no longer there.
+   */
+  const eventShown = eventOpen && task != null && taskDate(task) !== null
   useEscape(
     useCallback(() => {
-      if (!eventOpen) onClose()
-    }, [eventOpen, onClose]),
+      if (!eventShown) onClose()
+    }, [eventShown, onClose]),
   )
 
   // The task may have been deleted on another device while this dialog was open.
@@ -356,7 +361,16 @@ function GcalRow({
   const own = gcalConfigOf(task.gcal)
   const on = own !== null || byWorkspace
 
+  const optedOut = whole && task.gcal !== null && own === null
+
   function toggle(next: boolean) {
+    /*
+     * Ticked again inside a workspace that syncs whole, a task that had been
+     * taken out of it goes back under the workspace's terms rather than being
+     * handed a copy of them: a copy stops hearing the workspace, and there would
+     * be no way left to put the task back under it.
+     */
+    if (next && optedOut) return void setTaskGcal(task.id, null).then(reconcile)
     if (next) return onSetOpen(true)
     /*
      * Off is a decision, not a draft, so the event goes now rather than on the

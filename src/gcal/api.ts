@@ -57,7 +57,6 @@ async function call(path: string, init: RequestInit = {}, retry = true): Promise
   const token = await getToken()
   if (!token) throw new GcalError(401, 'no google token')
 
-
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
