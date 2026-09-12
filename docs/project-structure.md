@@ -32,6 +32,25 @@ repo/
   _handoffs/                     # optional; ≤50-line session handoffs; deleted on merge
 ```
 
+## Running tests
+
+One command, both tiers: `npm test` (vitest, watch mode; `npm test -- --run` for one-shot).
+
+- `tests/stack/**` — stack project. Needs Docker. `globalSetup` starts the local `supabase` CLI
+  stack via `npx supabase start` if it's down, then applies `supabase/schema.sql` plus
+  `migration-002`…`-006` in order via `pg`. Runs serially, pinned to a single forked worker — one
+  shared Postgres instance, no racing schema apply or account provisioning.
+- `tests/local/**` — local project. Docker-free, parallel, no `globalSetup`. `npx vitest run
+  tests/local/` passes in seconds with Docker stopped.
+
+No `.env.local`, no secret required: well-known local dev keys are committed in
+`vitest.config.ts` (ADR-0002 corollary — these aren't credentials, only the fixed values
+`supabase start` prints for the local stack).
+
+Single-file runs: `npx vitest run tests/stack/<file>` / `npx vitest run tests/local/<file>`.
+
+Rule: tests never modify `src/` or `supabase/` (spec 001 FR-002).
+
 ## Validation map — entry grammar
 
 Component entry, exact field names, this order:
