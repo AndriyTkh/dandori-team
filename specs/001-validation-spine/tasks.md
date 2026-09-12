@@ -105,6 +105,11 @@ backend-dependent yet.
   - Read: `vitest.config.ts`; plan.md D-7
   - substrate: `env-boot`
   - verify: `npx vitest run --reporter=json` shows no two `tests/stack/**` files with overlapping start/end times, and `npm test -- --run` fully green twice consecutively
+- [x] T008c [sub-of: T008b] Raise the stack project's default `testTimeout` to 30s: stack tests are network-bound (user provisioning + sign-in + sync cycles against live GoTrue/PostgREST) and exceed vitest's 5s default under cold-start load — observed on the T025 fresh-clone run (soft-delete acceptance 1, 842ms warm, timeout cold) and once mid-suite before serialization
+  - Write: `vitest.config.ts`
+  - Read: `vitest.config.ts`
+  - substrate: `env-boot`
+  - verify: fresh-clone `npm test -- --run` fully green (re-run of T025)
 - [x] T009 [P] Create `tests/harness/accounts.ts`: provision throwaway users via the Auth admin API with the local `service_role` key, and a `clientFor(user)` factory building an independent `supabase-js` client with `persistSession: false`; include per-file unique naming so files cannot collide
   - Write: `tests/harness/accounts.ts`
   - Read: plan.md D-3, D-6; `src/auth/supabase.ts:1-17` (why the singleton is not used here)
@@ -240,17 +245,17 @@ dead. **Independent test**: `npx vitest run tests/stack/soft-delete.test.ts` alo
 **Goal**: the whole body of evidence runs unattended and the map tells the truth afterwards.
 **Independent test**: fresh clone + Docker → `npm test` → green; CI run green on the PR.
 
-- [ ] T023 [US6] Confirm and document the single command: `npm test` runs both tiers with stack start and ordered schema apply handled by `globalSetup`; record it in `docs/project-structure.md` under a run/test-commands section (that section does not exist yet — add it; the file currently documents only the map grammar)
+- [ ] T023 [US6] [in-progress: primary; docs done, verify via T025] Confirm and document the single command: `npm test` runs both tiers with stack start and ordered schema apply handled by `globalSetup`; record it in `docs/project-structure.md` under a run/test-commands section (that section does not exist yet — add it; the file currently documents only the map grammar)
   - Write: `docs/project-structure.md`
   - Read: plan.md D-7; spec.md FR-010, SC-003; `docs/project-structure.md` (map grammar, `verify:` field at line 45)
   - substrate: `env-boot`, `supabase-schema`
   - verify: `npm test` from a clean checkout with Docker running exits 0
-- [ ] T024 [US6] Complete the staged block in `.github/workflows/ci.yml:46-58` — uncomment `start supabase` (`npx supabase start`) and `test` (`npm test -- --run`), keep the explanatory dev-keys comment, and leave install/typecheck/lint/build Docker-free
+- [ ] T024 [US6] [in-progress: primary; edit done, CI run queued on push access] Complete the staged block in `.github/workflows/ci.yml:46-58` — uncomment `start supabase` (`npx supabase start`) and `test` (`npm test -- --run`), keep the explanatory dev-keys comment, and leave install/typecheck/lint/build Docker-free
   - Write: `.github/workflows/ci.yml`
   - Read: plan.md D-8; ADR-0002 Consequences; ADR-0003 Consequences ("the CI test step stays commented until the first vitest suite exists" — it now exists); `CLAUDE.md` → `infra` role
   - substrate: `env-boot`
   - verify: CI run on the feature branch is green, with `test` present as a step and the four other steps unchanged
-- [ ] T025 [US6] Verify the fresh-operator path (spec.md SC-004/FR-015): clone to a clean directory, install, run the one command with no `.env.local` and no secret supplied; record the outcome as the receipt text for the map
+- [ ] T025 [US6] [in-progress: primary] Verify the fresh-operator path (spec.md SC-004/FR-015): clone to a clean directory, install, run the one command with no `.env.local` and no secret supplied; record the outcome as the receipt text for the map
   - Write: `specs/001-validation-spine/receipts.md`
   - Read: spec.md FR-009, FR-015, SC-004, SC-006; plan.md D-2, D-7
   - substrate: `env-boot`, `supabase-schema`

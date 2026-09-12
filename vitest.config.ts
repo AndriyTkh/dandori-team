@@ -48,6 +48,9 @@ export default defineConfig({
           fileParallelism: false,
           pool: 'forks',
           poolOptions: { forks: { singleFork: true } },
+          // Network-bound: user provisioning + sign-in + sync cycles against live
+          // GoTrue/PostgREST exceed vitest's 5s default under cold-start load.
+          testTimeout: 30_000,
         },
       },
       {
