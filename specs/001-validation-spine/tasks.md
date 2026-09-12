@@ -275,7 +275,7 @@ dead. **Independent test**: `npx vitest run tests/stack/soft-delete.test.ts` alo
   - Read: spec.md FR-013, Edge Cases; plan.md "Risks, seams and candidate FINDINGS"
   - substrate: —
   - verify: named manual check — every FINDING names the observed vs documented behaviour; no assertion was weakened to make the suite green
-- [ ] T029 [US6] Commit the map and receipts together with the suite (`test:`/`ci:`/`docs:` messages, upstream style, owner identity, no assistant mentions) and confirm the feature's Definition of Done: map updated in the same PR, verify commands actually run, CI green, no credential in the diff, nothing outside the spec
+- [x] T029 [US6] Commit the map and receipts together with the suite (`test:`/`ci:`/`docs:` messages, upstream style, owner identity, no assistant mentions) and confirm the feature's Definition of Done: map updated in the same PR, verify commands actually run, CI green, no credential in the diff, nothing outside the spec
   - Write: — (git only)
   - Read: `CLAUDE.md` → Git, Definition of done
   - substrate: —
