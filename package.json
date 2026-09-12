@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "icons": "node scripts/icons.mjs"
+    "icons": "node scripts/icons.mjs",
+    "test": "vitest"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -22,15 +23,20 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
+    "@types/pg": "^8.15.6",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "fake-indexeddb": "^6.2.2",
+    "jsdom": "^27.0.0",
     "oxlint": "^1.79.0",
+    "pg": "^8.16.3",
     "sharp": "^0.35.4",
     "supabase": "^2.117.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
     "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^3.2.4",
     "wrangler": "^4.129.0"
   }
 }
