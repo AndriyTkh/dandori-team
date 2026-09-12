@@ -481,7 +481,7 @@ function NoteLink({
             ))}
           </select>
           <button className="btn" onClick={() => void create()}>
-            {t('task.noteCreate')}
+            {t('common.create')}
           </button>
           <button className="btn btn--quiet" onClick={() => setPicking(false)}>
             {t('common.cancel')}

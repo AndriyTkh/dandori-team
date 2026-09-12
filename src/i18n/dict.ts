@@ -29,6 +29,7 @@ export const TEXT = {
   'common.done': { ru: 'Готово', en: 'Done' },
   'common.add': { ru: 'Добавить', en: 'Add' },
   'common.save': { ru: 'Сохранить', en: 'Save' },
+  'common.create': { ru: 'Создать', en: 'Create' },
   'common.delete': { ru: 'Удалить', en: 'Delete' },
 
   // Everything a markdown box says: the same words on the task card and in the
@@ -115,7 +116,6 @@ export const TEXT = {
   'task.noteUnlink': { ru: 'Отвязать', en: 'Unlink' },
   'task.noteOpen': { ru: 'Открыть', en: 'Open' },
   'task.notePick': { ru: 'Выбрать заметку', en: 'Choose a note' },
-  'task.noteCreate': { ru: 'Создать', en: 'Create' },
   'task.noteAttach': { ru: 'Привязать заметку', en: 'Attach a note' },
 
   'task.fields': { ru: 'Поля', en: 'Fields' },

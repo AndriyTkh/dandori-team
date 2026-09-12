@@ -19,6 +19,13 @@ Fixed after the interviews. Change only at the explicit request of the project o
   views, nothing for them to stand on — and the first workspace is made from the
   header's menu. A pair named for you is a pair of names you did not choose and have
   to rename or delete before you can start.
+- The name of a new workspace is asked for in a window of the app's own, the same
+  one the questions are asked in, with the field already focused: Enter makes the
+  workspace, Escape drops it. The browser's own `prompt()` stood here — the one
+  browser window left in the app, and standing at the one moment the app has
+  nothing else on screen to be recognised by. An empty name still gives «Без
+  названия»: a name is fixed in the settings, and refusing to start without one
+  would be a gate in front of an empty database.
 - Isolation is complete: own tasks, own labels, own notes. Nothing is shown together.
 - Switching is done from the header: the current workspace's name opens the list,
   and a name in it is picked. Past two workspaces a list is the only honest shape
