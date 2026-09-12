@@ -53,14 +53,14 @@ distinctions below.
 - id: local-cache
   kind: store
   criticality: HIGH
-  status: UNTESTED
+  status: VALIDATED
   paths: [src/db/local.ts, src/db/types.ts, src/db/hooks.ts]
-  verify: "NONE — needs writing (no test harness exists; see fork note)"
-  tests: —
+  verify: "npx vitest run tests/local/claim-cache.test.ts"
+  tests: [tests/local/claim-cache.test.ts]
   depends-on: []
   scenarios: [s-account-switch-wipe]
-  last-verified: —
-  sign-off: —
+  last-verified: e7f258d 2026-09-12
+  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
 
 - id: db-api
   kind: lib
@@ -77,26 +77,26 @@ distinctions below.
 - id: sync-engine
   kind: adapter
   criticality: HIGH
-  status: UNTESTED
+  status: VALIDATED
   paths: [src/sync/sync.ts]
-  verify: "NONE — needs writing (push/pull, LWW merge, cursor-per-table, session-guard logic; 507 lines, no test file exists anywhere in repo)"
-  tests: —
+  verify: "npx vitest run tests/stack/offline-round-trip.test.ts tests/stack/lww-conflict.test.ts tests/stack/soft-delete.test.ts"
+  tests: [tests/stack/offline-round-trip.test.ts, tests/stack/lww-conflict.test.ts, tests/stack/soft-delete.test.ts]
   depends-on: [local-cache, supabase-auth, supabase-schema]
   scenarios: [s-offline-edit-sync, s-conflict-lww]
-  last-verified: —
-  sign-off: —
+  last-verified: e7f258d 2026-09-12
+  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
 
 - id: supabase-schema
   kind: adapter
   criticality: HIGH
-  status: UNTESTED
+  status: VALIDATED
   paths: [supabase/schema.sql, supabase/migration-002-note-link-and-mute.sql, supabase/migration-003-synced-at.sql, supabase/migration-004-gcal.sql, supabase/migration-005-gcal-placed.sql, supabase/migration-006-lww-and-ownership.sql]
-  verify: "NONE — needs writing; would require a live Supabase project (not touched this session)"
-  tests: —
+  verify: "npx vitest run tests/stack/schema-apply.test.ts tests/stack/rls-two-accounts.test.ts"
+  tests: [tests/stack/schema-apply.test.ts, tests/stack/rls-two-accounts.test.ts]
   depends-on: []
   scenarios: [s-conflict-lww, s-workspace-delete-cascade]
-  last-verified: —
-  sign-off: —
+  last-verified: e7f258d 2026-09-12
+  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
 
 - id: supabase-auth
   kind: adapter
@@ -109,6 +109,7 @@ distinctions below.
   scenarios: [s-auth-session-recovery, s-account-switch-wipe]
   last-verified: —
   sign-off: —
+  accepted-risk: "sign-out ordering uncovered in P0, P1 inherits (owner, 2026-09-12; specs/001-validation-spine/receipts.md F-5)"
 ```
 
 **Fork-substrate note (per task):** `sync-engine` + `supabase-schema` are the components the
@@ -232,28 +233,28 @@ made in Google Calendar itself.
 
 ```yaml
 - id: s-offline-edit-sync
-  status: UNTESTED
+  status: VALIDATED
   chain: [local-cache, db-api, sync-engine, supabase-schema]
-  happy-path: "Edit a task offline (dirty flag set) → go online → push sends it → pull round-trips it clean. Manual walk only; no script exists."
+  happy-path: "tests/stack/offline-round-trip.test.ts — 4 acceptances PASS."
   expected: "Row lands server-side unchanged except server-assigned synced_at; local _dirty clears; no duplicate/loop pull."
-  last-verified: —
-  sign-off: —
+  last-verified: e7f258d 2026-09-12
+  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
 
 - id: s-conflict-lww
-  status: UNTESTED
+  status: VALIDATED
   chain: [sync-engine, supabase-schema]
-  happy-path: "Same row edited on two devices while one is offline; both push. Manual walk only."
+  happy-path: "tests/stack/lww-conflict.test.ts — 6 tests PASS, both enforcement points + SC-008 demonstration."
   expected: "Server keeps the newer updated_at (keep_newer trigger + client isNewer/sameRow check agree); loser's push is silently dropped, not retried forever."
-  last-verified: —
-  sign-off: —
+  last-verified: e7f258d 2026-09-12
+  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
 
 - id: s-workspace-delete-cascade
-  status: UNTESTED
+  status: VALIDATED
   chain: [supabase-schema, sync-engine]
-  happy-path: "Delete a workspace on device A while device B adds a task to it concurrently. Manual walk only."
+  happy-path: "tests/stack/soft-delete.test.ts — 3 tests / 4 acceptances PASS."
   expected: "follow_workspace_delete + stay_deleted_with_workspace jointly soft-delete the late-arriving row; nothing orphaned live under a deleted workspace."
-  last-verified: —
-  sign-off: —
+  last-verified: e7f258d 2026-09-12
+  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
 
 - id: s-gcal-round-trip
   status: UNTESTED
@@ -272,12 +273,12 @@ made in Google Calendar itself.
   sign-off: —
 
 - id: s-account-switch-wipe
-  status: UNTESTED
+  status: VALIDATED
   chain: [local-cache, supabase-auth]
-  happy-path: "Sign out account A on device, sign in account B on same device. Manual walk only."
+  happy-path: "tests/local/claim-cache.test.ts — 5 tests PASS, Docker-free."
   expected: "claimCache detects owner mismatch, wipes local tables before B's data is drawn; no A row ever flashes on B's screen."
-  last-verified: —
-  sign-off: —
+  last-verified: e7f258d 2026-09-12
+  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
 ```
 
 ---

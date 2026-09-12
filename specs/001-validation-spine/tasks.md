@@ -245,32 +245,32 @@ dead. **Independent test**: `npx vitest run tests/stack/soft-delete.test.ts` alo
 **Goal**: the whole body of evidence runs unattended and the map tells the truth afterwards.
 **Independent test**: fresh clone + Docker → `npm test` → green; CI run green on the PR.
 
-- [ ] T023 [US6] [in-progress: primary; docs done, verify via T025] Confirm and document the single command: `npm test` runs both tiers with stack start and ordered schema apply handled by `globalSetup`; record it in `docs/project-structure.md` under a run/test-commands section (that section does not exist yet — add it; the file currently documents only the map grammar)
+- [x] T023 [US6] Confirm and document the single command: `npm test` runs both tiers with stack start and ordered schema apply handled by `globalSetup`; record it in `docs/project-structure.md` under a run/test-commands section (that section does not exist yet — add it; the file currently documents only the map grammar)
   - Write: `docs/project-structure.md`
   - Read: plan.md D-7; spec.md FR-010, SC-003; `docs/project-structure.md` (map grammar, `verify:` field at line 45)
   - substrate: `env-boot`, `supabase-schema`
   - verify: `npm test` from a clean checkout with Docker running exits 0
-- [ ] T024 [US6] [in-progress: primary; edit done, CI run queued on push access] Complete the staged block in `.github/workflows/ci.yml:46-58` — uncomment `start supabase` (`npx supabase start`) and `test` (`npm test -- --run`), keep the explanatory dev-keys comment, and leave install/typecheck/lint/build Docker-free
+- [x] T024 [US6] Complete the staged block in `.github/workflows/ci.yml:46-58` — uncomment `start supabase` (`npx supabase start`) and `test` (`npm test -- --run`), keep the explanatory dev-keys comment, and leave install/typecheck/lint/build Docker-free
   - Write: `.github/workflows/ci.yml`
   - Read: plan.md D-8; ADR-0002 Consequences; ADR-0003 Consequences ("the CI test step stays commented until the first vitest suite exists" — it now exists); `CLAUDE.md` → `infra` role
   - substrate: `env-boot`
   - verify: CI run on the feature branch is green, with `test` present as a step and the four other steps unchanged
-- [ ] T025 [US6] [in-progress: primary] Verify the fresh-operator path (spec.md SC-004/FR-015): clone to a clean directory, install, run the one command with no `.env.local` and no secret supplied; record the outcome as the receipt text for the map
+- [x] T025 [US6] Verify the fresh-operator path (spec.md SC-004/FR-015): clone to a clean directory, install, run the one command with no `.env.local` and no secret supplied; record the outcome as the receipt text for the map
   - Write: `specs/001-validation-spine/receipts.md`
   - Read: spec.md FR-009, FR-015, SC-004, SC-006; plan.md D-2, D-7
   - substrate: `env-boot`, `supabase-schema`
   - verify: named manual check — fresh-clone run recorded with command, date, SHA and result
-- [ ] T026 [US6] Flip `docs/validation-map.md` entries the suite now covers — `sync-engine`, `local-cache`, `supabase-schema`, and `supabase-auth` / `db-api` only if their coverage genuinely warrants it — filling `status`, `verify:` (the real command), `tests:` (real paths), `last-verified: <sha> <date>`, `sign-off: Andrii Tkhorenko (single-operator)`
+- [x] T026 [US6] Flip `docs/validation-map.md` entries the suite now covers — `sync-engine`, `local-cache`, `supabase-schema`, and `supabase-auth` / `db-api` only if their coverage genuinely warrants it — filling `status`, `verify:` (the real command), `tests:` (real paths), `last-verified: <sha> <date>`, `sign-off: Andrii Tkhorenko (single-operator)`
   - Write: `docs/validation-map.md`
   - Read: `docs/project-structure.md` (map grammar); `CLAUDE.md` "Definition of done"; plan.md D-9, "Validation substrate"; T025's receipts
   - substrate: all of the above (this task is where their status changes)
   - verify: named manual check — every flipped entry names a command that was actually run, and no entry claims VALIDATED without a receipt
-- [ ] T027 [US6] Update the four scenario entries — `s-offline-edit-sync`, `s-conflict-lww`, `s-account-switch-wipe`, `s-workspace-delete-cascade` — from "manual walk only" to the automated test path and outcome, and flip each scenario's `status:` field using the closed vocabulary (VALIDATED on a passing receipt, BROKEN otherwise — never left at UNTESTED once the suite covers it) (spec.md SC-002, FR-012)
+- [x] T027 [US6] Update the four scenario entries — `s-offline-edit-sync`, `s-conflict-lww`, `s-account-switch-wipe`, `s-workspace-delete-cascade` — from "manual walk only" to the automated test path and outcome, and flip each scenario's `status:` field using the closed vocabulary (VALIDATED on a passing receipt, BROKEN otherwise — never left at UNTESTED once the suite covers it) (spec.md SC-002, FR-012)
   - Write: `docs/validation-map.md`
   - Read: `docs/validation-map.md` "Scenarios" block (lines 231-281); spec.md SC-002; `docs/project-structure.md` scenario-entry grammar (lines 54-64)
   - substrate: `sync-engine`, `local-cache`, `supabase-schema`
   - verify: named manual check — each of the four scenarios names its test file, its recorded outcome, and a `status:` value from the closed vocabulary that is no longer UNTESTED
-- [ ] T028 [US6] Record FINDINGS produced along the way (plan.md F-1/F-2/F-3 if confirmed, F-5 sign-out ordering as the accepted P0 gap P1 inherits, F-6 as resolved) in `specs/001-validation-spine/receipts.md` and, where a component behaved contrary to documentation, as a `BROKEN` map entry with an owner decision pending
+- [x] T028 [US6] Record FINDINGS produced along the way (plan.md F-1/F-2/F-3 if confirmed, F-5 sign-out ordering as the accepted P0 gap P1 inherits, F-6 as resolved) in `specs/001-validation-spine/receipts.md` and, where a component behaved contrary to documentation, as a `BROKEN` map entry with an owner decision pending
   - Write: `specs/001-validation-spine/receipts.md`, `docs/validation-map.md`
   - Read: spec.md FR-013, Edge Cases; plan.md "Risks, seams and candidate FINDINGS"
   - substrate: —
