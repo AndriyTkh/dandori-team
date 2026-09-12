@@ -1,0 +1,58 @@
+# Fork CI — the four checks the 2026-09-12 audit ran by hand, now automated.
+# Receipts for map entry `env-boot` (docs/validation-map.md). Nothing here proves runtime
+# correctness: no Supabase project, no Google credentials, no browser. See ARCHITECTURE.md §5.
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: install / typecheck / lint / build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # `npm ci` needs package-lock.json to match package.json; it is committed.
+      - name: install
+        run: npm ci
+
+      - name: typecheck
+        run: npx tsc -b --noEmit
+
+      - name: lint
+        run: npm run lint
+
+      # `npm run build` is `tsc -b && vite build`. It does not need Supabase credentials:
+      # src/auth/supabase.ts reads them at runtime, not at build time.
+      - name: build
+        run: npm run build
+
+      # P0 gate (ADR-0002): uncomment the two steps below together with the first vitest suite.
+      # The first test is the offline-edit sync round-trip, scenario `s-offline-edit-sync`.
+      #
+      # Tests run against the `supabase` CLI local stack — real Postgres, real RLS, real triggers,
+      # in Docker. Its keys are the fixed, well-known development values printed by `supabase
+      # start`: nothing secret is committed and no hosted project is ever touched. Two-account
+      # scenarios are two supabase-js clients in one vitest process, not a browser (ADR-0003).
+      #
+      # - name: start supabase
+      #   run: supabase start
+      #
+      # - name: test
+      #   run: npm run test -- --run
