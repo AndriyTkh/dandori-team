@@ -20,13 +20,23 @@ Fixed after the interviews. Change only at the explicit request of the project o
   header's menu. A pair named for you is a pair of names you did not choose and have
   to rename or delete before you can start.
 - Isolation is complete: own tasks, own labels, own notes. Nothing is shown together.
-- Switching is one click from the header.
+- Switching is done from the header: the current workspace's name opens the list,
+  and a name in it is picked. Past two workspaces a list is the only honest shape
+  for it, so the switch costs the click that opens it.
 - A workspace can be renamed and deleted. Since it is arbitrary, a typo in the name
   needs some way to be fixed, otherwise it stays there forever.
 
 ### Board
 
 - Columns are **days**, not statuses. Drag a card into another column and you change its date.
+- A task's date is its deadline, or its start date when it has no deadline. One
+  answer for the whole app: the column it sits in, the point it takes on the
+  timeline, the day its calendar event is made on, and the day the banner counts
+  from. A task with a start date and no deadline used to fall into «Без даты» on
+  the board while the timeline drew it on its date and the calendar skipped it —
+  three answers to one question, and two of them wrong. Dragging such a card
+  moves the date it has: no deadline is invented for it, and dropping it on
+  «Без даты» clears the same date it was placed by.
 - Two range modes:
   - `14 дней` (14 days) — a sliding window that always holds «Сегодня» (today),
     starting from yesterday — see below.
@@ -42,7 +52,11 @@ Fixed after the interviews. Change only at the explicit request of the project o
   date and there has to be one way back.
 - On a phone a month cell is 55 px wide, which holds no words: a task is drawn
   there as its label's colour bar and nothing else. The month is the overview of
-  where the load sits; the day behind the cell is where it is read.
+  where the load sits; the day behind the cell is where it is read — so a tap on
+  the cell switches to «Лента» at that day, and a tap on one of the colour bars
+  opens the task itself. Without it the overview was a dead end: the load was
+  visible and unreachable, and the day had to be found again by hand. On the
+  laptop a cell already holds the titles, and nothing is added there.
 - The «Без даты» (no date) column is pinned on the left and does not scroll away.
   Dragging a card back into it clears the date.
 - There is no «Просрочено» column, and adding one back is a finding. An overdue task
@@ -55,6 +69,10 @@ Fixed after the interviews. Change only at the explicit request of the project o
   «14 дней» opens at the start of that window, «Без даты» pinned and yesterday
   standing beside it — opening on today instead parked yesterday underneath the
   pinned column, which is the one place it may not be.
+- The current day's column is outlined, Saturdays and Sundays are shaded a shade
+  darker, and the headers of yesterday, today and tomorrow carry that word beside
+  the date rather than instead of it. The date is what a header is for; the word
+  is what the eye lands on when the strip is scrolled.
 - On the phone nothing is pinned: the pinned column plus one day already fill the
   whole screen. «Без даты» becomes an ordinary first column of the feed, and the
   initial scroll position is today.
@@ -102,7 +120,11 @@ One schema for all workspaces. No per-workspace schemas.
 - A label can be renamed, recolored and deleted — in the same list of labels
   in the task card, «Правка» (edit) mode. A deleted label is removed from all tasks.
 - Labels are separate in every workspace.
-- The label filter lives in the header and applies to all views at once.
+- The label filter lives in the header and applies to all views at once. The
+  reminder banner is outside it: the banner is about dates falling due, not about
+  a slice of the board, and a deadline hidden because its label is unticked is a
+  deadline missed. On the notes tab the filter button is not shown at all —
+  notes carry no labels, and a control that can change nothing is noise.
 
 ### Timeline
 
@@ -112,6 +134,18 @@ One schema for all workspaces. No per-workspace schemas.
   a season of completed work buries them. The board is where a finished task stays
   visible, struck through on its own day.
 - The main scenario: see all deadlines on one scale and understand where the jam is.
+- An overdue task is said three ways at once and no more: its name in red, a ring
+  around its bar or dot, and the red mark on the axis. On the phone the row itself
+  takes a pale red band instead of the ring — the scale is scrolled there, and the
+  mark that carries the colour is often off the screen, so the row has to say it
+  on its own. On the laptop that band covered a quarter of the tab for two late
+  tasks and lost its colour under the pointer.
+- The current day is a hairline down the whole height of the scale, and Saturdays
+  and Sundays are shaded, exactly as they are on the board.
+- On the laptop a bar carries the task's dates and a day column its own date as a
+  pointer's tooltip. It is the one thing in the app that depends on hover, and it
+  may stay so: nothing is reached only through it. The phone has no hover and gets
+  none of it — there is no room for a callout there, and nothing is lost with it gone.
 - The scale is never shorter than a month from today: with a couple of tasks it would
   otherwise take a third of the screen and look cut off.
 - Two range modes, switched at the top of the empty corner beside the axis:
@@ -159,7 +193,10 @@ a background service on the phone. Google Calendar already is that service. This
 is not an integration for its own sake; it is the reminder the banner cannot give.
 
 - Signing in to Google is a row in the settings window and is optional. The app
-  keeps working untouched without it.
+  keeps working untouched without it. The same button stands in the event's own
+  window when the account is not connected yet — it is not a second home for the
+  setting, it is what a tick has to lead to: the window opened by ticking the
+  checkbox would otherwise be empty, with the setting it needs three clicks away.
 - A task carries a «Синхронизировать с Google Calendar» checkbox. Ticking it opens
   a small window: the time of the event, up to three reminders (how long before,
   and whether a notification or an e-mail), which calendar, and the event's colour.
@@ -186,6 +223,11 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   A task can still be taken out of such a workspace one by one: unticking its
   checkbox says so explicitly, and that is remembered, because clearing its own
   terms would only drop it back under the workspace's.
+  «Править» on such a task shows the workspace's terms, and saving them unchanged
+  changes nothing: the task keeps following the workspace. Only what the owner
+  actually altered is written onto the task, and only that takes it out from under
+  the switch. Saving the terms as they stood used to detach it silently — the task
+  went on looking the same and stopped hearing the workspace for good.
   This is the one rule in the app that acts on rows made after it was written,
   which is close to the automations the list forbids. It is allowed because it
   is a switch the owner holds and can see, on one workspace, doing one thing —
@@ -210,6 +252,11 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
 - A sidebar with a tree of folders and files, feels like the file tree in VS Code.
 - Markdown, edited right inside the app.
 - The tree is separate in every workspace.
+- A note or a folder is moved by dragging it onto another folder, and reordered by
+  dragging it between its neighbours — the tree is the only place a note lives, so
+  the tree is where it is carried. No «Переместить» item and no folder picker: the
+  menu holds renaming and deleting, and a third way to say "this one goes there"
+  would be a list of every folder in the workspace.
 
 ### Reminders
 
@@ -264,7 +311,10 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   who do not read it, and a planner whose every label is unreadable cannot be
   looked at at all. Neither language is a translation of the other in the code:
   both live side by side in one dictionary, and a string with only one of them is
-  a bug.
+  a bug. A word that is spelled the same in both — "Email", "Markdown" — is written
+  in the dictionary twice all the same: it costs one line, and a word hardcoded in
+  a component is a word nobody finds when it has to change. The address is called
+  "Email" in both languages throughout, including the failed sign-in.
 - A question before anything is taken away — a task, a label, a note, a
   workspace, or edits a sign-out would lose — is asked by the app, not by the
   browser. One window for all of them: a step inside the settings window would
@@ -290,11 +340,20 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   the server is the judge: it refuses an update older than the row it holds.
   Left to the devices, the edit that *arrived* last won instead — an offline
   edit from the morning overwrote the afternoon's, and a deleted task came back.
+  The whole row is the unit, and that is the price: dragging a card renumbers the
+  other cards of that day, deleting a label rewrites every task that carried it,
+  and each of those rows travels entire. Two devices editing different fields of
+  one task within the same minute therefore lose one of the two edits. Merging
+  field by field would need a history per column; with one owner and two devices
+  it buys a case that happens by accident, if at all.
 - Signing out never loses an edit silently. What is queued is sent first; what
   cannot be sent is named, and the owner is asked before it goes.
 - The local cache belongs to one account. A device that finds someone else's
   rows in it at sign-in starts clean rather than showing them.
-- Export of all data to JSON. There is no import.
+- Export of all data to JSON. There is no import. Ids of labels and notes that no
+  longer exist are dropped as it is written: a task edited offline can come back
+  from a conflict still carrying the label deleted on the other device, and though
+  no view ever draws it, the export is the one place it would be read.
 
 ### PWA
 
