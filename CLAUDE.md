@@ -80,6 +80,17 @@ Fixed after the interviews. Change only at the explicit request of the project o
   of the screen to a card sliced down the middle, which reads as damage rather than
   as an invitation to swipe; the snap and the day header say there is more to the
   side. The strip is scrolled by the day, so the day is the unit.
+- A swipe leaves the strip on a day, never between two. The snap is mandatory:
+  a phone screen is 390 px against a column of 382, so a swipe that ran out
+  halfway had no edge near enough for a loose snap to pull it to, and the strip
+  stood on the seam with two half days on it. One swipe moves one day, a hard
+  fling two. The snap is lifted for the length of a card's drag, because a snap
+  of any strictness undoes the few pixels a frame the auto-scroll moves.
+- «Лента» grows its window of days only once the strip has stopped moving.
+  Adding days while a fling is still running puts the scroll position back from
+  the main thread, and the compositor, still carrying the gesture from its own
+  offset, throws that away a frame later: the feed jumped a fortnight backwards,
+  and a long fling did it ten times over — four months gone in one swipe.
 - Auto-scroll while a card is dragged near the edge runs at about one column a
   second at the very edge. The library's own acceleration is seven times that — a
   week gone before a finger can lift, and the card lands nowhere near the day it
