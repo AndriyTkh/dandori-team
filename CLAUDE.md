@@ -151,8 +151,10 @@ One schema for all workspaces. No per-workspace schemas.
   mark that carries the colour is often off the screen, so the row has to say it
   on its own. On the laptop that band covered a quarter of the tab for two late
   tasks and lost its colour under the pointer.
-- The current day is a hairline down the whole height of the scale, and Saturdays
-  and Sundays are shaded, exactly as they are on the board.
+- The current day is a hairline down the whole height of the scale. Saturdays and
+  Sundays are shaded in the header of the scale and there only: a band down the
+  whole height, as the board draws it, would cross every bar on the tab and turn
+  the one thing the eye follows into stripes.
 - On the laptop a bar carries the task's dates and a day column its own date as a
   pointer's tooltip. It is the one thing in the app that depends on hover, and it
   may stay so: nothing is reached only through it. The phone has no hover and gets
@@ -187,9 +189,15 @@ One schema for all workspaces. No per-workspace schemas.
   callout joined to the dot by a lead. Callouts alternate above and below the axis and
   stack into a few levels when they crowd; when nothing fits the callout is dropped and
   the dot stays, still clickable. Clicking a dot or a callout opens the task.
-  The dot's touch area is 27 px rather than the 44 px everything else gets: in a
-  crowded month the dots stand five to ten pixels apart, and a finger's worth of
-  target around each would let the topmost one swallow its neighbours' taps.
+  The dot is 9 px of paint with nothing grown around it — the one control in the
+  app left at its own size. It carried a 27 px box for a finger, and half a
+  million real taps measured what that cost: on a phone a day is 14 px wide and
+  two tasks sharing a day stand 7 px apart, so the box reached past the
+  neighbour's centre, and a tap on a dot's own middle opened a different task 21
+  times out of 28 in a crowded month. The paint alone is not naked — a browser
+  already carries a tap some nine pixels past a control, which is the reach the
+  box was after — and a missed tap at a lone dot opens nothing and is repeated,
+  where the box's win opened the wrong task.
   The axis lives inside the same scroller as the rows, so the two halves cannot drift
   apart. It shows deadlines, not spans — duration is what the rows above are for.
 - On the phone it always scrolls horizontally; on the laptop it fits whenever its
@@ -287,9 +295,12 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   a tap 10–13 px past a control's own edge, and up to 11 px into the next control,
   so an invisible box grown towards a neighbour does not reach into empty space —
   it moves the boundary and takes the neighbour's taps. A grid of 166 258 taps
-  found that every such growth cost a neighbour more than it gained. It is allowed
-  only where nothing tappable stands within about 25 px — which on this phone is
-  the timeline's axis alone, where the dot is the reasoned exception below.
+  found that every such growth cost a neighbour more than it gained, and a second
+  grid of 542 640 across the timeline's axis found the same where such a growth
+  had been allowed as an exception. It is allowed only where nothing tappable
+  stands within about 25 px — measured, not assumed, and on this phone there is
+  no such place: where a dot does stand 70 px from the next, growth is free and
+  wins nothing either.
   Anything typed into is held at 16 px, or iOS Safari zooms the page in
   on focus and leaves it zoomed.
 - There is no hover on a phone. A control that only appears when a pointer is over
@@ -371,6 +382,9 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
 - The same address on the laptop and on the phone, responsive layout.
 - Manifest and service worker, installs to the Android home screen,
   opens without the address bar once installed.
+- The manifest's own name and description are Russian and are the one exception
+  to the two languages. They are built into the file, and the device reads them
+  before the app runs, so there is nothing there to pick a language with.
 - A new build reaches a running app on its own: the app checks for one hourly and
   reloads once the new service worker takes over. An installed app on the phone is
   resumed rather than reopened for days, and without the check it would go on
