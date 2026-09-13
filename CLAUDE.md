@@ -176,7 +176,13 @@ One schema for all workspaces. No per-workspace schemas.
   mode, only the zoom differs. The choice is remembered per device.
   The phone gets no switch and is always `Месяц`: 400 px cannot hold a year of
   anything, so days stay readable and the rest of the scale is scrolled to. The
-  corner there stays a bare spacer and leaves its width to the axis.
+  two ends of the name column — the corner above the names and the foot below
+  them — hold nothing there, so the scale runs over them rather than under.
+  Pinned and painted, as they are on the laptop where one of them carries the
+  switch, they cost the scale a third of a 390 px screen: every scroll slid the
+  first day and half a month's name in under a blank block and cut them down the
+  middle. The column's own line stays along the names, which is the stretch of
+  it that divides anything.
 - A column is a day only while days are wide enough to read. Past that the step
   grows to a week and then to a month, so a grant two years out still fits on the
   screen instead of squeezing every day into a hairline. Dates keep their exact

@@ -495,6 +495,33 @@
   }
 
   /*
+   * The scale runs over the two blank ends of the name column, not under them.
+   *
+   * The column is pinned the whole height — the corner above the names, the cap
+   * below them — so that it reads as one thing while the scale moves. On a
+   * laptop both ends have something in them to read: the corner tops the names,
+   * the cap holds the range switch. A phone has neither, and the price is paid
+   * where it hurts most: a screen 390px wide gives the scale about 250, and a
+   * third of that swallowed the first date and half a callout on every scroll —
+   * a month label cut down the middle by an empty block.
+   *
+   * So on a phone the two ends stop painting and step under the scale. The
+   * column's own line stays where the names are, which is the part of it that
+   * has anything to divide.
+   */
+  .timeline__corner,
+  .timeline__axis-cap {
+    z-index: 0;
+    background: none;
+    border-right: none;
+  }
+
+  .timeline__head-track,
+  .timeline__axis-track {
+    z-index: 1;
+  }
+
+  /*
    * The name gutter took a third of the screen and still ended every task in an
    * ellipsis: one line of it holds about fourteen letters, and the shortest real
    * deadline in here is «Промежуточный отчёт по гранту». Two lines in a
