@@ -17,7 +17,7 @@ const env = {
 // repeated per project rather than declared once at the root.
 const shared = {
   environment: 'jsdom',
-  setupFiles: ['./tests/setup.ts'],
+  setupFiles: ['./tests/setup-env.ts', './tests/setup.ts'],
   env,
 } as const
 

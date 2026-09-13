@@ -76,7 +76,7 @@ One fact, one home. Link, don't restate.
   widen. Both halves of each `own_rows` policy are replaced, and the existing read/write asymmetry
   is preserved, not flattened.
 - **LWW lockstep.** Client merge (`src/sync/sync.ts:409-458`) and the server `keep_newer()` trigger
-  (`supabase/migration-006-lww-and-ownership.sql:37-48`) are *one rule with two enforcement
+  (`supabase/schema.sql:142-153`) are *one rule with two enforcement
   points*. Neither changes without the other, in the same change set.
 - **Triggers survive.** `keep_newer`, `stay_deleted_with_workspace`, `follow_workspace_delete` must
   behave identically after the predicate swap.

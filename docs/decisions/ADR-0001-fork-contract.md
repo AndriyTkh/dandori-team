@@ -30,12 +30,12 @@ Three facts from the audit shape everything below:
    `auth.uid() = user_id` (`supabase/schema.sql:238-248`); write side on `labels`/`tasks`/`notes`
    additionally requires that the target workspace is yours
    (`supabase/schema.sql:249-253`, re-issued at
-   `supabase/migration-006-lww-and-ownership.sql:125-137`). `workspaces` has no membership or
+   `supabase/schema.sql:244-254`). `workspaces` has no membership or
    collaborator concept anywhere in schema or code — no members table, no role column, no
    `auth.jwt()` claim inspection, no `security definer` widening.
 2. **Conflict resolution is enforced twice, in lockstep.** Client-side whole-row LWW
    (`src/sync/sync.ts:104-141,409-458`) and the server trigger `keep_newer()`
-   (`supabase/migration-006-lww-and-ownership.sql:37-48`) currently agree. Changing one without
+   (`supabase/schema.sql:142-153`) currently agree. Changing one without
    the other silently corrupts merges.
 3. **The local cache assumes exactly one account per device.** `claimCache`/`wipeLocal`
    (`src/db/local.ts:89-125`) wipes the whole IndexedDB cache wholesale on owner mismatch.

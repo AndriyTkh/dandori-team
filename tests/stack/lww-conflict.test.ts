@@ -1,7 +1,7 @@
 // TG-4 (US2) — last-write-wins, pinned at both enforcement points.
 //
 // T014 (server half, acc lww-acc1/lww-acc2): `keep_newer()`
-// (supabase/migration-006-lww-and-ownership.sql:37-48) refuses an update
+// (supabase/schema.sql:142-153) refuses an update
 // whose `updated_at` is older than the row it already holds — content stays
 // put and `synced_at` does not move (ARCHITECTURE.md §4 L357-378) — and the
 // losing device's own queue (`src/sync/sync.ts:203-280`) stops re-sending the
@@ -28,7 +28,7 @@
 // concurrent test runs, so a live trigger toggle would be a ledger-integrity
 // risk, not a safe demonstration — the file below mirrors each predicate as a
 // small shadow function built only from this file's own inputs
-// (`serverKeepsIncoming` mirrors migration-006:41-46,
+// (`serverKeepsIncoming` mirrors schema.sql:148-150,
 // `clientKeepsLocalOverIncoming` mirrors sync.ts:432), asserts each shadow
 // agrees with the real outcome captured by the acceptance-5 test above it,
 // then inverts each shadow in turn and asserts the inverted prediction
@@ -38,7 +38,7 @@
 //
 // Read: ARCHITECTURE.md §4 L357-378 (LWW contract), L331-356 (sync loop,
 // per-table error isolation, sync.ts:274-280/:203-209);
-// supabase/migration-006-lww-and-ownership.sql:37-48; plan.md F-2, F-6;
+// supabase/schema.sql:142-153; plan.md F-2, F-6;
 // CLAUDE.md "LWW lockstep"; ADR-0001-fork-contract.md §3; spec.md US2
 // acceptances 1-5, SC-008.
 import { randomUUID } from 'node:crypto'
@@ -406,7 +406,7 @@ describe('T016 — lockstep: both enforcement points, and their sensitivity (SC-
      * agreement here is anchored to an actually-observed outcome, not to a
      * restated assumption.
      */
-    // Mirrors migration-006-lww-and-ownership.sql:41-46 (`if new.updated_at
+    // Mirrors schema.sql:148-150 (`if new.updated_at
     // < old.updated_at then return null`): true means the incoming write is
     // kept (accepted) by the server.
     const serverKeepsIncoming = (storedAt: string, incomingAt: string): boolean =>

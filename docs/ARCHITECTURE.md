@@ -245,7 +245,7 @@ laptop that was offline (`src/db/types.ts:26-32`).
 - Every row carries one `user_id`, `not null references auth.users(id) on delete cascade`
   (`schema.sql:18, 32, 44, 81`).
 - Exactly one RLS policy per table, all named `own_rows`, all `for all`
-  (`schema.sql:238-254`, re-issued `supabase/migration-006-lww-and-ownership.sql:125-137`).
+  (`schema.sql:238-254`; since upstream `a3a7572` migration-006 no longer re-issues it).
 - **Reads** are `auth.uid() = user_id` alone (`schema.sql:241, 248`).
 - **Writes** on `labels`/`tasks`/`notes` additionally require the target workspace to be yours
   (`schema.sql:249-253`) — because a foreign key checks that a workspace exists, never whose it
@@ -360,7 +360,7 @@ One cycle is **push, then pull**, in that order (`src/sync/sync.ts:476-481`); pu
 the server as judge (`src/sync/sync.ts:12-17`).
 
 - **Server:** `keep_newer()` — `if new.updated_at < old.updated_at then return null`
-  (`supabase/schema.sql:142-153`, origin `supabase/migration-006-lww-and-ownership.sql:37-48`).
+  (`supabase/schema.sql:142-153`, its one home since upstream `a3a7572`).
   Equal stamps are accepted on purpose: a device rewriting only `gcal_placed` does not bump
   `updated_at`. Returning null also means `synced_at` is not moved.
 - **Client:** `mergeRows` (`src/sync/sync.ts:409-458`) applies three skip gates before writing —

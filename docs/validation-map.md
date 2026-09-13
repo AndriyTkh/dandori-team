@@ -115,10 +115,10 @@ distinctions below.
 **Fork-substrate note (per task):** `sync-engine` + `supabase-schema` are the components the
 fork stands on directly:
 - **Conflict layer** = `sync-engine`'s whole-row LWW merge (`sameRow`/`isNewer`, `sync.ts:104-141,409-458`)
-  paired with the server-side `keep_newer()` trigger (`migration-006-lww-and-ownership.sql:37-48`).
+  paired with the server-side `keep_newer()` trigger (`schema.sql:142-153`).
   Two independent enforcement points, currently in agreement — a membership model must not
   silently change one without the other.
-- **RLS/ownership model** (`migration-006-lww-and-ownership.sql:116-138`, `schema.sql:16-91`) is
+- **RLS/ownership model** (`schema.sql:228-255`, `schema.sql:16-91`) is
   **single-owner only**: every row carries one `user_id` and `workspaces` has no
   membership/collaborator concept at all.
 
@@ -129,7 +129,7 @@ fork stands on directly:
     `schema.sql:248` (labels/tasks/notes).
   - **Writes** (`WITH CHECK`) on `labels`/`tasks`/`notes` *additionally* require the target
     workspace to be yours — `schema.sql:249-253`, re-issued verbatim at
-    `migration-006-lww-and-ownership.sql:125-137`. A foreign key checks that a workspace exists,
+    `schema.sql:244-254`. A foreign key checks that a workspace exists,
     never whose it is, so without this clause anyone who learned a workspace id could insert into
     it (rationale `schema.sql:222-228`).
 
