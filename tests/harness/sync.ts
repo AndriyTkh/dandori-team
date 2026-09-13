@@ -17,6 +17,18 @@
 // actually pull. This waits for the *second* settle on the same seam so both
 // push and pull complete before the handle stops (mechanism ported from
 // `drivePushAndPullCycle` in `tests/stack/offline-round-trip.test.ts`).
+//
+// Counting settles is only sound while the driven cycle is the *only* thing
+// settling. It is not, by default: every write through `src/db/api.ts` calls
+// `requestPush()` (`src/db/api.ts:37-39`), which arms a 400 ms debounce that
+// fires a bare `push()` (`src/sync/sync.ts:168-174`) outside `startSync()`'s
+// cycle, not cancelled by `handle.stop()`, and always ending in `settle()`.
+// Landing while the cycle's pull is still merging, that settle is counted as
+// pull's and the driver returns before the rows are in Dexie (002 receipts,
+// "sync-engine flake receipt (T003)"). So a full cycle first drains that
+// queue through the exported `flushQueue()` — it clears `pushTimer` and pushes
+// the dirty rows before we subscribe — leaving exactly two settles to count:
+// the cycle's own empty push, then its pull.
 import { onSyncState, startSync, flushQueue as sourceFlushQueue, type SyncHandle, type SyncState } from '../../src/sync/sync'
 
 const DEFAULT_TIMEOUT_MS = 10_000
@@ -34,6 +46,12 @@ const SETTLES_PER_FULL_CYCLE = 2
  * A pull-only cycle — push forced offline for its one check — never enters
  * `syncing` on push's side, so only pull's settle ever lands; callers of such
  * a cycle pass `settles: 1`.
+ *
+ * A full cycle first drains the debounced push queue (`flushFirst`, see the
+ * header) so no stray `push()` can settle during the cycle's pull. A pull-only
+ * cycle does not: draining is itself a push, and it would consume the one
+ * forced-offline `navigator.onLine` check the caller set up for the cycle's
+ * push — that caller keeps its own hazard and its own arrangement.
  */
 export async function driveSyncCycle(options?: {
   timeoutMs?: number
@@ -41,9 +59,19 @@ export async function driveSyncCycle(options?: {
   predicate?: () => Promise<boolean>
   /** Number of post-`syncing` settles to wait for. Defaults to a full push+pull cycle. */
   settles?: number
+  /**
+   * Drain the debounced push queue (`flushQueue()`) before `startSync()`, so
+   * the only settles are the driven cycle's own. Defaults to true for a full
+   * push+pull cycle and false for a pull-only one (`settles: 1`).
+   */
+  flushFirst?: boolean
 }): Promise<void> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const settles = options?.settles ?? SETTLES_PER_FULL_CYCLE
+  const flushFirst = options?.flushFirst ?? settles >= SETTLES_PER_FULL_CYCLE
+  // Rows still pending after the flush's bounded tries are not an error here:
+  // the cycle's own push takes them again, exactly as it did before.
+  if (flushFirst) await sourceFlushQueue()
   const handle: SyncHandle = startSync()
 
   try {
