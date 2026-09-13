@@ -95,7 +95,7 @@ distinctions below.
   tests: [tests/stack/schema-apply.test.ts, tests/stack/rls-two-accounts.test.ts]
   depends-on: []
   scenarios: [s-conflict-lww, s-workspace-delete-cascade]
-  last-verified: e7f258d 2026-09-12
+  last-verified: 5448a0d 2026-09-13
   sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
 
 - id: supabase-auth

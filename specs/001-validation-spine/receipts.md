@@ -65,3 +65,24 @@ Each: observed vs documented, and disposition. No assertion was weakened to make
   testTimeout (T008c).
 
 Sign-off: Andrii Tkhorenko (single-operator, owner-delegated 2026-09-12)
+
+## 2026-09-13 — upstream merge a3a7572 (15 commits), re-verification
+
+- Merge commit c7dedae on main (001-validation-spine fast-forwarded first). Conflict only in
+  CLAUDE.md: fork's kept, upstream's body copied verbatim into docs/upstream-CLAUDE.md.
+- Upstream diff review: src/sync/ untouched (LWW merge unchanged); supabase/schema.sql unchanged;
+  migration-003 and migration-006 reduced to comments + the one-off orphan-row update (their
+  definitions already lived in schema.sql). Dexie schema version and table shapes unchanged;
+  new exports taskDate (types.ts) and moveNote (api.ts); no test-imported signature changed.
+- Map: local-cache and supabase-schema paths were touched (types.ts; migration-003/006) →
+  re-verified, last-verified moved to 5448a0d. db-api / views / gcal stay UNTESTED as before.
+- Verify: npm run lint PASS; npm run build PASS; npm test -- --run → 6 files / 29 tests PASS,
+  exit 0 (at 5448a0d, local stack restarted first — auth container had gone unhealthy after 2h).
+- Trap found and fixed inside the test surface: Node's global BroadcastChannel under jsdom made
+  Dexie emit 13 unhandled cross-realm MessageEvent errors per full run (exit 1) — present at
+  f498c24 too, locally; CI at f498c24 was green. tests/setup-env.ts removes the global before
+  Dexie loads. No src/ or supabase/ change.
+- Stale line citations to migration-006 (CLAUDE.md, validation-map, ADR-0001, ARCHITECTURE.md
+  §4, lww-conflict.test.ts) repointed to schema.sql:142-153 / :244-254.
+
+Sign-off: Andrii Tkhorenko (single-operator)
