@@ -138,6 +138,17 @@ export interface Task extends Synced {
   gcal_placed: string | null
 }
 
+/**
+ * The one day a task stands on. One answer for the whole app: the column it
+ * sits in, the point it takes on the timeline, the day its calendar event is
+ * made on, and the day the banner counts from. Asked apart, the answers
+ * disagreed: a task with only a start date was drawn on its day by the timeline
+ * while the board kept it in «Без даты» and the calendar never heard of it.
+ */
+export function taskDate(task: Task): ISODate | null {
+  return task.due_date ?? task.start_date
+}
+
 export type NoteKind = 'folder' | 'file'
 
 export interface Note extends Synced {

@@ -32,6 +32,23 @@ function defaultsOf(workspace: Workspace | null): GcalConfig {
   return workspace?.gcal ?? FALLBACK
 }
 
+/**
+ * Two sets of terms, field by field and reminder by reminder in their order. It
+ * answers one question — was anything in the form actually moved — and that is
+ * what decides whether a task keeps following its workspace.
+ */
+function same(a: GcalConfig, b: GcalConfig): boolean {
+  return (
+    a.time === b.time &&
+    a.calendar_id === b.calendar_id &&
+    a.color_id === b.color_id &&
+    a.reminders.length === b.reminders.length &&
+    a.reminders.every(
+      (r, i) => r.method === b.reminders[i].method && r.minutes === b.reminders[i].minutes,
+    )
+  )
+}
+
 /*
  * Google's own event palette. The ids and the colours are theirs; the names are
  * the ones its own interface uses in each language, so that a colour called one
@@ -307,12 +324,15 @@ function GcalForm({
 export function GcalEventDialog({
   taskId,
   current,
+  following,
   workspace,
   onClose,
   t,
 }: {
   taskId: ID
   current: GcalConfig | null
+  /** The task has no terms of its own and rides the workspace's whole sync. */
+  following: boolean
   workspace: Workspace | null
   onClose: () => void
   t: T
@@ -320,9 +340,18 @@ export function GcalEventDialog({
   const state = useGcalState()
   // A first tick starts from the workspace's own terms, if it has any.
   const [draft, setDraft] = useState<GcalConfig>(current ?? defaultsOf(workspace))
+  // The terms the form opened on, kept to tell an edit from a look.
+  const seeded = useRef(draft)
   useEscape(onClose)
 
   async function save() {
+    /*
+     * A task riding the workspace's switch is shown the workspace's terms and
+     * owns none of them. Writing them back as they stood would hand it a copy,
+     * and a copy stops hearing the workspace — silently, and for good. So a look
+     * closes and only a real difference is written.
+     */
+    if (following && same(draft, seeded.current)) return onClose()
     await setTaskGcal(taskId, draft)
     // The reconciler would get there within the minute; he is looking now.
     void reconcile()

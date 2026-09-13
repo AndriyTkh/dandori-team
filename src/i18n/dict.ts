@@ -29,12 +29,16 @@ export const TEXT = {
   'common.done': { ru: 'Готово', en: 'Done' },
   'common.add': { ru: 'Добавить', en: 'Add' },
   'common.save': { ru: 'Сохранить', en: 'Save' },
+  'common.create': { ru: 'Создать', en: 'Create' },
   'common.delete': { ru: 'Удалить', en: 'Delete' },
 
-  // The pair on a markdown box: the same two words on the task card and in the
-  // notes editor.
+  // Everything a markdown box says: the same words on the task card and in the
+  // notes editor. «Markdown» is spelled the same in both languages and is
+  // written here twice all the same — a word hardcoded in a component is a word
+  // nobody finds when it has to change.
   'md.edit': { ru: 'Править', en: 'Edit' },
   'md.preview': { ru: 'Просмотр', en: 'Preview' },
+  'md.placeholder': { ru: 'Markdown', en: 'Markdown' },
 
   // ---------------------------------------------------------------- tabs
 
@@ -58,11 +62,14 @@ export const TEXT = {
 
   // ------------------------------------------------------------- sign in
 
+  // The address is called «Email» in Russian as well — one name for it wherever
+  // it is asked for and wherever it is refused.
+  'signin.email': { ru: 'Email', en: 'Email' },
   'signin.password': { ru: 'Пароль', en: 'Password' },
   'signin.submit': { ru: 'Войти', en: 'Sign in' },
   'signin.busy': { ru: 'Вход…', en: 'Signing in…' },
   'signin.failed': { ru: 'Не удалось войти', en: 'Could not sign in' },
-  'signin.wrong': { ru: 'Неверная почта или пароль', en: 'Wrong email or password' },
+  'signin.wrong': { ru: 'Неверный email или пароль', en: 'Wrong email or password' },
   'signin.unreachable': { ru: 'Нет связи с сервером', en: 'No connection to the server' },
 
   // ----------------------------------------------------------- reminders
@@ -109,7 +116,6 @@ export const TEXT = {
   'task.noteUnlink': { ru: 'Отвязать', en: 'Unlink' },
   'task.noteOpen': { ru: 'Открыть', en: 'Open' },
   'task.notePick': { ru: 'Выбрать заметку', en: 'Choose a note' },
-  'task.noteCreate': { ru: 'Создать', en: 'Create' },
   'task.noteAttach': { ru: 'Привязать заметку', en: 'Attach a note' },
 
   'task.fields': { ru: 'Поля', en: 'Fields' },

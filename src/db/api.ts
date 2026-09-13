@@ -1,6 +1,7 @@
 import { db, stripLocal, type Local } from './local'
 import { requestPush } from '../sync/sync'
 import { translate } from '../i18n'
+import { taskDate } from './types'
 import type {
   GcalConfig,
   GcalSetting,
@@ -172,19 +173,20 @@ export interface NewTask {
 
 export async function createTask(workspaceId: ID, input: NewTask): Promise<ID> {
   const due = input.due_date ?? null
+  const start = input.start_date ?? null
   const ts = now()
   const row: Local<Task> = {
     id: uid(),
     workspace_id: workspaceId,
     title: input.title.trim() || translate('common.untitled'),
     description: input.description ?? '',
-    start_date: input.start_date ?? null,
+    start_date: start,
     due_date: due,
     done: false,
     remind_days_before: null,
     muted: false,
     note_id: null,
-    position: await nextTaskPosition(workspaceId, due),
+    position: await nextTaskPosition(workspaceId, due ?? start),
     label_ids: input.label_ids ?? [],
     custom_fields: [],
     gcal: null,
@@ -199,8 +201,9 @@ export async function createTask(workspaceId: ID, input: NewTask): Promise<ID> {
   return row.id
 }
 
-async function nextTaskPosition(workspaceId: ID, due: ISODate | null): Promise<number> {
-  const column = (await listTasks(workspaceId)).filter((t) => t.due_date === due)
+/** The end of the day column — the column a task stands in is the one of `taskDate`. */
+async function nextTaskPosition(workspaceId: ID, date: ISODate | null): Promise<number> {
+  const column = (await listTasks(workspaceId)).filter((t) => taskDate(t) === date)
   return Math.max(0, ...column.map((t) => t.position)) + POS_STEP
 }
 
@@ -226,8 +229,11 @@ export async function updateTask(id: ID, patch: TaskPatch): Promise<void> {
     if (!row) return
     const next = { ...row, ...patch }
     // Changing the day means changing the column, so the task goes to its end.
-    if (patch.due_date !== undefined && patch.due_date !== row.due_date) {
-      next.position = await nextTaskPosition(row.workspace_id, patch.due_date)
+    // Read through `taskDate`: a start date moves a task that has no deadline
+    // just as a deadline moves one that has.
+    const day = taskDate(next)
+    if (day !== taskDate(row)) {
+      next.position = await nextTaskPosition(row.workspace_id, day)
     }
     await db.tasks.put(touch(next))
   })
@@ -284,30 +290,49 @@ export async function deleteTask(id: ID): Promise<void> {
 
 /**
  * Moves a task into a day column, in front of task `beforeId`; `null` puts it at the end.
- * `due` = null is the "no date" column.
+ * `date` = null is the "no date" column.
  *
  * The slot is given by a neighbour, not by an index: the board can have a label
  * filter on, and an index in the filtered list is not the index in the whole column.
  *
  * The whole column is renumbered: a day holds a handful of tasks, there is nothing to save.
  */
-export async function moveTask(id: ID, due: ISODate | null, beforeId: ID | null): Promise<void> {
+export async function moveTask(id: ID, date: ISODate | null, beforeId: ID | null): Promise<void> {
   await db.transaction('rw', db.tasks, async () => {
     const moved = await db.tasks.get(id)
     if (!moved) return
 
+    /*
+     * The drag moves the date the card was placed by, and invents no other: a
+     * task standing on its start date keeps standing on a start date, and no
+     * deadline is made up for it. With neither date it is given a deadline, as
+     * the column it came from says nothing either way.
+     *
+     * «Без даты» is the exception, and it takes both: a task carrying a start
+     * date as well as a deadline would otherwise lose the deadline and land in
+     * its start date's column — anywhere but the column it was dropped on, which
+     * is the one promise the board makes.
+     */
+    const byStart = moved.due_date === null && moved.start_date !== null
+    const next =
+      date === null
+        ? { ...moved, start_date: null, due_date: null }
+        : byStart
+          ? { ...moved, start_date: date }
+          : { ...moved, due_date: date }
+
     const column = (await db.tasks.where('workspace_id').equals(moved.workspace_id).toArray())
-      .filter((t) => !t.deleted && t.due_date === due && t.id !== id)
+      .filter((t) => !t.deleted && taskDate(t) === date && t.id !== id)
       .sort((a, b) => a.position - b.position)
 
     const found = beforeId ? column.findIndex((t) => t.id === beforeId) : -1
     const at = found >= 0 ? found : column.length
-    column.splice(at, 0, { ...moved, due_date: due })
+    column.splice(at, 0, next)
 
     for (const [i, task] of column.entries()) {
       const position = (i + 1) * POS_STEP
       if (task.id === id) {
-        await db.tasks.put(touch({ ...moved, due_date: due, position }))
+        await db.tasks.put(touch({ ...next, position }))
       } else if (task.position !== position) {
         await db.tasks.put(touch({ ...task, position }))
       }
@@ -361,6 +386,79 @@ export async function updateNote(
   queue()
 }
 
+/**
+ * Moves a note under `parentId` — `null` is the root of the tree — in front of
+ * sibling `beforeId`; `null` puts it last.
+ *
+ * The slot is named by the neighbour that will follow, not by an index, and the
+ * whole level is renumbered: a level of a note tree holds a handful of rows.
+ *
+ * The level is counted in the order the tree draws it — folders first, then by
+ * position — and laid back down in that same order. Counted by position alone,
+ * a slot named «in front of this file» put the row in front of the folders that
+ * are drawn above it, which is not the place the neighbour stands in.
+ *
+ * Two moves are refused rather than corrected. Only a folder holds children, so
+ * nothing is dropped into a file; and a folder put inside itself, or inside
+ * anything it already holds, would cut its whole subtree out of the tree — the
+ * rows would stay in the table with no path to the root and nowhere to be drawn.
+ */
+export async function moveNote(id: ID, parentId: ID | null, beforeId: ID | null): Promise<void> {
+  await db.transaction('rw', db.notes, async () => {
+    const moved = await db.notes.get(id)
+    if (!moved) return
+
+    const all = (await db.notes.where('workspace_id').equals(moved.workspace_id).toArray()).filter(
+      (n) => !n.deleted,
+    )
+
+    if (parentId !== null) {
+      const byId = new Map(all.map((n) => [n.id, n]))
+      if (byId.get(parentId)?.kind !== 'folder') return
+
+      // Walking up stops on a repeat as well: a chain that already loops back on
+      // itself is not a reason to spin here.
+      const seen = new Set<ID>()
+      let up: ID | null = parentId
+      while (up && !seen.has(up)) {
+        if (up === id) return
+        seen.add(up)
+        up = byId.get(up)?.parent_id ?? null
+      }
+    }
+
+    /*
+     * A note whose folder has not arrived yet counts as standing at the root —
+     * which is where the tree draws it. Counted by `parent_id` alone, the level
+     * here and the level on the screen were two different lists, and the slot
+     * the line promised was not the slot that got written.
+     */
+    const live = new Set(all.map((n) => n.id))
+    const levelOf = (n: Note) => (n.parent_id && live.has(n.parent_id) ? n.parent_id : null)
+
+    const level = all
+      .filter((n) => levelOf(n) === parentId && n.id !== id)
+      .sort((a, b) =>
+        a.kind === b.kind ? a.position - b.position : a.kind === 'folder' ? -1 : 1,
+      )
+
+    const found = beforeId ? level.findIndex((n) => n.id === beforeId) : -1
+    const at = found >= 0 ? found : level.length
+    const next = { ...moved, parent_id: parentId }
+    level.splice(at, 0, next)
+
+    for (const [i, note] of level.entries()) {
+      const position = (i + 1) * POS_STEP
+      if (note.id === id) {
+        await db.notes.put(touch({ ...next, position }))
+      } else if (note.position !== position) {
+        await db.notes.put(touch({ ...note, position }))
+      }
+    }
+  })
+  queue()
+}
+
 /** A folder goes away together with its whole subtree. */
 export async function deleteNote(id: ID): Promise<void> {
   await db.transaction('rw', db.notes, db.tasks, async () => {
@@ -402,14 +500,33 @@ export async function exportAll(): Promise<string> {
   const strip = <T extends { deleted: boolean }>(rows: Local<T>[]) =>
     rows.filter((r) => !r.deleted).map(stripLocal)
 
+  const labels = strip(await db.labels.toArray())
+  const notes = strip(await db.notes.toArray())
+
+  /*
+   * Ids of labels and notes that no longer exist are dropped as the file is
+   * written: a task edited offline can come back from a conflict still carrying
+   * the label deleted on the other device, and though no view ever draws it,
+   * the export is the one place it would be read. Only the copy is cleaned —
+   * rewriting the rows would be an edit of this device's own, and sync would
+   * carry it over to the other one.
+   */
+  const liveLabels = new Set(labels.map((l) => l.id))
+  const liveNotes = new Set(notes.map((n) => n.id))
+  const tasks = strip(await db.tasks.toArray()).map((task) => ({
+    ...task,
+    label_ids: task.label_ids.filter((id) => liveLabels.has(id)),
+    note_id: task.note_id !== null && liveNotes.has(task.note_id) ? task.note_id : null,
+  }))
+
   const data = {
     format: 'dandori-export',
     version: 1,
     exported_at: now(),
     workspaces: strip(await db.workspaces.toArray()),
-    labels: strip(await db.labels.toArray()),
-    tasks: strip(await db.tasks.toArray()),
-    notes: strip(await db.notes.toArray()),
+    labels,
+    tasks,
+    notes,
   }
   return JSON.stringify(data, null, 2)
 }

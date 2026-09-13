@@ -16,7 +16,14 @@ import { db, setMeta } from '../db/local'
 import { currentSession, requestPush } from '../sync/sync'
 import { currentZone, deleteEvent, GcalError, putEvent } from './api'
 import { getToken, isConnected } from './client'
-import { gcalConfigOf, type GcalConfig, type ID, type Task, type Workspace } from '../db/types'
+import {
+  gcalConfigOf,
+  taskDate,
+  type GcalConfig,
+  type ID,
+  type Task,
+  type Workspace,
+} from '../db/types'
 
 /** How often the whole set is looked over, when nothing else prompts it. */
 const TICK_MS = 60_000
@@ -66,7 +73,10 @@ function signature(task: Task, cfg: GcalConfig): string {
   return [
     task.title,
     task.description,
-    task.due_date,
+    // The day the event stands on, which is not always the deadline: signed by
+    // `due_date` alone, a task moved by its start date would keep the event it
+    // was first given and never be rewritten onto the day it had moved to.
+    taskDate(task),
     cfg.time,
     cfg.color_id ?? '',
     reminders,
@@ -87,7 +97,7 @@ function signature(task: Task, cfg: GcalConfig): string {
  * away again. A task the owner configured himself is never overwritten by it.
  */
 function configFor(task: Task, workspace: Workspace | undefined): GcalConfig | null {
-  if (task.deleted || task.done || task.due_date === null) return null
+  if (task.deleted || task.done || taskDate(task) === null) return null
   if (task.gcal) return gcalConfigOf(task.gcal)
   if (workspace?.gcal_sync && workspace.gcal) return workspace.gcal
   return null

@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { labelColors, labelVar } from '../../lib/labels'
+import { taskDate } from '../../db/types'
 import type { ISODate, Label, Task } from '../../db/types'
 
 /*
@@ -36,7 +37,7 @@ export function dateFromKey(key: string): ISODate | null {
 export function groupByDay(tasks: Task[]): Map<string, Task[]> {
   const groups = new Map<string, Task[]>()
   for (const task of tasks) {
-    const key = columnKey(task.due_date)
+    const key = columnKey(taskDate(task))
     const list = groups.get(key)
     if (list) list.push(task)
     else groups.set(key, [task])

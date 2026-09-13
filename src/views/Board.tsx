@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
@@ -26,8 +27,9 @@ import { moveTask } from '../db/api'
 import { addDays, dateRange } from '../db/dates'
 import { useT } from '../i18n'
 import { emptyOf } from '../lib/empty'
+import { usePhone } from '../lib/usePhone'
 import { useToday } from '../state/useToday'
-import type { ID, ISODate, Label, Task } from '../db/types'
+import { taskDate, type ID, type ISODate, type Label, type Task } from '../db/types'
 import { BOARD_MODES, type BoardMode } from '../state/ui'
 import { DayColumn } from './board/DayColumn'
 import { MonthView } from './board/MonthView'
@@ -149,6 +151,7 @@ export function Board({
 }: BoardProps) {
   const now = useToday()
   const t = useT()
+  const phone = usePhone()
   const groups = useMemo(() => groupByDay(tasks), [tasks])
 
   const days = useMemo(
@@ -156,6 +159,13 @@ export function Board({
     [now],
   )
   const [dragged, setDragged] = useState<ID | null>(null)
+  /*
+   * The day a tap on a month cell asked for. It lives here because the feed is
+   * unmounted while the month is on screen: it is read once, as the feed opens,
+   * and cleared the moment a mode button is pressed, or a tap from last week
+   * would still be waiting the next time the feed is chosen by hand.
+   */
+  const [openOn, setOpenOn] = useState<ISODate | null>(null)
   /*
    * The ribbon keeps its days and its scroller to itself, so the «Сегодня»
    * button in the bar asks it to go home instead of scrolling anything itself.
@@ -206,7 +216,7 @@ export function Board({
     // for nothing. It is back where it was when the day is the same and the same
     // task still follows it.
     const date = dateFromKey(key)
-    if (task.due_date === date) {
+    if (taskDate(task) === date) {
       const now = column.findIndex((x) => x.id === id)
       if (now >= 0 && (column[now + 1]?.id ?? null) === beforeId) return
     }
@@ -223,7 +233,13 @@ export function Board({
           <button
             key={m}
             className={`board__mode${m === mode ? ' board__mode--on' : ''}`}
-            onClick={() => onSetMode(m)}
+            onClick={() => {
+              // Only a real change of mode forgets the day a month cell asked
+              // for: pressing «Лента» while it is already on would otherwise
+              // pull the feed back to today under the finger.
+              if (m !== mode) setOpenOn(null)
+              onSetMode(m)
+            }}
           >
             {t(`board.mode.${m}`)}
           </button>
@@ -244,8 +260,9 @@ export function Board({
    * of buttons, under a header with a thousand empty pixels in its middle — so
    * there they stand in the header, beside the tabs they belong to.
    */
+  // The snap is lifted while a card is in the air: see `.board--dragging`.
   return (
-    <div className="board">
+    <div className={`board${dragged ? ' board--dragging' : ''}`}>
       <div className="board__bar">{controls}</div>
       {tools && createPortal(controls, tools)}
 
@@ -264,6 +281,14 @@ export function Board({
             groups={groups}
             labels={labels}
             onOpenTask={onOpenTask}
+            onOpenDay={
+              phone
+                ? (date) => {
+                    setOpenOn(date)
+                    onSetMode('ribbon')
+                  }
+                : undefined
+            }
           />
         ) : mode === 'ribbon' ? (
           <Ribbon
@@ -272,6 +297,7 @@ export function Board({
             groups={groups}
             labels={labels}
             onOpenTask={onOpenTask}
+            openOn={openOn}
             ref={ribbon}
           />
         ) : (
@@ -319,13 +345,18 @@ function Strip({
   groups,
   labels,
   onOpenTask,
-  opensOnToday = false,
+  opensOn,
 }: StripProps & {
   days: ISODate[]
   scroller?: RefObject<HTMLDivElement | null>
   onScroll?: () => void
-  /** The feed opens where its «Сегодня» brings it back to, not on its first day. */
-  opensOnToday?: boolean
+  /**
+   * The day the strip opens on, when it is not its first. The feed opens where
+   * its «Сегодня» brings it back to rather than on the day two weeks back that
+   * exists only to have somewhere to scroll — and on the day a month cell was
+   * tapped, when it was reached that way.
+   */
+  opensOn?: ISODate
 }) {
   const own = useRef<HTMLDivElement>(null)
   const el = scroller ?? own
@@ -347,12 +378,22 @@ function Strip({
    * so that there is somewhere to scroll to. Opening on it put the desk a
    * fortnight in the past.
    */
+  /*
+   * The feed is put where it opens once and then left alone: it rebuilds its
+   * window of days as it is scrolled, and landing on the opening day again after
+   * every rebuild threw the strip back from wherever it had been carried. The
+   * feed puts itself back after a rebuild on its own. The window of «14 дней»
+   * changes only when the day does, and there it should land again.
+   */
+  const landed = useRef<ISODate | null>(null)
   useLayoutEffect(() => {
     const node = el.current
     if (!node) return
-    const atStart = !opensOnToday && pinnedWidth(node) > 0
-    scrollToDay(node, atStart ? (days[0] ?? today) : today)
-  }, [el, today, days, opensOnToday])
+    if (opensOn && landed.current === opensOn) return
+    landed.current = opensOn ?? null
+    const atStart = !opensOn && pinnedWidth(node) > 0
+    scrollToDay(node, atStart ? (days[0] ?? today) : (opensOn ?? today))
+  }, [el, today, days, opensOn])
 
   return (
     <div className="board__scroller" ref={el} onScroll={onScroll}>
@@ -407,8 +448,20 @@ const RIBBON_FORWARD = 30
 /** How many days are appended at a time and how many are kept in memory. */
 const RIBBON_CHUNK = 14
 const RIBBON_MAX = 120
-/** Start loading more days at this distance from the edge. */
-const RIBBON_EDGE = 900
+/*
+ * Start loading more days at this distance from the edge — five columns of a
+ * phone. It used to be two, which a fling crosses before the days it asks for
+ * have been laid out, and the strip ran out of feed under the finger.
+ */
+const RIBBON_EDGE = 1900
+/*
+ * How long the strip has to stand still before the window is rebuilt under it.
+ * Prepending days puts the scroll position back from the main thread, and a
+ * compositor still carrying a fling from its own offset throws that away a frame
+ * later: the feed jumped a fortnight back, and a long fling did it ten times
+ * over — four months gone in one swipe.
+ */
+const RIBBON_SETTLE = 150
 
 /** The window of days the ribbon starts with and comes back to. */
 function ribbonWindow(today: ISODate): ISODate[] {
@@ -420,10 +473,20 @@ interface RibbonHandle {
   toToday: () => void
 }
 
-function Ribbon({ ref, ...props }: StripProps & { ref: Ref<RibbonHandle> }) {
+function Ribbon({
+  ref,
+  openOn,
+  ...props
+}: StripProps & { openOn: ISODate | null; ref: Ref<RibbonHandle> }) {
   const today = props.today
   const scroller = useRef<HTMLDivElement>(null)
-  const [days, setDays] = useState(() => ribbonWindow(today))
+  /*
+   * The feed is built around the day it is opened on — today, or the day a month
+   * cell was tapped. A window around today would leave a date months away
+   * outside it altogether, with nothing to scroll to but a wall of empty days.
+   */
+  const start = openOn ?? today
+  const [days, setDays] = useState(() => ribbonWindow(start))
   // The day we hold on to while the window of days changes underneath.
   const anchor = useRef<{ day: ISODate; left: number; scrollLeft: number } | null>(null)
   // Set when the window is being rebuilt around today and has to be scrolled there.
@@ -488,12 +551,31 @@ function Ribbon({ ref, ...props }: StripProps & { ref: Ref<RibbonHandle> }) {
     })
   }
 
+  /*
+   * Which edge is close, if either — asked on every scroll event, answered only
+   * once the strip has stopped moving.
+   */
+  const settling = useRef<number | null>(null)
+  const wanted = useRef<'left' | 'right' | null>(null)
+
+  useEffect(() => () => {
+    if (settling.current !== null) clearTimeout(settling.current)
+  }, [])
+
   function onScroll() {
     const el = scroller.current
     if (!el) return
-    if (el.scrollLeft < RIBBON_EDGE) extend('left')
-    else if (el.scrollWidth - el.scrollLeft - el.clientWidth < RIBBON_EDGE) extend('right')
+    const near = el.scrollWidth - el.scrollLeft - el.clientWidth
+    wanted.current =
+      el.scrollLeft < RIBBON_EDGE ? 'left' : near < RIBBON_EDGE ? 'right' : null
+
+    if (settling.current !== null) clearTimeout(settling.current)
+    if (!wanted.current) return
+    settling.current = window.setTimeout(() => {
+      settling.current = null
+      if (wanted.current) extend(wanted.current)
+    }, RIBBON_SETTLE)
   }
 
-  return <Strip {...props} days={days} scroller={scroller} onScroll={onScroll} opensOnToday />
+  return <Strip {...props} days={days} scroller={scroller} onScroll={onScroll} opensOn={start} />
 }

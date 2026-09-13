@@ -59,7 +59,11 @@ export function buildRows(tasks: Task[], labels: Label[], now: ISODate): Row[] {
       point: d ?? single,
       milestone: !s || !d,
       color: label ? labelVar(label.color) : NEUTRAL,
-      overdue: d !== null && d < now,
+      // Late by the day the task stands on, which is its deadline or, failing
+      // that, its start — the same day the banner counts from. Asked of the
+      // deadline alone, a task with only a start date was red in the banner and
+      // plain here.
+      overdue: (d ?? single) < now,
     })
   }
 

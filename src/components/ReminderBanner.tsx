@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { diffDays } from '../db/dates'
+import { taskDate } from '../db/types'
 import { useT } from '../i18n'
 import { useToday } from '../state/useToday'
 import type { ID, Task } from '../db/types'
@@ -31,9 +32,10 @@ export function ReminderBanner({ tasks, onOpenTask, onDismiss }: Props) {
     const soon: Entry[] = []
 
     for (const task of tasks) {
+      const date = taskDate(task)
       // `muted` opts a task out of the banner even when it is due or overdue.
-      if (task.done || task.muted || !task.due_date) continue
-      const days = diffDays(now, task.due_date)
+      if (task.done || task.muted || !date) continue
+      const days = diffDays(now, date)
 
       if (days < 0) overdue.push({ task, days })
       else if (days === 0) dueToday.push({ task, days })

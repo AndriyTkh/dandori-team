@@ -3,6 +3,7 @@ import { createWorkspace } from '../db/api'
 import type { ID, Label, Workspace } from '../db/types'
 import { useT, type T } from '../i18n'
 import { TABS, type Tab } from '../state/ui'
+import { AskName } from './Confirm'
 import { LabelFilter } from './LabelFilter'
 import { SyncBadge } from './SyncBadge'
 import './Header.css'
@@ -88,11 +89,11 @@ function WorkspaceMenu({
   const close = useCallback(() => setOpen(false), [])
   const ref = useOutsideClick<HTMLDivElement>(close)
 
-  async function add() {
-    const name = prompt(t('header.workspaceName'))
-    if (name === null) return
+  const [naming, setNaming] = useState(false)
+
+  function add() {
     setOpen(false)
-    onSelect(await createWorkspace(name))
+    setNaming(true)
   }
 
   return (
@@ -121,6 +122,18 @@ function WorkspaceMenu({
             {t('header.newWorkspace')}
           </button>
         </div>
+      )}
+
+      {naming && (
+        <AskName
+          label={t('header.workspaceName')}
+          action={t('common.create')}
+          onCancel={() => setNaming(false)}
+          onSubmit={(name) => {
+            setNaming(false)
+            void createWorkspace(name).then(onSelect)
+          }}
+        />
       )}
     </div>
   )

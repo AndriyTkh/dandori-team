@@ -57,6 +57,9 @@
      does something when clicked — the pointer says so here as it does there. */
   cursor: pointer;
   user-select: none;
+  /* A press on a row may become a drag, and the browser's own double-tap zoom
+     would otherwise sit on the same half second. */
+  touch-action: manipulation;
   transition: background-color var(--t);
 }
 
@@ -67,6 +70,32 @@
 .notes__row--on,
 .notes__row--on:hover {
   background: var(--accent-bg);
+}
+
+/*
+ * Dragging a row. The row being carried stays where it is, faded, so the tree
+ * does not reshuffle under the finger; what is drawn is where it would land. A
+ * line between two rows is a slot; a lit row is the folder that would take it,
+ * which is the only thing said about a folder that is closed — it is opened once
+ * the row is in it, so nothing is ever dropped out of sight.
+ */
+
+.notes__row--ghost {
+  opacity: 0.4;
+}
+
+.notes__row--into {
+  background: var(--accent-bg);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* A shadow rather than a border: a line between two rows must not move them. */
+.notes__row--before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.notes__row--after {
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .notes__twist {

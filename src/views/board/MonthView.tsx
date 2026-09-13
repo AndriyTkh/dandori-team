@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { addMonths, fromISODate, isSameMonth, isWeekend, monthGrid } from '../../db/dates'
@@ -16,9 +16,15 @@ interface Props {
   groups: Map<string, Task[]>
   labels: Label[]
   onOpenTask: (id: ID) => void
+  /**
+   * Where a tap on a cell leads. Only the phone has one: there the cell is
+   * 55 px of colour bars and the day behind it is where the task is read, while
+   * on the desk the cell already holds the titles and needs no way out.
+   */
+  onOpenDay?: (date: ISODate) => void
 }
 
-export function MonthView({ workspaceId, today, groups, labels, onOpenTask }: Props) {
+export function MonthView({ workspaceId, today, groups, labels, onOpenTask, onOpenDay }: Props) {
   const [anchor, setAnchor] = useState(today)
   const cells = useMemo(() => monthGrid(anchor), [anchor])
   const t = useT()
@@ -65,6 +71,7 @@ export function MonthView({ workspaceId, today, groups, labels, onOpenTask }: Pr
             tasks={groups.get(date) ?? emptyOf<Task>()}
             labels={labels}
             onOpenTask={onOpenTask}
+            onOpenDay={onOpenDay}
             t={t}
           />
         ))}
@@ -81,6 +88,7 @@ function MonthCell({
   tasks,
   labels,
   onOpenTask,
+  onOpenDay,
   t,
 }: {
   workspaceId: ID
@@ -90,6 +98,7 @@ function MonthCell({
   tasks: Task[]
   labels: Label[]
   onOpenTask: (id: ID) => void
+  onOpenDay?: (date: ISODate) => void
   t: T
 }) {
   const [adding, setAdding] = useState(false)
@@ -105,8 +114,19 @@ function MonthCell({
     .filter(Boolean)
     .join(' ')
 
+  /*
+   * The cell itself is the way to its day; what stands inside it keeps its own
+   * meaning. A tap on a colour bar opens that task, a tap on the plus starts a
+   * new one, and only the space around them leads to the day.
+   */
+  function open(e: ReactMouseEvent<HTMLDivElement>) {
+    if (!onOpenDay) return
+    if ((e.target as HTMLElement).closest('.board__card, .board__add, .board__new')) return
+    onOpenDay(date)
+  }
+
   return (
-    <div className={className} ref={setNodeRef}>
+    <div className={className} ref={setNodeRef} onClick={open}>
       <div className="board__cell-head">
         <span className="board__cell-num">{fromISODate(date).getDate()}</span>
         <button

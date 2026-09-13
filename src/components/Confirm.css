@@ -23,6 +23,12 @@
   box-shadow: var(--shadow-pop);
 }
 
+.ask__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
 .ask__question {
   font-size: var(--fz-md);
   line-height: 1.45;
