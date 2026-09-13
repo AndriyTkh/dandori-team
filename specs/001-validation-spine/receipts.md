@@ -86,3 +86,33 @@ Sign-off: Andrii Tkhorenko (single-operator, owner-delegated 2026-09-12)
   §4, lww-conflict.test.ts) repointed to schema.sql:142-153 / :244-254.
 
 Sign-off: Andrii Tkhorenko (single-operator)
+
+## 2026-09-13 — sync-engine receipt repaired (002 T003–T005)
+- History kept, not erased: CI run
+  https://github.com/AndriyTkh/dandori-team/actions/runs/34744308875 at main `526758a` FAILED
+  `tests/stack/soft-delete.test.ts:91` acceptance 1 with `AssertionError: expected undefined to be
+  defined`. The `VALIDATED` entry above therefore stood on a flaky receipt — a map-discipline
+  defect, repaired here.
+- Mechanism (T003, `specs/002-team-workspaces/receipts.md` "sync-engine flake receipt"): every
+  `db-api` write arms a 400 ms debounced bare `push()` (`src/sync/sync.ts:168-174`) that
+  `handle.stop()` never cancels and that always ends in `settle()`; both settle-wait drivers
+  resolved on the second `idle` after a `syncing` and could not tell whose settle it was, so on a
+  slow pull the debounce push's settle was counted mid-merge and `db.tasks.get` ran before the
+  deleted row arrived. Reproduced deterministically with ~1000 filler tasks; refuted as "timing".
+- Repair (T004, the one named FR-030 exception, test surface only, `git diff src/` empty):
+  `tests/harness/sync.ts` `driveSyncCycle` gains an additive `flushFirst` option (default on for
+  full cycles) that awaits `flushQueue()` before `startSync()`, disarming the debounce;
+  `tests/stack/soft-delete.test.ts`'s private `drivePushAndPullCycle` deleted in favour of the
+  harness driver. No `expect`, `it` title or acceptance comment changed (closer-verified). Loaded
+  probe: FAIL on the old driver at N=1000, PASS on the new; `npx vitest run --project stack
+  tests/stack/soft-delete.test.ts` 10/10 green (worker) + 10/10 green (closer, independent).
+- Post-T004 baseline (T005): `npm test -- --run` on the primary checkout at `48e83cc`, twice
+  consecutively, 2026-09-13: PASS 7 files / 51 tests, 18.25s then 16.47s. CI on
+  `002-team-workspaces` at `ec12db6`: **green** — install, typecheck, lint, build, start
+  supabase, test all success — https://github.com/AndriyTkh/dandori-team/actions/runs/34758172675
+- "P0 passes unedited" for the rest of 002 is measured against **`ec12db6`**.
+- Open, for the owner (not on TG-0's path): `tests/stack/offline-round-trip.test.ts` carries the
+  same private two-settle driver (9 call sites); swapping it is a second P0-test edit and needs
+  the owner's word. `{settles:1}` callers keep the hazard by design (no such caller writes
+  through `src/db/api.ts` today).
+- Sign-off: Andrii Tkhorenko (single-operator).

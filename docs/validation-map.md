@@ -83,8 +83,8 @@ distinctions below.
   tests: [tests/stack/offline-round-trip.test.ts, tests/stack/lww-conflict.test.ts, tests/stack/soft-delete.test.ts]
   depends-on: [local-cache, supabase-auth, supabase-schema]
   scenarios: [s-offline-edit-sync, s-conflict-lww]
-  last-verified: e7f258d 2026-09-12
-  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
+  last-verified: ec12db6 2026-09-13
+  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md "2026-09-13 — sync-engine receipt repaired (002 T003–T005)"
 
 - id: supabase-schema
   kind: adapter
