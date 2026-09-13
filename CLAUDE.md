@@ -267,23 +267,33 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   and because the alternative, ticking each new task by hand, is the chore the
   switch exists to spare him.
 - The exchange runs in the browser while the app is open, like the rest of the
-  sync. There is no server and no client secret anywhere: Google's token client
-  hands the page an access token, and renews it silently for as long as the
-  browser is signed in to Google. An edit made with the app closed reaches the
-  calendar the next time it is opened.
-  The address of the account is remembered from the first connection and named
-  in every silent renewal after it: with several accounts signed into the
-  browser Google has to ask which one is meant, asking means a window, and a
-  window nobody clicked for is blocked.
-  The token is kept too, for the hour it lives. Naming the account stopped
-  Google asking which one, and it still would not renew without the owner
-  saying so — a browser with no server behind it has no silent path it can
-  count on. So the hour is worth storing: a page is reloaded far oftener than
-  once an hour, and without the token in hand every reload ended the connection
-  and every one of them cost a click. It is dropped the moment it is spent,
-  refused, or the account is disconnected. What it buys is an hour of use per
-  click, not a connection that never asks again — there is no such thing here,
-  and the one place that could give one is a server this project does not have.
+  sync, bar one step. An edit made with the app closed reaches the calendar the
+  next time it is opened.
+  Google hands out an hour of access at a time, and gives the means of making
+  the next hour only to a client that can keep a secret. A page delivered to a
+  browser keeps none: everything in it is read by whoever opens it. So the
+  site's own worker — the one already serving these files — holds the secret and
+  takes that one step: it trades the code the consent screen sends back, and
+  trades the refresh token for another hour. It keeps nothing, since the tokens
+  go straight back to the browser that asked, and it answers no request that did
+  not come from this site. That is the whole of the server side of this project:
+  no data passes through it, nothing is stored on it, and if the calendar ever
+  goes the file goes with it. The rule it breaks was written in this file, and
+  it was right until it was measured — Google's token client opens a window even
+  when it has nothing to ask, a blocked window is what a browser does to a window
+  nobody clicked for, and so every reload ended the connection and cost a click
+  to restore. This integration exists to deliver the reminder the app cannot,
+  and a reminder that stops arriving because a token quietly expired is worse
+  than no integration at all.
+  Signing in is therefore a page of Google's, opened by the owner's own click
+  and coming back to the app: once, rather than once an hour. What comes back is
+  kept beside the local cache — the refresh token, which is the account, and the
+  hour in hand, which only saves the first call after a reload. Both go when the
+  account is disconnected, and Google is told to drop the grant as they do. The
+  address of the account is remembered as well and named on the consent screen,
+  so that a browser signed into several does not have to ask which is meant.
+  The secret itself is in Cloudflare's secrets and nowhere else: not in the
+  repository, not in the bundle, not in anything the worker writes back.
 - One-way, but for one thing: an event that is gone. The calendar is told what
   the task says and nothing that happens to the event in Google is read back —
   except its deletion, which unticks the task's checkbox exactly as unticking it
@@ -475,7 +485,7 @@ The list is closed. Any item from here, in the code or in the interface, is a bu
 | Backend | Supabase (Postgres + Auth + RLS) |
 | Markdown | `marked` |
 | PWA | `vite-plugin-pwa` |
-| Hosting | Cloudflare Workers (static assets) |
+| Hosting | Cloudflare Workers (static assets, plus the one route above) |
 
 The timeline, the monthly grid and the day feed are written by hand on CSS grid.
 We do not pull in Gantt or calendar libraries: they all drag in time slots and hours,
@@ -587,7 +597,8 @@ Owns: `src/views/`, `src/components/`, `src/styles/`.
 
 ### `infra` — build and deploy
 
-Owns: `vite.config.ts`, the manifest and the service worker, `wrangler.jsonc`, CI, `README.md`.
+Owns: `vite.config.ts`, the manifest and the service worker, `wrangler.jsonc`,
+`worker/`, CI, `README.md`.
 
 - Build configuration, PWA, deploy to Cloudflare Workers (static assets).
 - Checking the install to the home screen.

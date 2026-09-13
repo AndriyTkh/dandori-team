@@ -1,25 +1,27 @@
 /*
  * Getting hold of a Google access token, and nothing else.
  *
- * There is no server in this project and no client secret anywhere, so the
- * browser talks to Google directly through Google Identity Services: the token
- * client hands the page an access token good for an hour and renews it silently
- * for as long as the browser is signed in to Google.
+ * The browser does the whole of this by itself but for one step: Google hands a
+ * refresh token — the thing that turns one consent into an account that stays
+ * connected — only to a client that can keep a secret, and a page delivered to
+ * the browser keeps nothing. So the one step that needs the secret is asked of
+ * this site's own worker, which holds it; see `worker/index.ts`.
  *
- * Silence is the whole design. A popup that is not the answer to a click is
- * blocked by every browser, so a renewal that needs the owner's attention never
- * opens one — it records that consent is wanted and the settings window offers
- * a button. The only popup ever opened is the one he asked for.
- *
- * Which is why the renewal names the account it wants. With more than one Google
- * account signed into the browser Google cannot know which is meant, so it asks
- * — in a window, which nobody clicked for, which is blocked: every silent
- * renewal failed and a reload ended the connection. The address is remembered
- * from the first connection; it is not a secret, and it is nothing the browser
- * signed into that account does not already hold.
+ * Before that there was no refresh token at all, and the account was renewed by
+ * Google's token client — which opens a window even when it has nothing to ask,
+ * and a window nobody clicked for is blocked. Every reload ended the connection
+ * and cost a click. Nothing here opens a window any more: the consent screen is
+ * a page the owner is sent to on his own click, once, and every renewal after
+ * it is a plain request.
  */
 
-const GIS_SRC = 'https://accounts.google.com/gsi/client'
+const AUTH = 'https://accounts.google.com/o/oauth2/v2/auth'
+/** Our worker's two doors. Same origin, so nothing here crosses a border. */
+const TOKEN_PATH = '/api/gcal/token'
+const REVOKE_PATH = '/api/gcal/revoke'
+/** Where Google sends him back. Any path returns the app; this one is read on arrival. */
+const CALLBACK_PATH = '/gcal/callback'
+
 /*
  * Exactly what the app does and no more: write its own events, and read the list
  * of calendars to choose between. `calendar.readonly` would also hand it every
@@ -33,10 +35,9 @@ const SCOPE = [
 /** Ask for a new token a little before the old one dies, so a write never races it. */
 const EXPIRY_MARGIN_MS = 5 * 60 * 1000
 /*
- * How long a silent refusal is believed before one is tried again. Google
- * refuses until the owner allows it anew, and the reconciler asks once per task
- * and once per return to the tab: without the pause a refused account meant a
- * request a second, each of them an attempt at a popup the browser blocks.
+ * How long a refusal is believed before another is tried. Google refuses until
+ * the owner allows the account anew, and the reconciler asks once a minute:
+ * without the pause a refused account meant a request a second.
  */
 const REFUSAL_MS = 5 * 60 * 1000
 
@@ -47,9 +48,9 @@ export type GcalState =
   | 'unconfigured'
   /** Set up, but the owner has never signed in, or has signed out. */
   | 'signed-out'
-  /** A token is in hand. */
+  /** An account in hand, whether or not this second's token is. */
   | 'ready'
-  /** Signed in once, but the silent renewal failed: he has to allow it again. */
+  /** Signed in once, and Google has stopped honouring it: he has to allow it again. */
   | 'needs-consent'
 
 interface Token {
@@ -58,87 +59,53 @@ interface Token {
 }
 
 let token: Token | null = null
-/** When the last silent request came back without a token. */
+/** When the last request came back without a token. */
 let refusedAt = 0
 let state: GcalState = CLIENT_ID ? 'signed-out' : 'unconfigured'
 const listeners = new Set<(s: GcalState) => void>()
 
+// ----------------------------------------------------------------- what is kept
 /*
- * Whether he has ever connected the account, and the token itself.
- *
- * The token used to be kept in the tab alone, on the grounds that an hour's
- * worth of it is not worth storing. That rested on the silent renewal working,
- * and it does not: Google answers it with a window, and a window nobody clicked
- * for is blocked — so a reload ended the connection outright, every time. Stored
- * it is worth exactly the hour it lives, and it is thrown away the moment it is
- * spent, refused or the account is disconnected.
+ * The refresh token is the account: while it is here the app can make itself an
+ * hour of access whenever it likes, and when it is gone the owner has to say so
+ * again. The access token is kept beside it only to save the first call after a
+ * reload. Both go the moment the account is disconnected.
  */
-const CONNECTED_KEY = 'dandori.gcalConnected'
+const REFRESH_KEY = 'dandori.gcalRefresh'
 const TOKEN_KEY = 'dandori.gcalToken'
-
-function connected(): boolean {
-  try {
-    return localStorage.getItem(CONNECTED_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-function setConnected(on: boolean): void {
-  try {
-    if (on) localStorage.setItem(CONNECTED_KEY, '1')
-    else localStorage.removeItem(CONNECTED_KEY)
-  } catch {
-    // Storage blocked: the connection just will not survive a reload.
-  }
-}
-
-/** The address the token is asked for, so a silent renewal has nothing to ask about. */
+/** The address the consent screen is pointed at, so it does not ask which account. */
 const ACCOUNT_KEY = 'dandori.gcalAccount'
-/*
- * And a copy for as long as the tab lives. With storage blocked the stored one
- * reads back empty however often it is written, and every pass would go asking
- * Google for the address again — once a minute, for ever.
- */
-let remembered: string | null = null
+/** The proof, for as long as he is away at the consent screen and no longer. */
+const PKCE_KEY = 'dandori.gcalPkce'
 
-function account(): string | null {
-  if (remembered !== null) return remembered
+function read(key: string): string | null {
   try {
-    return localStorage.getItem(ACCOUNT_KEY)
+    return localStorage.getItem(key)
   } catch {
     return null
   }
 }
 
-/**
- * The address of the connected account, learned from Google rather than typed:
- * it lists the owner's own calendar under it.
- */
-export function rememberAccount(address: string): void {
-  if (!address || address === account()) return
-  remembered = address
+function write(key: string, value: string | null): void {
   try {
-    localStorage.setItem(ACCOUNT_KEY, address)
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value)
   } catch {
-    // Storage blocked: the address holds for this tab and is learned again in
-    // the next one.
+    // Storage blocked: nothing survives the tab, as nothing did before.
   }
 }
 
-/** True once the address is known, so nobody has to go looking for it twice. */
-export function accountKnown(): boolean {
-  return account() !== null
+function refreshToken(): string | null {
+  return read(REFRESH_KEY)
 }
 
 /** The token as it was left, if it has any life left in it. */
 function storedToken(): Token | null {
+  const raw = read(TOKEN_KEY)
+  if (raw === null) return null
   try {
-    const raw = localStorage.getItem(TOKEN_KEY)
-    if (raw === null) return null
     const held = JSON.parse(raw) as Partial<Token>
     if (typeof held.value !== 'string' || typeof held.expires !== 'number') return null
-    // Spent while the tab was shut: no different from never having had one.
     if (held.expires - EXPIRY_MARGIN_MS <= Date.now()) return null
     return { value: held.value, expires: held.expires }
   } catch {
@@ -149,13 +116,36 @@ function storedToken(): Token | null {
 /** Holds the token, here and for the next load of the page. */
 function keepToken(next: Token | null): void {
   token = next
-  try {
-    if (next === null) localStorage.removeItem(TOKEN_KEY)
-    else localStorage.setItem(TOKEN_KEY, JSON.stringify(next))
-  } catch {
-    // Storage blocked: the token holds for this tab, as it always did.
-  }
+  write(TOKEN_KEY, next === null ? null : JSON.stringify(next))
 }
+
+/*
+ * A copy of the address for as long as the tab lives. With storage blocked the
+ * stored one reads back empty however often it is written, and every pass would
+ * go asking Google for it again — once a minute, for ever.
+ */
+let remembered: string | null = null
+
+function account(): string | null {
+  return remembered ?? read(ACCOUNT_KEY)
+}
+
+/**
+ * The address of the connected account, learned from Google rather than typed:
+ * it lists the owner's own calendar under it.
+ */
+export function rememberAccount(address: string): void {
+  if (!address || address === account()) return
+  remembered = address
+  write(ACCOUNT_KEY, address)
+}
+
+/** True once the address is known, so nobody has to go looking for it twice. */
+export function accountKnown(): boolean {
+  return account() !== null
+}
+
+// ---------------------------------------------------------------------- the state
 
 function setState(next: GcalState): void {
   if (next === state) return
@@ -174,163 +164,195 @@ export function onGcalState(fn: (s: GcalState) => void): () => void {
 
 /** True once the owner has connected the account on this device. */
 export function isConnected(): boolean {
-  return state === 'ready' || state === 'needs-consent' || (state === 'signed-out' && connected())
+  return refreshToken() !== null
 }
 
-// ------------------------------------------------------------------ the script
+// ----------------------------------------------------------------- the consent
 
-interface TokenResponse {
+/** The verifier is the secret half of the proof; only its hash travels to Google. */
+function randomString(): string {
+  const bytes = new Uint8Array(48)
+  crypto.getRandomValues(bytes)
+  return base64url(bytes)
+}
+
+function base64url(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+}
+
+async function challengeFor(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
+  return base64url(new Uint8Array(digest))
+}
+
+function redirectUri(): string {
+  return `${location.origin}${CALLBACK_PATH}`
+}
+
+/**
+ * The owner's click: away to Google's consent screen and back.
+ *
+ * A page, not a window — a window would have to be opened by script, and the
+ * browser blocks those. The app is left behind and loaded again on the way
+ * back, which costs nothing: everything it shows is in the local database.
+ */
+export async function connect(): Promise<boolean> {
+  if (!CLIENT_ID) return false
+  const verifier = randomString()
+  const guard = randomString()
+  const challenge = await challengeFor(verifier)
+  try {
+    sessionStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, guard }))
+  } catch {
+    // Without somewhere to leave the proof the answer cannot be trusted on the
+    // way back, and an untrusted answer is not worth the trip.
+    return false
+  }
+
+  const at = account()
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: redirectUri(),
+    response_type: 'code',
+    scope: SCOPE,
+    // What the whole worker exists for: without it Google sends an hour of
+    // access and nothing to make the next hour with.
+    access_type: 'offline',
+    // And Google sends the refresh token on the screen where he says yes, that
+    // once. Asked again, it answers with access alone — so the account would
+    // reconnect and be unable to renew itself.
+    prompt: 'consent',
+    include_granted_scopes: 'true',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    state: guard,
+    ...(at === null ? {} : { login_hint: at }),
+  })
+  location.assign(`${AUTH}?${params.toString()}`)
+  return true
+}
+
+/** Google's answer to either door, as it stands. */
+interface Answer {
   access_token?: string
+  refresh_token?: string
   expires_in?: number
   error?: string
 }
 
-interface TokenClient {
-  requestAccessToken: (opts?: { prompt?: string; login_hint?: string }) => void
-}
-
-interface Gis {
-  accounts: {
-    oauth2: {
-      initTokenClient: (o: {
-        client_id: string
-        scope: string
-        hint?: string
-        callback: (r: TokenResponse) => void
-        error_callback?: (e: { type?: string }) => void
-      }) => TokenClient
-      revoke: (token: string, done?: () => void) => void
-    }
-  }
-}
-
-let loading: Promise<Gis> | null = null
-
-function loadGis(): Promise<Gis> {
-  if (loading) return loading
-  // A refusal is forgotten, not cached: the script is usually refused because
-  // the network was down, and remembering that would make the failure outlive
-  // its cause for as long as the tab is open.
-  const attempt = new Promise<Gis>((resolve, reject) => {
-    const existing = (window as unknown as { google?: Gis }).google
-    if (existing?.accounts?.oauth2) return resolve(existing)
-
-    const el = document.createElement('script')
-    el.src = GIS_SRC
-    el.async = true
-    el.onload = () => {
-      const g = (window as unknown as { google?: Gis }).google
-      if (g?.accounts?.oauth2) resolve(g)
-      else reject(new Error('google identity services loaded without oauth2'))
-    }
-    el.onerror = () => reject(new Error('google identity services failed to load'))
-    document.head.append(el)
-  })
-
-  loading = attempt
-  attempt.catch(() => {
-    if (loading === attempt) loading = null
-  })
-  return attempt
-}
-
-let client: TokenClient | null = null
-/** The address `client` was built with, so a newly learned one rebuilds it. */
-let clientHint: string | null = null
-/** One request at a time: two writes landing together must not open two popups. */
-let pending: Promise<string | null> | null = null
-/*
- * Whoever is waiting on the request in flight.
- *
- * The token client is built once and kept, so its callback outlives the call
- * that created it — a callback closing over that first call's `resolve` would
- * answer the first request over and over and leave every later one hanging for
- * good. It answers whatever is waiting now instead.
- */
-let waiting: ((value: string | null) => void) | null = null
-
-function answer(value: string | null): void {
-  const fn = waiting
-  waiting = null
-  pending = null
-  fn?.(value)
-}
-
-async function request(interactive: boolean): Promise<string | null> {
-  if (!CLIENT_ID) return null
-
-  let gis: Gis
+async function askWorker(path: string, body: Record<string, string>): Promise<Answer | null> {
   try {
-    gis = await loadGis()
-  } catch {
-    // Offline, or the script blocked. Neither is permanent, and `loadGis` has
-    // already forgotten the failure, so the next click tries again.
-    pending = null
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const answer = (await res.json()) as Answer
+    if (!res.ok) {
+      console.error('[gcal] token exchange refused', answer.error ?? res.status)
+      return answer
+    }
+    return answer
+  } catch (err) {
+    // Offline, or the worker is not there. Neither is the owner's fault and
+    // neither is permanent.
+    console.error('[gcal] token exchange failed', err)
     return null
   }
+}
 
-  const hint = account()
+/*
+ * The way back from the consent screen. Read before anything else asks for a
+ * token, and the address is tidied up straight away: a code is good once, and
+ * a reload of this page with it still in the bar is a refusal for nothing.
+ */
+async function landed(): Promise<void> {
+  const params = new URLSearchParams(location.search)
+  const code = params.get('code')
+  const guard = params.get('state')
+  let held: { verifier?: string; guard?: string } = {}
+  try {
+    held = JSON.parse(sessionStorage.getItem(PKCE_KEY) ?? '{}') as typeof held
+    sessionStorage.removeItem(PKCE_KEY)
+  } catch {
+    // Nothing was kept, and the answer below is refused on its own.
+  }
+  history.replaceState(null, '', '/')
 
-  return new Promise<string | null>((resolve) => {
-    waiting = resolve
+  if (params.get('error') !== null) {
+    console.error('[gcal] consent refused', params.get('error'))
+    return
+  }
+  if (!code || !guard || guard !== held.guard || !held.verifier) {
+    console.error('[gcal] the answer from the consent screen does not match the question')
+    return
+  }
 
-    // The address goes in twice on purpose: the token client takes it as `hint`
-    // when it is built, and a single call overrides it as `login_hint`. The
-    // client is built once and outlives the connection that taught the app the
-    // address, so neither place alone covers every renewal.
-    if (client && clientHint !== hint) client = null
-    clientHint = hint
-    client ??= gis.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: SCOPE,
-      hint: hint ?? undefined,
-      callback: (r) => {
-        if (r.access_token && r.expires_in) {
-          keepToken({ value: r.access_token, expires: Date.now() + r.expires_in * 1000 })
-          refusedAt = 0
-          setConnected(true)
-          setState('ready')
-          answer(r.access_token)
-          return
-        }
-        // A silent request Google would not answer without the owner. Said out
-        // loud: this is the one refusal in the app whose reason is Google's and
-        // is nowhere else to be read.
-        console.error('[gcal] token refused', r.error ?? 'no token and no reason')
-        refusedAt = Date.now()
-        setState(connected() ? 'needs-consent' : 'signed-out')
-        answer(null)
-      },
-      error_callback: (e) => {
-        console.error('[gcal] token request failed', e.type ?? 'no type')
-        refusedAt = Date.now()
-        setState(connected() ? 'needs-consent' : 'signed-out')
-        answer(null)
-      },
-    })
-
-    // An empty prompt is the silent path: Google answers it without a dialog
-    // while the browser's Google session is alive and the scope already granted.
-    client.requestAccessToken({
-      prompt: interactive ? 'consent' : '',
-      login_hint: hint ?? undefined,
-    })
+  const answer = await askWorker(TOKEN_PATH, {
+    code,
+    verifier: held.verifier,
+    redirect: redirectUri(),
   })
+  if (!answer?.refresh_token || !answer.access_token || !answer.expires_in) {
+    /*
+     * An hour with no way to make the next one is not an account, so it is not
+     * kept. Google sends the refresh token on the consent screen and only
+     * there, which is why that screen is asked for every time — and if it ever
+     * comes back without one, the reason is here rather than in a silence.
+     */
+    console.error('[gcal] the consent came back without an account')
+    setState('signed-out')
+    return
+  }
+  write(REFRESH_KEY, answer.refresh_token)
+  keepToken({ value: answer.access_token, expires: Date.now() + answer.expires_in * 1000 })
+  refusedAt = 0
+  setState('ready')
+}
+
+// ------------------------------------------------------------------ the token
+
+/** One request at a time: two writes landing together must not ask twice. */
+let pending: Promise<string | null> | null = null
+
+async function renew(refresh: string): Promise<string | null> {
+  const answer = await askWorker(TOKEN_PATH, { refresh })
+  if (answer?.access_token && answer.expires_in) {
+    keepToken({ value: answer.access_token, expires: Date.now() + answer.expires_in * 1000 })
+    refusedAt = 0
+    setState('ready')
+    return answer.access_token
+  }
+  refusedAt = Date.now()
+  /*
+   * A refusal Google means — the grant withdrawn, the password changed, the
+   * token expired for good. Anything else is this minute's trouble: the account
+   * is still an account and the next pass tries again.
+   */
+  if (answer !== null) {
+    write(REFRESH_KEY, null)
+    keepToken(null)
+    setState('needs-consent')
+  }
+  return null
 }
 
 /**
  * A token to call the API with, or `null` when the owner has to be asked.
- * Never opens anything on its own — `interactive` is only ever true on his click.
+ * Nothing here is ever seen: no window, no page, no click.
  */
-export function getToken(interactive = false): Promise<string | null> {
+export function getToken(): Promise<string | null> {
   if (!CLIENT_ID) return Promise.resolve(null)
   if (token && token.expires - EXPIRY_MARGIN_MS > Date.now()) return Promise.resolve(token.value)
-  if (!interactive && !connected()) return Promise.resolve(null)
-  // Still inside the pause after a refusal. His own click never waits for it:
-  // allowing the account again is the one thing that can change the answer.
-  if (!interactive && Date.now() - refusedAt < REFUSAL_MS) return Promise.resolve(null)
+  const refresh = refreshToken()
+  if (refresh === null) return Promise.resolve(null)
+  if (Date.now() - refusedAt < REFUSAL_MS) return Promise.resolve(null)
   if (pending) return pending
-  pending = request(interactive)
+  pending = renew(refresh).finally(() => {
+    pending = null
+  })
   return pending
 }
 
@@ -339,48 +361,29 @@ export function forgetToken(): void {
   keepToken(null)
 }
 
-/** The owner's click: connect the account, or allow it again after a silent refusal. */
-export function connect(): Promise<boolean> {
-  return getToken(true).then((t) => t !== null)
-}
-
 /** Forgets the account on this device and tells Google to drop the grant. */
 export async function disconnect(): Promise<void> {
-  const held = token?.value
+  const held = refreshToken()
+  write(REFRESH_KEY, null)
+  write(ACCOUNT_KEY, null)
   keepToken(null)
-  refusedAt = 0
-  // The token client holds the grant it was built with. Kept across a
-  // disconnect, it would hand the next owner the last one's session.
-  client = null
-  clientHint = null
   remembered = null
-  try {
-    localStorage.removeItem(ACCOUNT_KEY)
-  } catch {
-    // Nothing was stored either.
-  }
-  answer(null)
-  setConnected(false)
+  refusedAt = 0
   setState(CLIENT_ID ? 'signed-out' : 'unconfigured')
-  if (!held) return
-  const gis = await loadGis().catch(() => null)
-  gis?.accounts.oauth2.revoke(held)
+  if (held === null) return
+  await askWorker(REVOKE_PATH, { refresh: held })
 }
 
 /*
- * On start-up the device has whatever token was left behind, and it is usually
- * still good: a page is reloaded far more often than once an hour. Failing
- * that, one is asked for straight away and silently — without it a settings
- * window opened in the first seconds would tell a connected owner that he has
- * no account, and offer him a button he does not need. Nothing is shown and
- * nothing pops up; a silent refusal leaves the state where it started.
+ * On start-up the device has whatever it was left with. A refresh token is an
+ * account: the token beside it may well be spent, and the first call that wants
+ * one makes another without anything being shown.
  */
-if (CLIENT_ID && connected()) {
-  token = storedToken()
-  if (token) {
+if (CLIENT_ID) {
+  if (location.pathname === CALLBACK_PATH) {
+    void landed()
+  } else if (refreshToken() !== null) {
+    token = storedToken()
     setState('ready')
-  } else {
-    setState('needs-consent')
-    void getToken()
   }
 }
