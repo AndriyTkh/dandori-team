@@ -52,8 +52,15 @@ const SEEN_MARGIN_MS = 60_000
  * read as one. Before this the first sight of a calendar was spent learning
  * where to read from next time, and a month of the app being closed was a month
  * of deletions nobody ever heard about.
+ *
+ * How far back a calendar will answer is its own affair, and a month is past it
+ * on some: Google refuses the question outright rather than answering it short.
+ * A refusal is not an error, then — it is the calendar saying it does not
+ * remember, and the only thing to do with it is to start remembering from here.
  */
 const FIRST_LOOK_MS = 30 * 24 * 60 * 60_000
+/** What Google calls a window reaching further back than the calendar keeps. */
+const TOO_LONG_AGO = 'updatedMinTooLongAgo'
 
 /*
  * The parts of the signature are joined on a NUL rather than a space: a title
@@ -323,7 +330,17 @@ async function sweep(
     const from = seen ?? new Date(Date.now() - FIRST_LOOK_MS).toISOString()
     still(mine)
 
-    const gone = await deletedSince(cal, from)
+    let gone: string[]
+    try {
+      gone = await deletedSince(cal, from)
+    } catch (err) {
+      if (!(err instanceof GcalError) || err.reason !== TOO_LONG_AGO) throw err
+      // Everything before now is beyond this calendar's memory. The mark is set
+      // all the same, or every pass would ask the same refused question again.
+      still(mine)
+      await setMeta(key, asked)
+      continue
+    }
     // The one thing this reads is invisible until it acts, and it acts by
     // unticking a checkbox somewhere else. Said once, when there is something
     // to say, so a deletion that never arrives can be told from one that did.
