@@ -332,6 +332,10 @@ async function sweep(
     still(mine)
 
     const gone = await deletedSince(cal, from)
+    // The one thing this reads is invisible until it acts, and it acts by
+    // unticking a checkbox somewhere else. Said once, when there is something
+    // to say, so a deletion that never arrives can be told from one that did.
+    if (gone.length > 0) console.info('[gcal] gone in', cal, gone.length)
     still(mine)
     for (const id of gone) {
       const task = events.get(id)
