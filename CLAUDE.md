@@ -54,7 +54,7 @@ One fact, one home. Link, don't restate.
 
 ---
 
-## The contract (ADR-0001 + ADR-0004, summarized — the ADRs are authoritative)
+## The contract (ADR-0001 + ADR-0004 + ADR-0005, summarized — the ADRs are authoritative)
 
 - **Workspace kind.** `workspaces.kind` is `personal` or `team`, defaulting to `personal`.
   Personal behaves exactly as upstream ships it. Team resolves access through membership.
@@ -80,8 +80,11 @@ One fact, one home. Link, don't restate.
   points*. Neither changes without the other, in the same change set.
 - **Triggers survive.** `keep_newer`, `stay_deleted_with_workspace`, `follow_workspace_delete` must
   behave identically after the predicate swap.
-- **Migrations.** Upstream's convention kept: hand-written, numbered, idempotent SQL, run manually
-  in the Supabase SQL editor. Fork migrations start at **migration-007**. No down-migrations —
+- **Migrations.** Upstream's convention kept, as amended by upstream `a3a7572` and adopted in
+  ADR-0005: `supabase/schema.sql` is the one idempotent home of every definition (tables, guarded
+  column adds, functions, triggers, policies) and is re-run to upgrade a database; a
+  `migration-00N-*.sql` carries only one-off row edits. Hand-written, run manually in the Supabase
+  SQL editor. Fork migrations, when one is needed, start at **migration-007**. No down-migrations —
   recorded as an owner-accepted risk.
 - **Upstream merges** are routine and expected. Upstream stays personal-only. Nothing is
   contributed back by default. `docs/upstream-CLAUDE.md` stays byte-identical to upstream so every
