@@ -64,11 +64,17 @@ let state: GcalState = CLIENT_ID ? 'signed-out' : 'unconfigured'
 const listeners = new Set<(s: GcalState) => void>()
 
 /*
- * Whether he has ever connected the account. The token itself is deliberately
- * not stored: it lives an hour, and a token in localStorage is a token that
- * outlives the tab that earned it.
+ * Whether he has ever connected the account, and the token itself.
+ *
+ * The token used to be kept in the tab alone, on the grounds that an hour's
+ * worth of it is not worth storing. That rested on the silent renewal working,
+ * and it does not: Google answers it with a window, and a window nobody clicked
+ * for is blocked — so a reload ended the connection outright, every time. Stored
+ * it is worth exactly the hour it lives, and it is thrown away the moment it is
+ * spent, refused or the account is disconnected.
  */
 const CONNECTED_KEY = 'dandori.gcalConnected'
+const TOKEN_KEY = 'dandori.gcalToken'
 
 function connected(): boolean {
   try {
@@ -123,6 +129,32 @@ export function rememberAccount(address: string): void {
 /** True once the address is known, so nobody has to go looking for it twice. */
 export function accountKnown(): boolean {
   return account() !== null
+}
+
+/** The token as it was left, if it has any life left in it. */
+function storedToken(): Token | null {
+  try {
+    const raw = localStorage.getItem(TOKEN_KEY)
+    if (raw === null) return null
+    const held = JSON.parse(raw) as Partial<Token>
+    if (typeof held.value !== 'string' || typeof held.expires !== 'number') return null
+    // Spent while the tab was shut: no different from never having had one.
+    if (held.expires - EXPIRY_MARGIN_MS <= Date.now()) return null
+    return { value: held.value, expires: held.expires }
+  } catch {
+    return null
+  }
+}
+
+/** Holds the token, here and for the next load of the page. */
+function keepToken(next: Token | null): void {
+  token = next
+  try {
+    if (next === null) localStorage.removeItem(TOKEN_KEY)
+    else localStorage.setItem(TOKEN_KEY, JSON.stringify(next))
+  } catch {
+    // Storage blocked: the token holds for this tab, as it always did.
+  }
 }
 
 function setState(next: GcalState): void {
@@ -254,19 +286,23 @@ async function request(interactive: boolean): Promise<string | null> {
       hint: hint ?? undefined,
       callback: (r) => {
         if (r.access_token && r.expires_in) {
-          token = { value: r.access_token, expires: Date.now() + r.expires_in * 1000 }
+          keepToken({ value: r.access_token, expires: Date.now() + r.expires_in * 1000 })
           refusedAt = 0
           setConnected(true)
           setState('ready')
           answer(r.access_token)
           return
         }
-        // A silent request Google would not answer without the owner.
+        // A silent request Google would not answer without the owner. Said out
+        // loud: this is the one refusal in the app whose reason is Google's and
+        // is nowhere else to be read.
+        console.error('[gcal] token refused', r.error ?? 'no token and no reason')
         refusedAt = Date.now()
         setState(connected() ? 'needs-consent' : 'signed-out')
         answer(null)
       },
-      error_callback: () => {
+      error_callback: (e) => {
+        console.error('[gcal] token request failed', e.type ?? 'no type')
         refusedAt = Date.now()
         setState(connected() ? 'needs-consent' : 'signed-out')
         answer(null)
@@ -300,7 +336,7 @@ export function getToken(interactive = false): Promise<string | null> {
 
 /** Throws away the token in hand, so the next call has to fetch a new one. */
 export function forgetToken(): void {
-  token = null
+  keepToken(null)
 }
 
 /** The owner's click: connect the account, or allow it again after a silent refusal. */
@@ -311,7 +347,7 @@ export function connect(): Promise<boolean> {
 /** Forgets the account on this device and tells Google to drop the grant. */
 export async function disconnect(): Promise<void> {
   const held = token?.value
-  token = null
+  keepToken(null)
   refusedAt = 0
   // The token client holds the grant it was built with. Kept across a
   // disconnect, it would hand the next owner the last one's session.
@@ -332,14 +368,19 @@ export async function disconnect(): Promise<void> {
 }
 
 /*
- * On start-up the device knows only whether it was ever connected, which is not
- * the same as having a token. So it asks for one straight away and silently:
- * without that, a settings window opened in the first seconds would tell a
- * connected owner that he has no account, and offer him a button he does not
- * need. Nothing is shown and nothing pops up — a silent refusal simply leaves
- * the state where it started.
+ * On start-up the device has whatever token was left behind, and it is usually
+ * still good: a page is reloaded far more often than once an hour. Failing
+ * that, one is asked for straight away and silently — without it a settings
+ * window opened in the first seconds would tell a connected owner that he has
+ * no account, and offer him a button he does not need. Nothing is shown and
+ * nothing pops up; a silent refusal leaves the state where it started.
  */
 if (CLIENT_ID && connected()) {
-  setState('needs-consent')
-  void getToken()
+  token = storedToken()
+  if (token) {
+    setState('ready')
+  } else {
+    setState('needs-consent')
+    void getToken()
+  }
 }

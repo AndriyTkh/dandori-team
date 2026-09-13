@@ -272,11 +272,18 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   browser is signed in to Google. An edit made with the app closed reaches the
   calendar the next time it is opened.
   The address of the account is remembered from the first connection and named
-  in every silent renewal after it. With several accounts signed into the
+  in every silent renewal after it: with several accounts signed into the
   browser Google has to ask which one is meant, asking means a window, and a
-  window nobody clicked for is blocked — so every renewal failed and a reload
-  ended the connection. The token itself is still not kept: it lives an hour,
-  and a token in storage is a token that outlives the tab that earned it.
+  window nobody clicked for is blocked.
+  The token is kept too, for the hour it lives. Naming the account stopped
+  Google asking which one, and it still would not renew without the owner
+  saying so — a browser with no server behind it has no silent path it can
+  count on. So the hour is worth storing: a page is reloaded far oftener than
+  once an hour, and without the token in hand every reload ended the connection
+  and every one of them cost a click. It is dropped the moment it is spent,
+  refused, or the account is disconnected. What it buys is an hour of use per
+  click, not a connection that never asks again — there is no such thing here,
+  and the one place that could give one is a server this project does not have.
 - One-way, but for one thing: an event that is gone. The calendar is told what
   the task says and nothing that happens to the event in Google is read back —
   except its deletion, which unticks the task's checkbox exactly as unticking it
