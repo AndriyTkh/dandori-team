@@ -81,14 +81,14 @@ problem, not a test problem. **Blocks TG-1 onward.**
   - Read: `tests/stack/soft-delete.test.ts:1-100`; `tests/harness/sync.ts` (whole); `src/sync/sync.ts:176-190`, `:462-507`, `:43-78` (read-only); `specs/001-validation-spine/receipts.md` F-1; plan.md R-14
   - substrate: `sync-engine` (VALIDATED, on the receipt this task repairs)
   - verify: `for ($i=1; $i -le 10; $i++) { npm test -- --run --project stack tests/stack/soft-delete.test.ts }` — the 10 outcomes recorded verbatim in `receipts.md`, and the failing run's mechanism named
-  - done-when: the flake is reproduced or the 10× loop is green and that is recorded as such; the root cause is stated as a mechanism in `src/sync/sync.ts` or in the harness, not as "timing"
+  - done-when: the flake is reproduced or the 10× loop is green and that is recorded as such; the root cause is stated as a mechanism in `src/sync/sync.ts` or in the harness, not as "timing" (SC-003 discipline; FR-030 exception named on T004)
   - blocked-by: T002
 - [ ] T004 [data] Fix the flake **inside `tests/harness/` or `tests/stack/` only** — normally the single settle-wait mechanism in `tests/harness/sync.ts`, with `tests/stack/soft-delete.test.ts`'s private `drivePushAndPullCycle` deleted in favour of it. **Boundary**: if the fix requires a change under `src/sync/`, stop — that is a **FINDING for the owner**, not an edit (CLAUDE.md, `data` role; plan.md R-14). **The one named exception to FR-030**: replacing `soft-delete.test.ts`'s private cycle-driver is a P0 *debt repair* performed before 002 touches anything, not an accommodation of this feature; **no assertion, acceptance or expectation in that file may change**, the edit is recorded in `receipts.md`, and "P0 passes unedited" for the rest of this feature is measured against the post-T004 baseline SHA
   - Write: `tests/harness/sync.ts`, `tests/stack/soft-delete.test.ts`
   - Read: T003's recorded root cause; `tests/harness/sync.ts`; `tests/stack/offline-round-trip.test.ts` (the other local driver, for consistency); `src/sync/sync.ts:176-190`, `:462-507` (read-only)
   - substrate: `sync-engine`
   - verify: `for ($i=1; $i -le 10; $i++) { npm test -- --run --project stack tests/stack/soft-delete.test.ts }` — 10/10 green
-  - done-when: 10/10 green; `git diff tests/stack/soft-delete.test.ts` shows no change to any `expect(...)`, `it(...)` title or acceptance comment; `git diff src/` is empty
+  - done-when: 10/10 green; `git diff tests/stack/soft-delete.test.ts` shows no change to any `expect(...)`, `it(...)` title or acceptance comment; `git diff src/` is empty (SC-003 discipline; FR-030 exception named on T004)
   - blocked-by: T003
 - [ ] T005 [coordinator] Re-run the full suite twice consecutively and re-sign the `sync-engine` receipt in `specs/001-validation-spine/receipts.md` — the existing receipt is flaky and a `VALIDATED` entry standing on it is a map-discipline defect (map flip + receipt re-sign is a coordinator duty). `data` hands `coordinator` the two consecutive local run logs plus the failing and new green CI URLs; `coordinator` records both local runs, the failing CI URL, and the new green CI URL, and updates `docs/validation-map.md`'s `sync-engine` `last-verified` to the fixed SHA
   - Write: `specs/001-validation-spine/receipts.md`, `docs/validation-map.md`
@@ -299,7 +299,7 @@ stay true. **The LWW rule does not change in this feature** — T030 asserts tha
   - Read: `src/db/api.ts` (post-T026); plan.md D-6, D-9, D-11; spec.md FR-024, FR-026
   - substrate: `db-api` (VALIDATED — re-verified in this PR), `local-cache`
   - verify: `npm test -- --run --project local tests/local/db-api-p1-surface.test.ts` — green with the stack stopped
-  - done-when: every `db-api` function this feature adds that *can* be exercised offline has a passing pin; the two that cannot are named in the header with the stack test that covers them instead
+  - done-when: every `db-api` function this feature adds that *can* be exercised offline has a passing pin; the two that cannot are named in the header with the stack test that covers them instead (FR-024, FR-026)
   - blocked-by: T026
 
 **Checkpoint**: membership, `kind` and `assignee` reach the cache and the sync engine through the
@@ -448,7 +448,7 @@ and no agent handles a hosted key.
   - Read: plan.md D-14 step 1, D-2; `supabase/schema.sql` (post-TG-1); ADR-0005
   - substrate: `supabase-schema` (VALIDATED)
   - verify: named manual check (owner-run) — the SQL editor reports success, and `select kind, count(*) from public.workspaces group by 1` returns only `personal` rows for pre-existing data; both outputs recorded
-  - done-when: US1 acceptance 1 holds on real data ("no row changed value, no row became team by omission")
+  - done-when: US1 acceptance 1 holds on real data ("no row changed value, no row became team by omission") (SC-001 too)
   - blocked-by: T046
 - [ ] T048 [owner] Create account **B** in the Supabase dashboard (Authentication → Users → Add user, email confirmed). This is the **only** manual database intervention SC-001 permits, and it exists because upstream has no sign-up UI and P1 adds none (spec Assumptions, Out of Scope)
   - Write: `specs/002-team-workspaces/receipts.md`
@@ -515,7 +515,7 @@ account's rows to another. It is worth merging and reviewing on its own before a
 | T002 | serial | coordinator | `docs/validation-map.md`, `specs/002-team-workspaces/receipts.md` | creates `receipts.md`; every later receipt card appends |
 | T003 | serial | data | `specs/002-team-workspaces/receipts.md` | appends after T002 |
 | T004 | wt/sync-flake | data | `tests/harness/sync.ts`, `tests/stack/soft-delete.test.ts` | the **only** sanctioned P0-test edit; no assertion may change |
-| T005 | serial | data | `specs/001-validation-spine/receipts.md`, `docs/validation-map.md` | map written serially with T002 |
+| T005 | serial | coordinator | `specs/001-validation-spine/receipts.md`, `docs/validation-map.md` | map written serially with T002 |
 | T006 | read-only | reviewer | — (no file written) | [P] — reads only; blocks T023 |
 | T007 | wt/harness-accounts | data | `tests/harness/accounts.ts` | [P] — disjoint from T008/T016 |
 | T008 | wt/guards | data | `tests/stack/team-schema-guards.test.ts` | [P] — own file |
