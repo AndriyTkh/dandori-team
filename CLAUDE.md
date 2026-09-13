@@ -228,6 +228,13 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   and whether a notification or an e-mail), which calendar, and the event's colour.
   Saving creates the event. Beside a ticked checkbox stands «Править», which opens
   the same window again.
+- An event takes the colour of the task's first label, and the colour picked in
+  the window stands for a task that carries none. A workspace synced whole put
+  every event it made in one colour, which is the one thing a calendar full of
+  them cannot be read by — and the labels are already the colours the owner
+  sorts by, in both places at once. The nine label colours map onto nine of
+  Google's eleven, one to one, and the picker keeps its job where there is no
+  label to take a colour from.
 - **Time of day belongs to the event, never to the task.** A reminder has to name
   a moment, so the event has a clock time — but the task does not, and no view
   ever shows one. The board and the timeline stay date-only, and nothing sorts,
@@ -264,9 +271,33 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   hands the page an access token, and renews it silently for as long as the
   browser is signed in to Google. An edit made with the app closed reaches the
   calendar the next time it is opened.
-- One-way, always. The calendar is told what the task says; what happens to the
-  event in Google is never read back. Two directions would need a server to
-  listen, and a second answer to every conflict.
+  The address of the account is remembered from the first connection and named
+  in every silent renewal after it. With several accounts signed into the
+  browser Google has to ask which one is meant, asking means a window, and a
+  window nobody clicked for is blocked — so every renewal failed and a reload
+  ended the connection. The token itself is still not kept: it lives an hour,
+  and a token in storage is a token that outlives the tab that earned it.
+- One-way, but for one thing: an event that is gone. The calendar is told what
+  the task says and nothing that happens to the event in Google is read back —
+  except its deletion, which unticks the task's checkbox exactly as unticking it
+  by hand would, and on a task under a whole-synced workspace is written as that
+  task's own refusal, so the switch cannot put the event back. Without it the
+  only way out of a sweep was inside the app: clearing the thing off the
+  calendar is the gesture that comes to hand, and it held only until the next
+  edit of the task rewrote the event into place.
+  While the app is open, each calendar it has events in is asked once a pass
+  what changed in it since the last time it was asked. Asking creates nothing —
+  it is a read — and the answer is acted on before the same pass writes
+  anything, so a task whose event was deleted leaves the sync before it can be
+  rewritten. Nothing else in the answer is looked at: not a moved event, not a
+  renamed one, not an event of the owner's that was never ours. A deletion made
+  while the app is shut is noticed the next time it is opened.
+  Two directions in full would need a server to listen and a second answer to
+  every conflict. This is one bit travelling the other way, and all it can do is
+  turn something off. It has a price: an event dragged into another calendar
+  inside Google reads as a deletion and unticks its task, leaving that event
+  behind where it was dragged — which calendar an event stands in is chosen in
+  the app, and Google is not asked.
 - Which calendar an event stands in travels with the task. It is the only record
   that the event exists at all: a device that did not create it — a second one,
   or the same one after signing out cleared its local notes — would otherwise

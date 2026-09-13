@@ -1,6 +1,6 @@
 /*
- * The two calls this app makes to Google Calendar: list the owner's calendars,
- * and keep one event per task in step with it.
+ * What this app says to Google Calendar: list the owner's calendars, keep one
+ * event per task in step with it, and ask which events have gone.
  *
  * The event's id is the task's own uuid with the dashes taken out. Google
  * accepts an id on insert, and hex digits are all legal in the base32hex
@@ -8,7 +8,7 @@
  * devices reaching for the calendar at the same moment write one event instead
  * of two.
  */
-import { forgetToken, getToken } from './client'
+import { forgetToken, getToken, rememberAccount } from './client'
 import { taskDate } from '../db/types'
 import type { GcalConfig, Task } from '../db/types'
 
@@ -82,6 +82,11 @@ export async function listCalendars(): Promise<Calendar[]> {
   const body = (await res.json()) as {
     items?: { id: string; summary?: string; primary?: boolean }[]
   }
+  // Google lists the owner's own calendar under his address, which is the one
+  // thing a silent renewal needs to know and the only place the app can learn
+  // it: the token itself says nothing about whose it is.
+  const primary = (body.items ?? []).find((c) => c.primary === true)
+  if (primary) rememberAccount(primary.id)
   return (body.items ?? []).map((c) => ({
     // Google lists the main calendar under the account's own address, and also
     // answers to `primary` for it — which is what this app writes by default.
@@ -171,6 +176,45 @@ export async function putEvent(task: Task, cfg: GcalConfig, standing: boolean): 
 
   const second = await (standing ? insert() : update())
   if (!second.ok) throw await refusal(second, standing ? 'insert' : 'update')
+}
+
+/**
+ * The ids of events deleted in this calendar since `since`, an RFC3339 time.
+ *
+ * The one thing read back out of Google. `updatedMin` hands back everything
+ * touched since that moment, deletions included whatever `showDeleted` says;
+ * only the deletions are looked at here, and only their ids. A calendar busy
+ * enough to page is walked, up to a limit: this runs once a minute, and a
+ * calendar that cannot be read in twenty pages is not one worth blocking the
+ * pass for.
+ */
+export async function deletedSince(calendarId: string, since: string): Promise<string[]> {
+  const cal = encodeURIComponent(calendarId)
+  const gone: string[] = []
+  let page: string | null = null
+
+  for (let walked = 0; walked < 20; walked++) {
+    const query =
+      `/calendars/${cal}/events?showDeleted=true&maxResults=250` +
+      `&updatedMin=${encodeURIComponent(since)}` +
+      (page === null ? '' : `&pageToken=${encodeURIComponent(page)}`)
+    const res = await call(query)
+    if (!res.ok) throw await refusal(res, 'list')
+    const body = (await res.json()) as {
+      items?: { id?: string; status?: string }[]
+      nextPageToken?: string
+    }
+    for (const item of body.items ?? []) {
+      if (item.status === 'cancelled' && item.id) gone.push(item.id)
+    }
+    page = body.nextPageToken ?? null
+    if (page === null) return gone
+  }
+  // Only the first question about a calendar can reach this far — every one
+  // after it covers a minute. Said out loud rather than returned quietly: what
+  // is past the limit is a deletion nobody will hear about.
+  console.error('[gcal] calendar too busy to read to the end', calendarId)
+  return gone
 }
 
 /** Takes the event away. Already gone counts as done. */

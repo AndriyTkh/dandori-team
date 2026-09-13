@@ -10,6 +10,13 @@
  * blocked by every browser, so a renewal that needs the owner's attention never
  * opens one — it records that consent is wanted and the settings window offers
  * a button. The only popup ever opened is the one he asked for.
+ *
+ * Which is why the renewal names the account it wants. With more than one Google
+ * account signed into the browser Google cannot know which is meant, so it asks
+ * — in a window, which nobody clicked for, which is blocked: every silent
+ * renewal failed and a reload ended the connection. The address is remembered
+ * from the first connection; it is not a secret, and it is nothing the browser
+ * signed into that account does not already hold.
  */
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
@@ -80,6 +87,44 @@ function setConnected(on: boolean): void {
   }
 }
 
+/** The address the token is asked for, so a silent renewal has nothing to ask about. */
+const ACCOUNT_KEY = 'dandori.gcalAccount'
+/*
+ * And a copy for as long as the tab lives. With storage blocked the stored one
+ * reads back empty however often it is written, and every pass would go asking
+ * Google for the address again — once a minute, for ever.
+ */
+let remembered: string | null = null
+
+function account(): string | null {
+  if (remembered !== null) return remembered
+  try {
+    return localStorage.getItem(ACCOUNT_KEY)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The address of the connected account, learned from Google rather than typed:
+ * it lists the owner's own calendar under it.
+ */
+export function rememberAccount(address: string): void {
+  if (!address || address === account()) return
+  remembered = address
+  try {
+    localStorage.setItem(ACCOUNT_KEY, address)
+  } catch {
+    // Storage blocked: the address holds for this tab and is learned again in
+    // the next one.
+  }
+}
+
+/** True once the address is known, so nobody has to go looking for it twice. */
+export function accountKnown(): boolean {
+  return account() !== null
+}
+
 function setState(next: GcalState): void {
   if (next === state) return
   state = next
@@ -109,7 +154,7 @@ interface TokenResponse {
 }
 
 interface TokenClient {
-  requestAccessToken: (opts?: { prompt?: string }) => void
+  requestAccessToken: (opts?: { prompt?: string; login_hint?: string }) => void
 }
 
 interface Gis {
@@ -118,6 +163,7 @@ interface Gis {
       initTokenClient: (o: {
         client_id: string
         scope: string
+        hint?: string
         callback: (r: TokenResponse) => void
         error_callback?: (e: { type?: string }) => void
       }) => TokenClient
@@ -157,6 +203,8 @@ function loadGis(): Promise<Gis> {
 }
 
 let client: TokenClient | null = null
+/** The address `client` was built with, so a newly learned one rebuilds it. */
+let clientHint: string | null = null
 /** One request at a time: two writes landing together must not open two popups. */
 let pending: Promise<string | null> | null = null
 /*
@@ -189,12 +237,21 @@ async function request(interactive: boolean): Promise<string | null> {
     return null
   }
 
+  const hint = account()
+
   return new Promise<string | null>((resolve) => {
     waiting = resolve
 
+    // The address goes in twice on purpose: the token client takes it as `hint`
+    // when it is built, and a single call overrides it as `login_hint`. The
+    // client is built once and outlives the connection that taught the app the
+    // address, so neither place alone covers every renewal.
+    if (client && clientHint !== hint) client = null
+    clientHint = hint
     client ??= gis.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPE,
+      hint: hint ?? undefined,
       callback: (r) => {
         if (r.access_token && r.expires_in) {
           token = { value: r.access_token, expires: Date.now() + r.expires_in * 1000 }
@@ -218,7 +275,10 @@ async function request(interactive: boolean): Promise<string | null> {
 
     // An empty prompt is the silent path: Google answers it without a dialog
     // while the browser's Google session is alive and the scope already granted.
-    client.requestAccessToken({ prompt: interactive ? 'consent' : '' })
+    client.requestAccessToken({
+      prompt: interactive ? 'consent' : '',
+      login_hint: hint ?? undefined,
+    })
   })
 }
 
@@ -256,6 +316,13 @@ export async function disconnect(): Promise<void> {
   // The token client holds the grant it was built with. Kept across a
   // disconnect, it would hand the next owner the last one's session.
   client = null
+  clientHint = null
+  remembered = null
+  try {
+    localStorage.removeItem(ACCOUNT_KEY)
+  } catch {
+    // Nothing was stored either.
+  }
   answer(null)
   setConnected(false)
   setState(CLIENT_ID ? 'signed-out' : 'unconfigured')
