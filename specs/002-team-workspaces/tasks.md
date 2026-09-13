@@ -378,8 +378,9 @@ cards and is therefore strictly serial.
 ## TG-4: Map, receipts, docs — the truth-telling taskgroup
 
 **Purpose**: FR-031's "in the same change that adds the behaviour" is satisfied because this
-taskgroup ships in the same PR as TG-1..TG-3. Three cards here are **BLOCKED on the owner** and must
-not be settled by an agent (CLAUDE.md, agent roles).
+taskgroup ships in the same PR as TG-1..TG-3. Three cards here (T043, T044, T045) carried
+owner-blocked decisions; the owner gate on 2026-09-13 (evening) settled all three, and their cards
+now implement the approved outcomes.
 
 - [ ] T040 [coordinator] Add the three new HIGH entries to `docs/validation-map.md` — `membership`, `team-rls`, `multi-account-cache` — with the `kind`, `criticality: HIGH`, `paths`, `depends-on` and `scenarios` that `ARCHITECTURE.md §2` already assigns them, each with a real `verify:` command and `tests:` list, and flip each to `VALIDATED` with `last-verified: <sha> <date>` and `sign-off: Andrii Tkhorenko (single-operator)` backed by TG-1/TG-2's receipts. `paths` for `membership` ⊇ `supabase/schema.sql`, `src/db/api.ts`; for `team-rls` ⊇ `supabase/schema.sql`; for `multi-account-cache` ⊇ `src/db/local.ts`, `src/db/types.ts`
   - Write: `docs/validation-map.md`
@@ -402,27 +403,27 @@ not be settled by an agent (CLAUDE.md, agent roles).
   - verify: `npm test -- --run` green twice consecutively with both runs recorded, and the CI run on this branch green with its URL recorded
   - done-when: SC-014 holds (the whole body of evidence runs from the same single command as P0's, unattended, no browser) and SC-013 holds (**0** credentials in the diff, **0** runs touching a hosted project)
   - blocked-by: T041
-- [ ] T043 [coordinator] **F-5 — sign-out ordering. BLOCKED on owner Q-B.** Record the disposition on `docs/validation-map.md`'s `supabase-auth` entry. D-12's recommendation is option **(b)**: `accepted-risk: "sign-out ordering uncovered; browser-bound. Owner: Andrii Tkhorenko, 2026-09-13, expires end of P2 (Playwright arrives, ADR-0003)"`. The supporting fact the owner is asked to weigh: P1 turns out **not** to change the sign-out order at all — `src/auth/useSession.ts:112-118` and `src/components/Settings.tsx`'s `AccountSection` sign-out path are not in this feature's diff, so FR-023 is satisfied by the files not being touched. If the owner requires option **(a)** instead, this card becomes "cover the non-interface steps and the wipe's effect directly, and say precisely what remains browser-bound". **Silently leaving F-5 as it is is prohibited** (FR-032, SC-011)
+- [ ] T043 [coordinator] **F-5 — sign-out ordering. Owner-approved wording, 2026-09-13.** Record the disposition on `docs/validation-map.md`'s `supabase-auth` entry, verbatim: `accepted-risk: "sign-out ordering uncovered; browser-bound. Owner: Andrii Tkhorenko, 2026-09-13, expires end of P2 (Playwright arrives, ADR-0003)"`. The supporting fact the owner weighed at the gate: P1 turns out **not** to change the sign-out order at all — `src/auth/useSession.ts:112-118` and `src/components/Settings.tsx`'s `AccountSection` sign-out path are not in this feature's diff, so FR-023 is satisfied by the files not being touched. **Silently leaving F-5 as it is is prohibited** (FR-032, SC-011)
   - Write: `docs/validation-map.md`, `specs/002-team-workspaces/receipts.md`
   - Read: spec.md "Inherited accepted risk — F-5", FR-023, FR-032, SC-011; plan.md D-12, Owner question Q-B; `specs/001-validation-spine/receipts.md` F-5; `src/auth/useSession.ts:112-118`; `src/components/Settings.tsx:208-224`
   - substrate: `supabase-auth` (UNTESTED, carries F-5)
   - verify: `git diff $(git merge-base HEAD main) -- src/auth/ src/components/Settings.tsx` reviewed and shown to contain no change to the sign-out path, **plus** the owner's recorded decision text pasted into the map entry
   - done-when: SC-011 holds — F-5 ends this feature either covered by a passing check or re-recorded with an owner name, a date and an expiry; the number of ways it ends silently unaddressed is 0
-  - blocked-by: **owner** (Q-B), T042
-- [ ] T044 [coordinator] **ADR-0001 Consequences amendment, or ADR-0006 — BLOCKED on owner.** ADR-0001's Consequences call the multi-account cache rework "unavoidable in P1". D-10 concludes the opposite, and the spec written later agrees with D-10: FR-021, FR-022 and SC-012 require `claimCache`/`wipeLocal` to behave exactly as today, so P1's honest `multi-account-cache` deliverable is confirmed-unchanged semantics plus an additive Dexie version. That is a divergence from an accepted ADR's wording and, per CLAUDE.md, **a new owner decision lands in an ADR first**. The owner chooses: amend ADR-0001's Consequences in place, or write `ADR-0006` superseding that paragraph. Either way the map's affected entries take a `STALE` cascade and `docs/architecture-index.md` is regenerated **in the same PR** if `docs/ARCHITECTURE.md` changes
-  - Write: `docs/decisions/ADR-0001-fork-contract.md` **or** `docs/decisions/ADR-0006-*.md` (owner's choice), `docs/validation-map.md`, `docs/ARCHITECTURE.md` and `docs/architecture-index.md` **only if** an architecture fact changes
-  - Read: `docs/decisions/ADR-0001-fork-contract.md` (Consequences); plan.md D-10 "Why the cache rework shrinks to nothing"; spec.md FR-021, FR-022, SC-012; `CLAUDE.md` → Git ("an architecture change is a new ADR + a STALE cascade + a regenerated index, all in the same PR")
+  - blocked-by: T042
+- [ ] T044 [coordinator] **ADR-0001 Consequences amendment — owner-approved, 2026-09-13.** Amend ADR-0001's Consequences with a dated note that the P1 cache change is additive (D-10 stands: cache unchanged in P1, Dexie v3 additive); regenerate nothing else. ADR-0001's Consequences called the multi-account cache rework "unavoidable in P1"; D-10 concludes the opposite, and the spec agrees with D-10: FR-021, FR-022 and SC-012 require `claimCache`/`wipeLocal` to behave exactly as today, so P1's honest `multi-account-cache` deliverable is confirmed-unchanged semantics plus an additive Dexie version. The owner approved landing this as an amendment note in ADR-0001, not a new ADR
+  - Write: `docs/decisions/ADR-0001-fork-contract.md`, `docs/validation-map.md`
+  - Read: `docs/decisions/ADR-0001-fork-contract.md` (Consequences); plan.md D-10 "Why the cache rework shrinks to nothing"; spec.md FR-021, FR-022, SC-012
   - substrate: `multi-account-cache` (new), `local-cache`
-  - verify: named manual check — the owner's decision exists as an ADR or an ADR amendment with a date and a sign-off, and if `docs/ARCHITECTURE.md` changed, `docs/architecture-index.md` was regenerated in the same commit
-  - done-when: the divergence between D-10 and ADR-0001's Consequences is resolved **in writing by the owner**, not absorbed by an agent
-  - blocked-by: **owner**, T042
-- [ ] T045 [coordinator] **Q-A — member email caching. BLOCKED on owner.** T026 ships **Option A** (no per-device email cache; emails fetched live; offline the member list and a task's assignee show an identity-less placeholder) because it is the strict reading of FR-007/Q1 and is the safe default. The plan **recommends Option B**: `meta` holds `member-email:<uuid>`, refreshed on each successful `workspace_member_emails` call, cleared by `wipeLocal()`, never synced, never authoritative, drift bounded to one sync cycle — on the grounds that FR-019's "learns on its next cycle" is the intended standard for derived data and that an assignee with no name is a worse product than a one-cycle-stale name. **Switch note**: adopting B is a change inside the single `memberEmails()` function in `src/db/api.ts` plus one `meta` key in `wipeLocal`'s clear list — no schema change, no wire change, no second copy that can outlive a sign-out
-  - Write: `specs/002-team-workspaces/receipts.md`, and — **only if the owner adopts Option B** — `src/db/api.ts`, `src/db/local.ts`
-  - Read: spec.md FR-007, clarification Q1, FR-019; plan.md Owner question Q-A, R-12, D-9 "Why no `profiles` table"; contracts/rpc.md "Freshness / offline"; `src/gcal/sync.ts:26-27` (the existing per-device `meta` cache shape this would copy)
+  - verify: named manual check — the amendment note exists in ADR-0001's Consequences with a date and a sign-off
+  - done-when: the divergence between D-10 and ADR-0001's Consequences is resolved in writing, matching the owner's 2026-09-13 gate decision
+  - blocked-by: T042
+- [ ] T045 [coordinator] **Q-A — member email caching. Owner-approved, 2026-09-13: Option B.** Implement Option B: `memberEmails()` in `src/db/api.ts` writes `meta` keys `member-email:<uuid>` after each successful `workspace_member_emails` RPC call; reads fall back to the cache when offline; `wipeLocal()` clears every `member-email:` key. Never synced, never authoritative, drift bounded to one sync cycle — on the grounds that FR-019's "learns on its next cycle" is the intended standard for derived data and that an assignee with no name is a worse product than a one-cycle-stale name. This is a change inside the single `memberEmails()` function in `src/db/api.ts` plus one `meta` key in `wipeLocal`'s clear list in `src/db/local.ts` — no schema change, no wire change, no second copy that can outlive a sign-out
+  - Write: `src/db/api.ts`, `src/db/local.ts`, `specs/002-team-workspaces/receipts.md`
+  - Read: spec.md FR-007, clarification Q1, FR-019, owner gate 2026-09-13 (evening); plan.md Owner question Q-A, R-12, D-9 "Why no `profiles` table"; contracts/rpc.md "Freshness / offline"; `src/gcal/sync.ts:26-27` (the existing per-device `meta` cache shape this copies)
   - substrate: `db-api`, `local-cache`, `multi-account-cache` (new)
-  - verify: if the owner keeps Option A — named manual check that no email is written to Dexie anywhere in the diff (`git grep -n "email" src/db/`); if the owner adopts Option B — `npm test -- --run --project local` green, including a new assertion that `wipeLocal()` clears every `member-email:` key
-  - done-when: the owner's answer is recorded in `receipts.md` with a date, and the code matches it; FR-007's "no second copy of the email MUST be stored" is satisfied under whichever reading the owner chose
-  - blocked-by: **owner** (Q-A), T042
+  - verify: `npm test -- --run --project local` green, including a new assertion that `wipeLocal()` clears every `member-email:` key and that no `member-email:` key is ever pushed to the wire
+  - done-when: FR-007's "no second copy of the email MUST be stored" is satisfied under the derived-cache reading the owner approved at the gate; the local-tier test asserting the cache is wiped with the rest and never pushed is green
+  - blocked-by: T042
 - [ ] T046 [reviewer] Whole-branch review against the four reviewer duties, verdict short (a list of findings, or "clean"): **(1) personal-must-not-regress** — does anything in this diff change what a `kind: personal` workspace does, in data, sync, or views? **(2) spec control** — is every button, field and behaviour in the diff named in `spec.md` FR-024 or required by an FR? **(3) origin-invariant control** — is there any cross-origin reference, query, shared identity or token, or any "origin" column or table anticipating a model that needs no schema support (FR-027, SC-009)? **(4) map discipline** — did any component's `paths` or behaviour change without its map entry changing; is any `VALIDATED` claim unbacked by a receipt; is any sign-off presented as anything other than `(single-operator)`? Anything debatable goes to the owner **via the coordinator**, not decided here
   - Write: — (read-only; the findings list goes to the coordinator in the task report, no file written)
   - Read: `git diff $(git merge-base HEAD main)` (whole branch); `CLAUDE.md` → `reviewer` role, "What replaces upstream's 'What must not exist'"; spec.md "Personal must not regress", FR-024, FR-025, FR-027, FR-030..FR-033; `docs/validation-map.md`; `specs/002-team-workspaces/receipts.md`
@@ -431,8 +432,8 @@ not be settled by an agent (CLAUDE.md, agent roles).
   - done-when: SC-009 (**0** origin columns/tables/cross-origin references), SC-013 (**0** credentials) and SC-003 (**0** P0 edits) each have a named check behind them; the verdict is recorded and every finding has a disposition
   - blocked-by: T042
 
-**Checkpoint**: the map tells the truth, the receipts back it, and the three owner questions are on
-the owner's desk rather than answered by an agent.
+**Checkpoint**: the map tells the truth, the receipts back it, and the three owner questions were
+answered by the owner at the 2026-09-13 (evening) gate, not by an agent.
 
 ---
 
@@ -471,7 +472,7 @@ and no agent handles a hosted key.
   - verify: named manual check (owner-run) — eleven recorded outcomes, one line per step, with the date and the deployed build's SHA
   - done-when: SC-001 holds (the walk completes end to end with zero manual database intervention beyond T048); any failed step is a FINDING with a disposition, never a silently retried step
   - blocked-by: T049
-- [ ] T051 [coordinator] Close the feature: fold T047–T050's outcomes into `specs/002-team-workspaces/receipts.md` alongside T039's `git diff --stat` receipt, confirm the Definition of Done from `CLAUDE.md` item by item (map entry updated in the same PR; every `verify:` command actually run; CI green — install, typecheck, lint, build, test; personal workspaces demonstrably unchanged; nothing in the diff outside the spec; no credential, key or token anywhere in the diff), and hand the three owner-blocked items (T043, T044, T045) to the owner as explicitly open if any is still unanswered. **The coordinator commits; no agent in this list commits on its own** (task-brief rule, CLAUDE.md Git)
+- [ ] T051 [coordinator] Close the feature: fold T047–T050's outcomes into `specs/002-team-workspaces/receipts.md` alongside T039's `git diff --stat` receipt, confirm the Definition of Done from `CLAUDE.md` item by item (map entry updated in the same PR; every `verify:` command actually run; CI green — install, typecheck, lint, build, test; personal workspaces demonstrably unchanged; nothing in the diff outside the spec; no credential, key or token anywhere in the diff), and confirm the three formerly owner-blocked items (T043, T044, T045) are recorded as answered at the 2026-09-13 (evening) gate. **The coordinator commits; no agent in this list commits on its own** (task-brief rule, CLAUDE.md Git)
   - Write: `specs/002-team-workspaces/receipts.md`
   - Read: `CLAUDE.md` → "Definition of done", Git; plan.md D-14, D-15; T039, T042, T046 outputs
   - substrate: every entry this feature touches
@@ -497,9 +498,9 @@ and no agent handles a hosted key.
   place").
 - **TG-3 → TG-4**: the map is not flipped for a component whose behaviour is not merged.
 - **TG-4 → TG-5**: the hosted walk happens only after the unattended suite is green (D-14).
-- **Owner-blocked cards** — **T043** (Q-B, F-5), **T044** (ADR-0001 Consequences amendment or
-  ADR-0006), **T045** (Q-A, member email caching) — do not block TG-5's technical steps, but the
-  feature is not done while any of them is unanswered (SC-011, CLAUDE.md agent roles).
+- **Owner gate cleared 2026-09-13: no card remains blocked on the owner.** Two follow-up decisions
+  (in-app login provisioning; kind switchability) are recorded in spec.md and are **not** on this
+  feature's path.
 
 **MVP scope**: TG-0 + TG-1. That alone is the whole access transform, proven at the data layer by
 two authenticated clients with no browser, and it is the half of this feature that can leak one
@@ -553,9 +554,9 @@ account's rows to another. It is worth merging and reviewing on its own before a
 | T040 | serial | coordinator | `docs/validation-map.md` | map written serially with T041, T043 |
 | T041 | serial | coordinator | `docs/validation-map.md` | after T040 |
 | T042 | serial | coordinator | `specs/002-team-workspaces/receipts.md` | appends |
-| T043 | serial | coordinator | `docs/validation-map.md`, `specs/002-team-workspaces/receipts.md` | **BLOCKED on owner (Q-B)**; map after T041 |
-| T044 | serial | coordinator | `docs/decisions/ADR-0001-fork-contract.md` **or** `docs/decisions/ADR-0006-*.md`, `docs/validation-map.md`, (`docs/ARCHITECTURE.md` + `docs/architecture-index.md` only if an architecture fact changes) | **BLOCKED on owner**; if `ARCHITECTURE.md` changes, the index is regenerated in the same commit |
-| T045 | serial | coordinator | `specs/002-team-workspaces/receipts.md`; **Option B only**: `src/db/api.ts`, `src/db/local.ts` | **BLOCKED on owner (Q-A)**; source files shared with T024/T026 — serialize |
+| T043 | serial | coordinator | `docs/validation-map.md`, `specs/002-team-workspaces/receipts.md` | owner gate cleared 2026-09-13; map after T041 |
+| T044 | serial | coordinator | `docs/decisions/ADR-0001-fork-contract.md`, `docs/validation-map.md` | owner gate cleared 2026-09-13 (amendment, not ADR-0006); no `ARCHITECTURE.md` fact changes, so no index regeneration |
+| T045 | serial | coordinator | `src/db/api.ts`, `src/db/local.ts`, `specs/002-team-workspaces/receipts.md` | owner gate cleared 2026-09-13 (Option B); source files shared with T024/T026 — serialize |
 | T046 | read-only | reviewer | — (no file written) | whole-branch diff review |
 | T047 | serial | owner | `specs/002-team-workspaces/receipts.md` | owner-run; hosted SQL editor, no repo change |
 | T048 | serial | owner | `specs/002-team-workspaces/receipts.md` | owner-run; dashboard only |
@@ -565,14 +566,13 @@ account's rows to another. It is worth merging and reviewing on its own before a
 
 **Conflicts of record.**
 `supabase/schema.sql` — T017, T018, T019, T020, T021, in that order, one lane, never split.
-`docs/validation-map.md` — T002, T005, T040, T041, T043, T044 (and T044 only if the owner's ADR
-choice cascades `STALE`), all `serial`.
+`docs/validation-map.md` — T002, T005, T040, T041, T043, T044, all `serial`.
 `specs/002-team-workspaces/receipts.md` — created by T002, appended by T003, T011, T022, T030, T039,
 T042, T043, T045, T047, T048, T050, T051; append-only, serial.
 `src/components/Settings.tsx` — T034, T035, T036, T038, in that order.
 `src/i18n/dict.ts` — T032 only; T033–T038 read it.
-`src/db/api.ts` — T026 (writes), T031 (tests it), T045 (writes, Option B only) — serial.
-`src/db/local.ts` — T024 (writes), T025 (tests it), T045 (writes, Option B only) — serial.
+`src/db/api.ts` — T026 (writes), T031 (tests it), T045 (writes, Option B) — serial.
+`src/db/local.ts` — T024 (writes), T025 (tests it), T045 (writes, Option B) — serial.
 `tests/local/db-api-p1-surface.test.ts` — T001 then T031, across two taskgroups.
 `tests/harness/*.ts` — additive exports only; **no existing export changes signature** (D-13),
 because P0 files import them. The one exception is T004's settle-wait repair, which is a P0 debt

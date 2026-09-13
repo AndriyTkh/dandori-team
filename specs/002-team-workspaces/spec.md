@@ -25,6 +25,21 @@
   specification's own ordering of stories; it is unrelated to the fork's phase gates P0–P3. Every
   story here ships inside phase P1.
 
+#### Owner gate, 2026-09-13 (evening)
+
+- Spec, plan, tasks, ADR-0005 adoption: **approved** by the owner.
+- Q-A member emails: **Option B adopted** — per-device, unsynced Dexie `meta` cache
+  (`member-email:<uuid>`), refreshed on each successful `workspace_member_emails` call, cleared by
+  `wipeLocal()`. Clarification Q1's prohibition is read as "no second *synced/authoritative* copy";
+  a derived per-device cache is inside the rule. FR-007 stays; one sentence is added to FR-007's
+  text noting the derived cache.
+- Q-B F-5: **option (b) approved** — re-recorded as an accepted risk, owner Andrii Tkhorenko,
+  2026-09-13, expiry end of P2 (Playwright, ADR-0003).
+- ADR-0001 Consequences wording on the cache rework: **amendment approved** (D-10 stands: cache
+  unchanged in P1, Dexie v3 additive) — lands as an amendment note in ADR-0001, not a new ADR.
+- T004's single FR-030 exception: **approved**.
+- `src/i18n/` owned by `ui` for key additions: **approved**.
+
 ## User Scenarios & Testing *(mandatory)*
 
 `Priority:` on a story is this specification's own ordering, not a phase gate (see
@@ -349,7 +364,9 @@ roles).
 - **FR-007**: A member list MUST be readable only by that workspace's own members, and each member MUST
   be identifiable there by **email**. That email MUST be served by a narrowly-scoped read path
   available only to co-members of that workspace; the account table MUST NOT be made readable, and no
-  second copy of the email MUST be stored.
+  second copy of the email MUST be stored. A per-device, unsynced local cache of emails already
+  returned by that read path (owner gate, 2026-09-13 evening, Q-A Option B) is not a second copy for
+  this purpose: it is derived, never authoritative, and is cleared by `wipeLocal()`.
 - **FR-008**: Adding a member MUST be done by email and MUST succeed only when that email belongs to an
   existing account **on this same origin**. Otherwise the operation MUST fail with an outcome that is
   distinguishable from every other failure, and MUST create no row of any kind. No sign-up capability
@@ -456,6 +473,51 @@ roles).
 - **Access policy half** — the read predicate and the write predicate of a table's single access policy.
   Two separate things that must stay different from one another.
 
+## Owner addition — onboarding model (2026-09-13, recorded, not yet in scope)
+
+**As stated by the owner (paraphrased faithfully):** a coworker joins an *existing* self-hosted
+system like this. The host self-hosts Supabase, registers the first account through it — that is
+the admin's own account. They sign in with it, have personal notes, and can create workspaces for
+themselves or for the team and choose which kind each is. Workspace switching is the second layer
+that replaces switching accounts: one sign-in, then a choice of workspaces — some private groups of
+tasks, some set as team/public. In that same signed-in interface the admin keeps a **list of
+logins** — email-identified accounts with passwords — creates them, changes them, removes them, and
+hands each coworker their login, password and the hosted URL, so the coworker signs in and already
+has access to the shared task base.
+
+**What P1 already delivers of this:** one sign-in; personal and team workspaces side by side in the
+existing switcher (US1, US3); the admin (creator) is the owner; the team workspace is reachable by
+its members on the same URL (US3); members are added and removed from inside the interface (US2).
+The "hand the coworker a URL + login" flow works today as: account created in the Supabase
+dashboard (task T048), then added by email in the app.
+
+**Two deltas this addition introduces, recorded as owner decisions still to take — neither is in P1
+scope, and the first demo does not wait for them:**
+
+1. *In-app login provisioning (create / change password / remove accounts).* Creating an
+   `auth.users` row is an admin operation. The client holds only the anon key and the static
+   Cloudflare Workers site has no server code, so there is no privileged place for it today.
+   Options, for a separate spec (`003-account-provisioning` candidate) and an ADR on where the
+   privilege lives: (a) **Supabase Edge Function or Cloudflare Worker route** holding the
+   `service_role` key as a platform secret (never in the repo), callable only by an authenticated
+   owner, using `auth.admin.createUser` / `updateUserById` / `deleteUser`; (b) **owner-side
+   `signUp` through a throwaway non-persisting client** — no secret needed, but it relies on public
+   sign-up staying enabled on the hosted project, which is the opposite of a closed team instance;
+   (c) **dashboard only** (status quo, T048). Recommendation to carry into the next session: (a),
+   with sign-up disabled on the hosted project; "remove login" must also soft-delete the person's
+   memberships (D-7 path) and is distinct from "remove member". Password handling: admin sets an
+   initial password, coworker changes it on first sign-in — needs a change-password affordance
+   that does not exist yet.
+2. *"Switch what kind each workspace is."* Clarification Q3 (this session) fixed `kind` at creation
+   and the plan pins it with a trigger (D-6). Making it switchable later means: personal→team
+   gives every future member the whole history; team→personal must decide what happens to members
+   and to rows other members created. Not a P1 change; owner to confirm at the start of the next
+   session whether "choose the kind" means *at creation* (P1 as planned) or *at any time* (new
+   clarification + ADR-0001 §1 amendment + D-6 change).
+
+**Origin invariant unchanged:** all of the above lives on one origin (ADR-0004); nothing here is
+federation.
+
 ## Out of Scope
 
 Explicitly not in P1. Each would need its own spec, and several would need a new ADR:
@@ -530,6 +592,14 @@ pending the owner's gate — the owner may overturn any of them at the gate (see
   team → personal ever allowed? **Adopted (pending owner gate):** kind is fixed at creation in P1.
   No conversion in either direction. Converting personal → team is the smaller, plausible follow-up;
   team → personal raises "what happens to the other members' rows", which is a spec of its own.
+
+- **Q4 — In-app login provisioning.** Where does the privilege to create/change/remove logins live
+  (Edge Function/Worker route with `service_role`, owner-side throwaway `signUp`, or dashboard-only
+  status quo)? See "Owner addition — onboarding model" above. **Owner, next session.**
+
+- **Q5 — Kind switchability.** Does "choose the kind" mean at creation only (P1 as planned) or at
+  any time (new clarification + ADR-0001 §1 amendment + D-6 change)? See "Owner addition —
+  onboarding model" above. **Owner, next session.**
 
 ## Assumptions
 
