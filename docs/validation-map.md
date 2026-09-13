@@ -65,14 +65,14 @@ distinctions below.
 - id: db-api
   kind: lib
   criticality: HIGH
-  status: UNTESTED
+  status: VALIDATED
   paths: [src/db/api.ts, src/db/dates.ts]
-  verify: "NONE — needs writing"
-  tests: —
+  verify: "npm test -- --run --project local tests/local/db-api-p1-surface.test.ts"
+  tests: tests/local/db-api-p1-surface.test.ts
   depends-on: [local-cache]
   scenarios: [s-offline-edit-sync]
-  last-verified: —
-  sign-off: —
+  last-verified: 9bc5687 2026-09-13
+  sign-off: Andrii Tkhorenko (single-operator) — specs/002-team-workspaces/receipts.md "db-api receipt (T002)"
 
 - id: sync-engine
   kind: adapter

@@ -66,13 +66,13 @@ bites in exactly two places. `db-api` is the door every one of the seven afforda
 is `UNTESTED`. And `sync-engine` is `VALIDATED` on a **flaky** receipt, which is a map-discipline
 problem, not a test problem. **Blocks TG-1 onward.**
 
-- [ ] T001 [P] [data] Write `tests/local/db-api-p1-surface.test.ts` pinning the `db-api` functions P1 touches **as they behave today**, before a single line of `src/db/api.ts` changes: `createWorkspace(name)` (row shape, `_dirty`, queued), `renameWorkspace(id, name)` (bumps `updated_at`, re-dirties), `deleteWorkspace(id)` (soft-deletes the workspace **and** its children), `updateTask(id, patch)` (patch semantics, `updated_at` bump, untouched fields preserved), `listWorkspaces()` (excludes deleted). Docker-free tier
+- [x] T001 [P] [data] Write `tests/local/db-api-p1-surface.test.ts` pinning the `db-api` functions P1 touches **as they behave today**, before a single line of `src/db/api.ts` changes: `createWorkspace(name)` (row shape, `_dirty`, queued), `renameWorkspace(id, name)` (bumps `updated_at`, re-dirties), `deleteWorkspace(id)` (soft-deletes the workspace **and** its children), `updateTask(id, patch)` (patch semantics, `updated_at` bump, untouched fields preserved), `listWorkspaces()` (excludes deleted). Docker-free tier
   - Write: `tests/local/db-api-p1-surface.test.ts`
   - Read: `src/db/api.ts` (whole); `src/db/local.ts:20-125`; `ARCHITECTURE.md §4` L407–L424 (db-api surface); `ARCHITECTURE.md §3` L207–L242 (entities, three timestamps); plan.md "Validation substrate"; `tests/local/claim-cache.test.ts` (tier conventions)
   - substrate: `db-api` (UNTESTED — this task is what clears it), `local-cache` (VALIDATED)
   - verify: `npm test -- --run --project local tests/local/db-api-p1-surface.test.ts` — green with the stack stopped
   - done-when: the five functions named above each have at least one passing assertion against **current** behaviour, nothing under `src/` changed (FR-030 spirit; plan.md "the debt row that becomes the first tasks")
-- [ ] T002 [coordinator] Flip `db-api` to `VALIDATED` in `docs/validation-map.md` (`verify:` = T001's command, `tests:` = the new file, `last-verified: <sha> <date>`, `sign-off: Andrii Tkhorenko (single-operator)`) and create `specs/002-team-workspaces/receipts.md` with the run that backs it
+- [x] T002 [coordinator] Flip `db-api` to `VALIDATED` in `docs/validation-map.md` (`verify:` = T001's command, `tests:` = the new file, `last-verified: <sha> <date>`, `sign-off: Andrii Tkhorenko (single-operator)`) and create `specs/002-team-workspaces/receipts.md` with the run that backs it
   - Write: `docs/validation-map.md`, `specs/002-team-workspaces/receipts.md`
   - Read: `docs/project-structure.md` (map grammar, `verify:` field); `specs/001-validation-spine/receipts.md` (receipt shape); plan.md D-15
   - substrate: `db-api` (this task is where its status changes)
