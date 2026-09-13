@@ -19,7 +19,7 @@ import { labelVar, taskLabels } from '../../lib/labels'
  */
 
 /** A task with no label has no colour of its own. */
-export const NEUTRAL = 'var(--text-faint)'
+const NEUTRAL = 'var(--text-faint)'
 
 export interface Row {
   task: Task
