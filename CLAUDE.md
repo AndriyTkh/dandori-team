@@ -171,7 +171,7 @@ the ADR-0001 contract above binds it directly.
 
 ### `ui` — interface
 
-Owns: `src/views/`, `src/components/`, `src/styles/`.
+Owns: `src/views/`, `src/components/`, `src/styles/`, `src/i18n/` (adding keys in both languages; rewording an existing string is a `designer`-rule violation for every role).
 
 - Board (three modes), timeline, notes, task card, workspace switcher, label filter, banners.
 - Themes, density, phone behaviour.
