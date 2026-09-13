@@ -59,14 +59,22 @@ directly:
   and `email_confirmed_at = now()`, plus the matching `auth.identities` row with `provider = 'email'`
   and `provider_id` equal to the new user id;
 - set password: update `encrypted_password` the same way;
-- remove: `delete from auth.users` — `auth.identities` cascades with it.
+- remove: **ban, not delete.** `banned_until = 'infinity'`, `encrypted_password` scrambled to an
+  unusable value, the `instance_admins` row removed, the login's `members` rows soft-deleted (which
+  clears its assignees). A real `delete from auth.users` is ruled out by the schema: `workspaces`,
+  `labels`, `tasks` and `notes` all declare `user_id ... on delete cascade`, so deleting the account
+  would destroy everything that person created — the opposite of what FR-045 requires. Consequence:
+  the identifier stays taken (`DA012` on re-create), the row stays visible in `list_logins`, and an
+  issued JWT stays valid until it expires (plan R-18). *(Amended 2026-09-13 late, at planning, after
+  the plan agent read the foreign keys; the probe's delete step stands only as evidence that the
+  identities cascade works.)*
 
 Each function refuses unless the caller is an instance admin (§C), and each validates its input
 (§F) before touching anything.
 
 **Probe-verified today** against the repo's own local stack (GoTrue v2.196.0): a login created this
 way signs in with `signInWithPassword`; after a password update the old password is refused and the
-new one works; after the delete, sign-in is refused. Zero new infrastructure, **no `service_role`
+new one works; after a ban (`banned_until`), sign-in is refused. Zero new infrastructure, **no `service_role`
 key anywhere** — not in the repo, not in a platform secret, not in a deploy — and the whole surface
 is testable in the existing stack tier (supabase-js clients plus a direct pg connection), which is
 the tier every other P1 claim is proven in.

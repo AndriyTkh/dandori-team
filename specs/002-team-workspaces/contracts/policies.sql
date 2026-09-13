@@ -8,6 +8,11 @@
 --   * fork block B  -- helpers, before the policy block (policies call them)
 --   * fork block C  -- the fork's own triggers, in a guarded do $$ block that does NOT edit
 --                      upstream's four-element foreach arrays (merge hygiene, plan R-4)
+--   * fork block D  -- instance_admins, is_admin(), the first-account trigger on auth.users
+--                      (ADR-0006 §C, plan D-16)
+--   * fork block E  -- the provisioning routines (ADR-0006 §B, plan D-16); their signatures,
+--                      guards and error codes are contracted in ./rpc.md, which is
+--                      authoritative for them -- this file carries blocks A-D
 --   * policy block  -- upstream's existing drop/create block, replaced wholesale
 -- Everything is idempotent and re-runnable, as upstream's file is.
 
@@ -108,18 +113,48 @@ drop trigger if exists workspaces_seed_owner on public.workspaces;
 create trigger workspaces_seed_owner after insert on public.workspaces
   for each row execute function public.seed_workspace_owner();
 
--- kind is fixed at creation: coerce, never raise.  A raise would abort the whole sync
--- batch and stick the push queue; the third-value case is refused by the check constraint.
-create or replace function public.pin_workspace_kind() returns trigger
-language plpgsql as $fn$
+-- kind is MUTABLE, by the workspace's owner, in either direction (ADR-0006 §D, owner
+-- decision C, spec FR-034..FR-036).  There is no pin trigger: pin_workspace_kind and
+-- workspaces_zz_kind_fixed of the superseded plan D-6 do NOT exist.  Kind is an ordinary
+-- column under keep_newer and under the unchanged workspaces write half, which is already
+-- owner-only -- so "only the owner may switch it" needs no new predicate (FR-034).
+-- Two values only: workspaces_kind_check still refuses a third, at creation and at a switch
+-- alike (FR-001, US8 acceptance 7).
+--
+-- The consequences of a switch are a trigger, because they must hold for every path into the
+-- table -- the app's push, an offline-created workspace synced later, the SQL editor.
+create or replace function public.on_workspace_kind_change() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $fn$
 begin
-  new.kind := old.kind;
-  return new;
+  if new.kind = 'personal' then
+    -- team -> personal: every membership of this workspace ends, through exactly the
+    -- soft-delete path a removal uses.  members_zz_clear_assignee then fires per row and
+    -- clears that person's assignees with an outranking stamp -- one mechanism, not two
+    -- (FR-035).  greatest(updated_at, now()) for the same reason follow_workspace_delete
+    -- uses it: the end of the membership must outrank an edit already in flight.
+    update public.members
+       set deleted = true, updated_at = greatest(updated_at, now())
+     where workspace_id = new.id and not deleted;
+  else
+    -- personal -> team: seed exactly ONE owner row, re-activating a previously
+    -- soft-deleted one rather than adding a second (FR-036, SC-019).  Nobody who was a
+    -- member during an earlier team period is restored -- only new.user_id is touched.
+    insert into public.members (id, user_id, workspace_id, member_id, level)
+    values (gen_random_uuid(), new.user_id, new.id, new.user_id, 'owner')
+    on conflict (workspace_id, member_id) do update
+       set deleted    = false,
+           level      = 'owner',
+           updated_at = greatest(public.members.updated_at, now());
+  end if;
+  return null;
 end $fn$;
 
-drop trigger if exists workspaces_zz_kind_fixed on public.workspaces;
-create trigger workspaces_zz_kind_fixed before update on public.workspaces
-  for each row execute function public.pin_workspace_kind();
+drop trigger if exists workspaces_zz_kind_change on public.workspaces;
+create trigger workspaces_zz_kind_change after update on public.workspaces
+  for each row when (new.kind is distinct from old.kind)
+  execute function public.on_workspace_kind_change();
+-- AFTER, so keep_newer (BEFORE, returning null on a stale write) has already abandoned a
+-- stale row before this can fire -- a kind flip arriving out of order changes nothing.
 
 -- assignee must be a live member.  A trigger, not RLS: no access decision may read assignee.
 -- Coerce, never raise: same reasoning as pin_workspace_kind above -- a raise inside a sync
@@ -243,3 +278,69 @@ begin
   --        owner row comes from workspaces_seed_owner, which is security definer and so does
   --        not have to satisfy this predicate -- that is what closes the chicken-and-egg hole.
 end $blk$;
+
+-- ==========================================================================
+-- fork block D -- the instance-admin layer              (ADR-0006 §C, plan D-16)
+-- A SECOND, INDEPENDENT role layer.  It is an *instance* capability, never a workspace one:
+-- no access policy above reads instance_admins, and none ever may (FR-039, SC-007's sibling).
+-- An RLS policy that reads this table is a standing reviewer FINDING (ADR-0006 Consequences).
+-- ==========================================================================
+
+create table if not exists public.instance_admins (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  granted_by  uuid references auth.users (id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+
+alter table public.instance_admins enable row level security;
+-- and NO policy: the table is unreachable from PostgREST by anyone.  It is read only by
+-- is_admin() and written only by the provisioning routines, all security definer.  The
+-- client learns "am I an admin" from the is_admin() RPC, never by selecting this table
+-- (plan D-17).  It is not a synced table and never enters SYNCED_TABLES.
+
+create or replace function public.is_admin() returns boolean
+language sql stable security definer set search_path = public, pg_temp as $fn$
+  select exists (select 1 from public.instance_admins a where a.user_id = auth.uid())
+$fn$;
+
+revoke execute on function public.is_admin() from public, anon;
+grant  execute on function public.is_admin() to authenticated;
+
+-- The first account ever created on this origin becomes an instance admin structurally --
+-- granted by the backend, and ONLY while no admin exists (FR-037).  A trigger, not a runbook
+-- step: it holds for every path that creates an account, so an instance is never adminless
+-- and nobody has to be told to grant it.  Every account created afterwards is not an admin.
+create or replace function public.seed_first_admin() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $fn$
+begin
+  if not exists (select 1 from public.instance_admins) then
+    insert into public.instance_admins (user_id, granted_by)
+    values (new.id, null)
+    on conflict (user_id) do nothing;
+  end if;
+  return null;
+end $fn$;
+
+drop trigger if exists users_seed_first_admin on auth.users;
+create trigger users_seed_first_admin after insert on auth.users
+  for each row execute function public.seed_first_admin();
+-- Note (plan R-16): a trigger on auth.users is the common supported Supabase pattern (the
+-- same shape the platform's own "handle_new_user" recipe uses), but the auth schema's
+-- migrations are owned by GoTrue.  This trigger, and the routines of fork block E, are what
+-- R-15's canary test exists to protect.
+
+-- pgcrypto lives in the extensions schema on Supabase and is what fork block E's
+-- extensions.crypt/gen_salt come from (plan R-17).  Asserted, never created here: creating
+-- an extension needs privileges schema.sql does not assume.
+--   select 1 from pg_extension e join pg_namespace n on n.oid = e.extnamespace
+--    where e.extname = 'pgcrypto';        -- asserted by tests/stack/schema-apply.test.ts
+
+-- ==========================================================================
+-- fork block E -- the provisioning routines               (ADR-0006 §B, plan D-16)
+-- create_login / set_login_password / delete_login / set_login_admin / list_logins.
+-- Signatures, guards, error codes and the verbatim auth.users / auth.identities column set
+-- are contracted in ./rpc.md, which is authoritative for them.  All five are
+-- security definer, all carry `set search_path = public, auth, extensions, pg_temp`, all are
+-- revoked from public and anon and granted to authenticated, and every one of them refuses a
+-- caller for whom public.is_admin() is false (FR-038, SC-018).
+-- ==========================================================================

@@ -7,9 +7,18 @@
 ## Summary
 
 Turn the single-owner planner into a planner that also has **team** workspaces, without changing
-what a **personal** workspace does. Concretely: `workspaces.kind`, a `public.members` table with
-two levels, a nullable `tasks.assignee`, the replacement of both halves of every `own_rows` policy
-on the four existing tables, and exactly five new interface affordances.
+what a **personal** workspace does. Concretely: `workspaces.kind` (switchable in both directions by
+its owner), a `public.members` table with two levels, a nullable `tasks.assignee`, the replacement of
+both halves of every `own_rows` policy on the four existing tables, and exactly seven new interface
+affordances.
+
+The feature also carries the instance's **front door**, decided by the owner on 2026-09-13 and
+recorded in ADR-0006: one deployment for everyone, so accounts are minted *inside the app* by an
+instance admin rather than in the Supabase dashboard. That is `public.instance_admins`, a first-account
+trigger, and five `security definer` provisioning routines that write `auth.users` / `auth.identities`
+directly — **no `service_role` key anywhere** (D-16, D-17). The third piece that arrived with it is a
+bounded change to the *push* path so that an RLS refusal no longer wedges a table's queue forever
+(D-18); the conflict rule itself is untouched, so FR-020's lockstep holds unchanged.
 
 Approach: all SQL lands in `supabase/schema.sql` (ADR-0005), guarded and idempotent, with **no
 `migration-007`** — nothing in P1 needs a row backfill (D-2). Team access is expressed through two
@@ -32,7 +41,7 @@ feature's path, `db-api` (see below).
 | Map entry | Status at planning | Debt task needed? |
 |-----------|--------------------|-------------------|
 | `supabase-schema` | VALIDATED (`5448a0d`, 2026-09-13) | no — this feature changes it; re-verify + re-sign in the same PR |
-| `sync-engine` | VALIDATED (`e7f258d`, 2026-09-12) | no — unchanged by design; its P0 checks are the regression net (FR-030) |
+| `sync-engine` | VALIDATED (`e7f258d`, 2026-09-12) → **changed by D-18 → re-verify** | **yes — the push path changes (ADR-0006 §E); re-verify + re-sign in the same PR, on top of the new `push-refusal-fallback` check** |
 | `local-cache` | VALIDATED (`5448a0d`, 2026-09-13) | no — Dexie v3 is additive; re-verify + re-sign in the same PR |
 | `db-api` | **UNTESTED** | **yes — FIRST tasks of this feature (P-gate, ADR-0002)** |
 | `supabase-auth` | **UNTESTED**, carries accepted risk F-5 | **yes — F-5 must be covered or re-recorded (FR-032); owner's word required (D-12)** |
@@ -45,6 +54,7 @@ feature's path, `db-api` (see below).
 | `membership` *(new, HIGH)* | does not exist → added `UNTESTED`, flipped by this feature's receipts | **yes — created and validated inside this feature (SC-004)** |
 | `team-rls` *(new, HIGH)* | does not exist → added `UNTESTED`, flipped by this feature's receipts | **yes — created and validated inside this feature (SC-004)** |
 | `multi-account-cache` *(new, HIGH)* | does not exist → added `UNTESTED`, flipped by this feature's receipts | **yes — created and validated inside this feature (SC-004)** |
+| `account-provisioning` *(new, HIGH)* | does not exist → added `UNTESTED`, flipped by this feature's receipts | **yes — created and validated inside this feature (ADR-0006 Consequences, SC-018..SC-020)** |
 
 **The debt row that becomes the first tasks: `db-api`.** The five UI affordances (FR-024) all reach
 data through `src/db/api.ts`, and `src/db/api.ts` is where `kind`, `assignee` and the member
@@ -56,11 +66,18 @@ therefore bites here and nowhere else in this feature: the **first tasks** of 00
 before a single line of `src/db/api.ts` is changed. Those tests are the Docker-free tier, so they
 cost nothing to run. Only then do the new functions land.
 
-**The three new HIGH entries** (`membership`, `team-rls`, `multi-account-cache`) come from
-ARCHITECTURE §2 "Fork target — new components". Each is added to `docs/validation-map.md` as
-`UNTESTED` in the change that creates the behaviour, and flipped to `VALIDATED` in the same change
-that lands its receipts — never in a later one (FR-031). SC-004's "unproven HIGH-tier entries
-introduced by this feature **3 → 0**" is the acceptance for that.
+**The four new HIGH entries** (`membership`, `team-rls`, `multi-account-cache`,
+`account-provisioning`) come from ARCHITECTURE §2 "Fork target — new components", plus ADR-0006's
+Consequences for the fourth. Each is added to `docs/validation-map.md` as `UNTESTED` in the change
+that creates the behaviour, and flipped to `VALIDATED` in the same change that lands its receipts —
+never in a later one (FR-031). SC-004's "unproven HIGH-tier entries introduced by this feature
+**4 → 0**" is the acceptance for that.
+
+**`sync-engine` is the fifth entry this feature owes a receipt for**, and it is the only one that
+starts `VALIDATED`. D-18 changes the push path, so its P0 receipt no longer describes the code: the
+entry is re-verified and re-signed with a receipt dated to *this* change set, with the new
+`push-refusal-fallback` check added to its `tests:` list (ADR-0006 §E, SC-004's second sentence).
+Its three P0 checks stay the regression net for FR-020 and must pass **unedited**.
 
 **The UI entries stay UNTESTED, deliberately.** `views-core`, `task-dialog`, `chrome-components` and
 `i18n-state` are NORMAL/LOW and are excluded from P1's evidence by ADR-0003's Consequences ("Until P2
@@ -106,9 +123,12 @@ must stay under five minutes wall-clock in CI including stack start, as P0 set.
   (ARCHITECTURE §2 layering) — see D-9, which is the one place this bites.
 - No browser automation (ADR-0003). No credential in the repo (FR-033, SC-013).
 
-**Scale/Scope**: 6 user stories, 33 functional requirements, 14 success criteria. One new table, two
-new columns, four replaced policies (eight halves), two new RPCs, four new triggers, one Dexie
-version, five UI affordances, ~7 new test files.
+**Scale/Scope**: 8 user stories, 46 functional requirements, 21 success criteria. **Two** new tables
+(`members`, `instance_admins`), two new columns, four replaced policies (eight halves), **eight**
+backend operations (2 membership + 6 instance-admin), **seven** new triggers (four fork triggers on
+the four existing tables, `workspaces_seed_owner`, `workspaces_zz_kind_change`, and the first-admin
+trigger on `auth.users`), one Dexie version, **seven** UI affordances, ~10 new test files, plus one
+bounded change to `src/sync/sync.ts`'s push loop (D-18).
 
 ## Constitution Check
 
@@ -121,31 +141,37 @@ constitutional gates to evaluate**, and none are invented here. The governing co
 
 | Constraint | Source | Status |
 |---|---|---|
-| Workspace `kind` is `personal`/`team`, defaulting to personal | ADR-0001 §1 | PASS — D-1 |
+| Workspace `kind` is `personal`/`team`, defaulting to personal | ADR-0001 §1, as amended by ADR-0006 §D | PASS — D-1; still exactly two values, now switchable by the owner (D-6′) |
 | Membership is exactly two levels, not a role system | ADR-0001 §1 | PASS — D-1, `check (level in ('owner','member'))` |
 | `assignee` carries no authorization meaning; RLS never reads it | ADR-0001 §1, FR-017 | PASS — D-3; no policy predicate mentions `assignee` |
 | Removal auto-clears assignment, structurally, never by the client | ADR-0001 §1, FR-018 | PASS — D-3 trigger |
 | Tables/columns only ever added; policies the one replacement surface | ADR-0001 §2 | PASS — D-1, D-4 |
 | Both policy halves replaced separately; asymmetry preserved | ADR-0001 §2, FR-012 | PASS — D-4 |
-| The three existing triggers behave identically | ADR-0001 §2, FR-014 | PASS — D-4, D-6; new triggers are ordered so they cannot pre-empt them |
-| LWW lockstep: one rule, two enforcement points | ADR-0001 §3 | PASS — D-8: `members` gets the *same* `keep_newer`, and no comparator changes on either side |
+| The three existing triggers behave identically | ADR-0001 §2, FR-014 | PASS — D-4, D-6, D-6′; new triggers are ordered so they cannot pre-empt them |
+| LWW lockstep: one rule, two enforcement points | ADR-0001 §3, as amended by ADR-0006 §E | PASS — D-8: `members` gets the *same* `keep_newer`, and no comparator changes on either side. D-18 moves the push path *around* the rule and touches neither `mergeRows` nor `keep_newer` (FR-020) |
+| Instance admin is not a workspace permission; no policy reads `instance_admins` | ADR-0006 §C, FR-039 | PASS — D-16; the table has RLS on and no policy, and reviewer duty makes a policy reading it a finding |
+| No `service_role` key, platform secret or credential anywhere | ADR-0001 §Git, FR-033, SC-020 | PASS — D-16: provisioning runs as `security definer` under the caller's own anon-key session |
 | Every definition in `schema.sql`; migration only for a backfill | ADR-0005 | PASS — D-2, no `migration-007` |
 | Federation needs zero schema support; no origin concept in P1 | ADR-0004 (c), FR-027 | PASS — D-1; reviewer duty 4 |
 | Backend is the local `supabase` CLI stack; two clients, no browser | ADR-0002, ADR-0003 | PASS — D-13 |
 | P-gate: no code on `UNTESTED` substrate | ADR-0002 | PASS — `db-api` debt is this feature's first tasks |
 | Personal must not regress | ADR-0001 §6 | PASS — D-4, D-6, D-11 and the unedited P0 suite |
-| No feature outside a spec | ADR-0001 §6 | PASS — D-11 lists exactly five affordances |
+| No feature outside a spec | ADR-0001 §6 | PASS — D-11 lists exactly seven affordances, each traced to a requirement |
 | Sign-offs are `(single-operator)` | ADR-0001 §7 | PASS — receipts template in D-15 |
 
-**Post-design re-check**: one item does not come out clean and is carried to Complexity Tracking —
-D-9 (`db-api` gains an operation that cannot be satisfied offline). It is not an ADR violation, but
-it widens a documented layering rule, so it is recorded rather than absorbed.
+**Post-design re-check**: four items do not come out clean and are carried to Complexity Tracking —
+D-9 and D-16 (`db-api` gains operations that cannot be satisfied offline), D-18 (the push loop gains
+a second path), and D-13's test-only `adminClient()`. None is an ADR violation; each widens a
+documented rule, so each is recorded rather than absorbed.
 
 ## Key technical decisions
 
 Phase-0 research is consolidated here rather than in a separate `research.md`, matching the house
 style set by `specs/001-validation-spine/plan.md`. `data-model.md` and `contracts/` **are** produced,
-because this feature does add entities and does expose two backend operations to a consumer.
+because this feature does add entities and does expose eight backend operations to a consumer.
+Decisions are numbered in the order they were taken and the numbering is never reused: **D-6 is partly
+superseded** (its `kind` pin) and replaced by **D-6′**, **D-7 carries a correction** about what an RLS
+refusal actually does, and **D-16..D-18** arrived with ADR-0006 on 2026-09-13.
 
 ### D-1 — Schema shape: one added table, two added columns, nothing repurposed
 
@@ -394,7 +420,13 @@ more moving parts to express the same thing.
 
 **Serves**: FR-011, FR-012, FR-015; and Risk R-1 below.
 
-### D-6 — The creator becomes owner by trigger, not by RPC; `kind` is pinned by trigger
+### D-6 — The creator becomes owner by trigger, not by RPC ~~; `kind` is pinned by trigger~~
+
+> **Partly SUPERSEDED (2026-09-13, ADR-0006 §D).** The `seed_workspace_owner` half below stands
+> unchanged and is still how a team workspace gets its first owner row. The `kind` pin —
+> `workspaces_zz_kind_fixed` and the "silent pin over raise" reasoning — is **withdrawn**: kind is
+> mutable by the owner. Read **D-6′** instead. No `pin_workspace_kind` function and no
+> `workspaces_zz_kind_fixed` trigger is written.
 
 **Decision.**
 
@@ -415,9 +447,6 @@ create trigger workspaces_seed_owner after insert on public.workspaces
   for each row execute function public.seed_workspace_owner();
 ```
 
-plus `workspaces_zz_kind_fixed`, `before update on public.workspaces`, doing
-`new.kind := old.kind` (a silent pin, not a raise).
-
 **Trigger over RPC, for the owner row.** FR-002 says the creator is recorded "in the same
 operation" and a team workspace "MUST NOT be able to exist with no owner". A trigger is the only form
 of that statement which holds for *every* path into the table — the app's own push, a workspace
@@ -427,13 +456,12 @@ online-only, which would break offline workspace creation for personal workspace
 regression. `security definer` is required because the inserting user is not yet an owner, so
 `members_access`'s `with check` would refuse them; `on conflict do nothing` makes a re-push a no-op.
 
-**Silent pin over raise, for `kind` immutability.** FR-001 says kind "MUST NOT be changed
-afterwards". Raising would abort the whole upsert **batch** the sync loop sends
-(`sync.ts:221-226`), and the per-table try/catch would then re-send the same batch every cycle
-forever — a stuck queue, which is the failure mode `sync.ts:203-209` exists to prevent. Coercing
-`new.kind := old.kind` makes the change impossible while leaving the batch alive. The *third value*
-case (US1 acceptance 4) is a different thing and **does** raise: `workspaces_kind_check` refuses it at
-the constraint, which is "the backend, not the interface".
+~~**Silent pin over raise, for `kind` immutability.**~~ Withdrawn — see D-6′. What survives from that
+paragraph is its *reason*: a raise inside a sync batch aborts the whole batch, so nothing on the
+synced-row path may raise. D-6′ obeys it by making the flip an ordinary column write with an
+`after update` consequence trigger, which cannot abort anything. The *third value* case (US1
+acceptance 4) is unchanged and still **does** raise: `workspaces_kind_check` refuses it at the
+constraint, which is "the backend, not the interface".
 
 **The owner's own membership row reaches the creating device by pull, not by local write.**
 `createWorkspace` in `src/db/api.ts` does **not** write a local `members` row for the owner — it
@@ -448,8 +476,77 @@ any other (D-8). The member list is therefore correct after the first sync cycle
 recorded here so D-11's affordance 2 is not read as "the owner sees themself in the list before the
 first pull".
 
-**Serves**: FR-001, FR-002, FR-010 (an owner row that can only be created, never written away, plus
+**Serves**: FR-002, FR-010 (an owner row that can only be created, never written away, plus
 `members_access`'s owner-only write half, makes "always at least one owner" structurally true).
+
+### D-6′ — `kind` is mutable by the owner; one `after update` trigger draws the consequences
+
+*Replaces the withdrawn half of D-6. Source: ADR-0006 §D, FR-001, FR-034..FR-036, US8, SC-019.*
+
+**Decision.** Switching a workspace between `personal` and `team` is an **ordinary update of an
+ordinary synced column** — no RPC, no special path, no new policy predicate. One trigger draws the
+consequences:
+
+```sql
+create or replace function public.on_workspace_kind_change() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $fn$
+begin
+  if new.kind = 'personal' then
+    update public.members
+       set deleted = true, updated_at = greatest(updated_at, now())
+     where workspace_id = new.id and not deleted;
+  else
+    insert into public.members (id, user_id, workspace_id, member_id, level)
+    values (gen_random_uuid(), new.user_id, new.id, new.user_id, 'owner')
+    on conflict (workspace_id, member_id) do update
+       set deleted = false, level = 'owner',
+           updated_at = greatest(public.members.updated_at, now());
+  end if;
+  return null;
+end $fn$;
+
+drop trigger if exists workspaces_zz_kind_change on public.workspaces;
+create trigger workspaces_zz_kind_change after update on public.workspaces
+  for each row when (new.kind is distinct from old.kind)
+  execute function public.on_workspace_kind_change();
+```
+
+`seed_workspace_owner` (after **insert**) stays exactly as D-6 wrote it and keeps owning creation.
+Two triggers, two events, no overlap.
+
+**Why no new authorization.** The `workspaces_access` write half is *already* owner-only (D-4), and
+`kind` is a column of `workspaces`. "Only the owner may switch the kind" is therefore true before
+anything is written — a member's flip is refused by the existing policy with `42501`, which is
+FR-034 and US8 acceptance 6 with no new code. A new predicate here would be a second place to get
+the same rule wrong.
+
+**Why AFTER, and why the `when` clause.** `keep_newer` is BEFORE UPDATE and returns null for a stale
+row, which cancels the update entirely — so an AFTER trigger never fires for a write LWW abandoned.
+A stale kind flip pushed by a device that was offline through the switch cannot therefore purge a
+membership list that has since been rebuilt (R-19). The `when (new.kind is distinct from old.kind)`
+guard means an ordinary rename never pays for this at all.
+
+**Why `greatest(updated_at, now())`.** Same reason as `follow_workspace_delete` and
+`members_zz_clear_assignee`: the consequence must outrank an edit already queued on some member's
+device, or that device pushes its membership back. `keep_newer` accepts *equal* stamps
+(`schema.sql:142-153` compares `<`), so `greatest` never abandons its own write.
+
+**Why per-row, not one bulk statement with a shared timestamp.** The `update ... where workspace_id`
+is a single statement but a **row-level** trigger fires for each row it touches, which is what runs
+`members_zz_clear_assignee` once per departing member and clears each of their assignees (FR-035).
+A `truncate`-style or `delete`-based purge would skip that path and leave dangling assignees.
+
+**Why members are not restored on the way back.** personal → team upserts exactly one row, the
+owner's. Restoring the old roster would silently re-grant access to people the owner may have
+switched away *to remove* — a privilege decision taken by a trigger. The owner re-adds whoever should
+be there (ADR-0006 §D). Round-tripping therefore ends with exactly one owner row, which is SC-019's
+measurement.
+
+**LWW is untouched.** `kind` is in `SYNCED_COLUMNS` for `workspaces` and rides `keep_newer` /
+`mergeRows` like `name` does. Two devices flipping kind in opposite directions is resolved by the
+newer stamp, with no special case anywhere (FR-020).
+
+**Serves**: FR-001, FR-034, FR-035, FR-036, US8, SC-019.
 
 ### D-7 — Removal is a **soft** delete, and that is what reconciles it with LWW
 
@@ -466,9 +563,20 @@ LWW-governed row like every other, decided by the same `keep_newer` at the serve
 
 **The reconciliation FR-009 demands.** "Access ends immediately" and "the row still exists" are not in
 tension because the *predicate* is what grants access, and the predicate reads `deleted`. The removed
-member's next pull brings the tombstone down and the workspace leaves their list (demo step 11); their
-queued writes to that workspace are refused by RLS at the server, which is the already-pinned refused-row
-path (`sync.ts:257-272`) and therefore does not stall the queue (edge case 1, US6 acceptance 6).
+member's next pull brings the tombstone down and the workspace leaves their list; their queued writes
+to that workspace are refused by RLS at the server (edge case 1, US6 acceptance 6).
+
+**Correction (2026-09-13, ADR-0006 §E).** The sentence above originally read that those queued writes
+take "the already-pinned refused-row path (`sync.ts:257-272`)" — the path where PostgREST accepts the
+batch and silently returns fewer ids than were sent. **That is not what happens.** An RLS refusal on a
+write is not a silent drop: PostgREST raises SQLSTATE **`42501` for the whole upsert batch**, the
+`const { data, error } = ...; if (error) throw error` at `sync.ts:249-252` throws, and the per-table
+catch at `sync.ts:274-277` marks the push failed **without clearing a single row's `_dirty` flag**. One
+refused row therefore keeps that entire table's queue re-sending the same batch every cycle, forever —
+the exact wedge the silent-drop path exists to avoid, arrived at by a different route. The refused-id
+bookkeeping at `sync.ts:257-272` is real and still needed, but it handles the *other* case (a row the
+server accepted the batch for and did not return), not this one. The fix is **D-18**; this decision's
+soft-delete reasoning is unaffected by it.
 
 **Alternatives rejected.** (a) Hard delete + FK `on delete set null` for the assignee — simpler SQL,
 but leaves the removed member's cache holding a stale membership row indefinitely and breaks US6
@@ -601,9 +709,9 @@ does fire and the cursors are gone. One file covering both halves of SC-012.
 
 **Serves**: FR-019, FR-021, FR-022, SC-012.
 
-### D-11 — Exactly five interface affordances, each mapped to a `db-api` function
+### D-11 — Exactly seven interface affordances, each mapped to a `db-api` function
 
-**Decision.** Five, and nothing else (FR-024, SC-008):
+**Decision.** Seven, and nothing else (FR-024, SC-008, SC-018):
 
 | # | Affordance | Component | `src/db/api.ts` | i18n keys (ru + en) |
 |---|---|---|---|---|
@@ -612,19 +720,40 @@ does fire and the cursors are gone. One file covering both halves of SC-012.
 | 3 | Add a member by email (owner only) | same section | `addMemberByEmail(ws, email)` | `members.add`, `members.emailPlaceholder`, `members.noAccountHere` |
 | 4 | Remove a member (owner only) | same section, reusing the existing `Confirm` component | `removeMember(ws, memberId)` | `members.remove`, `members.confirmRemove` |
 | 5 | Set/clear a task's assignee, and see it on the task | `src/components/TaskDialog.tsx`, one new `<Field>` beside the existing ones, rendered **only** in a team workspace; the value shown on the card | `updateTask(id, { assignee })` — `TaskPatch` widens by one key | `task.assignee`, `task.unassigned` |
+| 6 | **Switch the workspace's kind**, either direction, **owner only** | `src/components/Settings.tsx`, the existing `workspace` section, beside rename — a two-value control, not a destructive-looking button; guarded by the same `Confirm` the delete uses, because switching to personal ends everyone else's access (FR-034) | `updateWorkspace(id, { kind })` — an ordinary patch, offline-capable, no RPC (D-6′) | `workspace.kindSwitch`, `workspace.confirmToPersonal`, `workspace.confirmToTeam` |
+| 7 | **Logins** — list, create, set password, remove, grant/revoke admin, **admin only** | `src/components/Settings.tsx`, a new `logins` section appended to `SECTIONS`, filtered out entirely unless the cached admin flag is true (D-17); reuses `Confirm` for remove and for revoking admin | `listLogins()`, `createLogin(email, password, admin)`, `setLoginPassword(id, password)`, `deleteLogin(id)`, `setLoginAdmin(id, admin)` | `logins.section`, `logins.create`, `logins.emailPlaceholder`, `logins.passwordPlaceholder`, `logins.setPassword`, `logins.remove`, `logins.confirmRemove`, `logins.admin`, `logins.grantAdmin`, `logins.revokeAdmin`, `logins.errBadEmail`, `logins.errShortPassword`, `logins.errDuplicate`, `logins.errOwnsTeamWorkspace`, `logins.errLastAdmin`, `logins.errSelf` |
 
-**Note.** In the same Settings workspace section, the existing rename field (`Settings.tsx:153-155`)
-and the existing delete-workspace button are both **hidden** for a non-owner of a team workspace
-(R-11). Hiding an existing control for a non-owner is a guard required by FR-005, not a new
-affordance — it is not a sixth row above. No i18n keys are needed for hiding a control.
+**Passwords in affordance 7 (FR-044, non-negotiable).** Both password inputs are
+`<input type="password">`. The value lives in component state until the call returns and is then
+dropped: it is **never** written to Dexie, never put in a query string, never passed to `console.*`,
+and never included in an error report. There is no "reveal" toggle and no list of passwords, because
+only hashes exist server-side. An error from the RPC is rendered from `error.code` through the
+`logins.err*` keys above — the server's English message is never shown raw, and the code is never
+matched on message text (same discipline as `members.noAccountHere`).
+
+**Admin-only rendering is a convenience, not the control (SC-018).** The `logins` section is hidden
+from a non-admin, but every routine behind it refuses a non-admin caller in the database (D-16). The
+hidden UI is what makes the app pleasant; the `DA001` is what makes it safe.
+
+**Note.** In the same Settings workspace section, the existing rename field (`Settings.tsx:153-155`),
+the existing delete-workspace button and affordance 6's kind switch are all **hidden** for a
+non-owner of a team workspace (R-11). Hiding an existing control for a non-owner is a guard required
+by FR-005, not a new affordance — it is not an eighth row above. No i18n keys are needed for hiding
+a control.
 
 **Placement rationale.** Settings already owns the per-workspace administrative section
 (`SECTIONS = ['theme','language','workspace','gcal','account']`, `Settings.tsx:22`) and already has
 rename/delete-workspace in it — the member list belongs beside them, and a sixth section keyed
 `members` is the smallest possible addition. The task card already renders optional rows conditionally
-(`GcalRow`), so the assignee field costs no restructuring. **Every new element is behind a
-`kind === 'team'` guard**, which is the mechanical form of SC-008: a person who owns only personal
-workspaces sees zero new controls.
+(`GcalRow`), so the assignee field costs no restructuring. The `logins` section is a **seventh**
+section key, appended to the same array and filtered in `sections` (`Settings.tsx:50`) exactly as
+`workspace` already is.
+
+**Every new element is behind a guard**: affordances 2–6 behind `kind === 'team'` (and 3, 4, 6
+additionally behind owner), affordance 7 behind the admin flag. That is the mechanical form of
+SC-008 and SC-018: a person who owns only personal workspaces and is not an admin sees **zero** new
+controls. The one exception is affordance 1's kind toggle at creation, which is the door into the
+feature and is visible to everyone by design (FR-001).
 
 **i18n.** Every key above lands in `src/i18n/dict.ts` with **both** `ru` and `en` — the dictionary type
 makes a missing language a compile error (`dict.ts:5-8`), so this is enforced, not remembered. No
@@ -661,7 +790,7 @@ recommends it and cannot adopt it. **See Owner questions, Q-B.**
 
 **Serves**: FR-023, FR-032, SC-011.
 
-### D-13 — Evidence: seven new test files, three harness additions, zero P0 edits
+### D-13 — Evidence: ten new test files, four harness additions, zero P0 edits
 
 **Decision.**
 
@@ -683,6 +812,22 @@ tests/stack/
                                     #       personal workspace AND on a team one
   personal-unchanged.test.ts        # US4 — smoke: a personal workspace's read/write outcomes for
                                     #       owner and stranger, and the delete cascade, after the swap
+  logins-provisioning.test.ts       # US7 — all ten acceptances, and the R-15 canary: create a login
+                                    #       through create_login, SIGN IN with those minted
+                                    #       credentials through supabase-js, set a new password, sign
+                                    #       in again, old password refused, remove it, sign-in
+                                    #       refused; plus DA001/DA010/DA011/DA012/DA013/DA014/DA015,
+                                    #       first-login-is-admin, and a non-admin refused on all five
+                                    #       routines  (FR-037..046, SC-015/016/018/021)
+  kind-switch.test.ts               # US8 — team->personal purges every membership and clears each
+                                    #       departing member's assignees; personal->team seeds exactly
+                                    #       one owner row and un-deletes rather than duplicating; a
+                                    #       member's switch attempt refused; round trip ends with
+                                    #       exactly 1 owner row  (FR-034..036, SC-019)
+  push-refusal-fallback.test.ts     # D-18 — a removed member's queued edit provokes a real 42501;
+                                    #       assert every other table's dirty count reaches 0 within
+                                    #       ONE push cycle, and that the refused row is not re-sent
+                                    #       on the next  (FR-041, US6 acceptance 6, SC-017)
 tests/local/
   db-api-p1-surface.test.ts         # the db-api debt row — written FIRST, against today's behaviour
   no-wipe-on-reach-growth.test.ts   # SC-012, both halves  (D-10)
@@ -697,6 +842,23 @@ signature, because P0 files import them):
 - `seedTeamWorkspace(owner, members[])` in `tests/harness/seed.ts` — creates a team workspace through
   the same `src/db/api.ts` path `seedWorkspaceWithTask` uses, then adds members via the RPC, so the
   seed exercises the real creation path rather than inserting rows behind it.
+- **`adminClient(testUser)`** — the deterministic admin, and the one **test-only** privilege in the
+  suite. `tests/harness/accounts.ts` provisions its users through
+  `auth.admin.createUser` with the local stack's `SERVICE_ROLE_KEY`, so "the first account created is
+  the admin" (FR-037) lands on whichever account a given file happened to create first, and on a
+  re-run of a dirty database on none at all. `adminClient` therefore **inserts a row into
+  `public.instance_admins` over the direct `pg` connection** the harness already opens, then returns
+  the ordinary anon-key client for that user. It never touches `service_role` from application code,
+  it is imported by no `src/` file, and it exists only because the trigger it substitutes for is
+  itself asserted separately, on a database with an empty `instance_admins`, inside
+  `logins-provisioning.test.ts`. Documented as test-only at its definition, and a reviewer finding if
+  it ever appears outside `tests/`.
+
+**R-2 and R-3, extended.** The `pg_proc` check (R-2) now covers all eight functions plus
+`seed_first_admin` and `on_workspace_kind_change`: every one must report `prosecdef = true` and a
+non-empty `proconfig` carrying `search_path`. The anon-refusal check (R-3) likewise now calls **all**
+of them with the anon key and asserts each is refused — an unauthenticated `create_login` reaching
+the database would be an open account factory.
 
 **The executed inversion demo (FR-013, SC-005) — this time actually executed.** P0's T018 recorded a
 deviation: the live single-sided swap was refused by the session's tool-safety layer because it meant
@@ -733,37 +895,229 @@ not change one.
 
 ### D-14 — The hosted demo runbook is owner-run, manual, and outside the suite
 
-**Decision.** The eleven-step walk (spec, *First demo*) is performed by the owner on the existing
-hosted deployment, after the unattended suite is green, following a runbook recorded in
+**Decision.** The **eighteen-step** walk (spec, *First demo*) is performed by the owner on the
+existing hosted deployment, after the unattended suite is green, following a runbook recorded in
 `specs/002-team-workspaces/receipts.md`:
 
 1. Re-run the whole of `supabase/schema.sql` in the hosted project's SQL editor (it is idempotent;
-   this is upstream's own convention, ADR-0005). Expect no error and no row change.
-2. Create account **B** in the Supabase dashboard (Authentication → Users → Add user, email confirmed).
-   This is the **only** manual database intervention SC-001 permits.
-3. `npm run build` and `npx wrangler deploy`, with the **same** `VITE_SUPABASE_URL` /
+   this is upstream's own convention, ADR-0005). Expect no error and no row change. This is what
+   installs `instance_admins`, `is_admin()`, `users_seed_first_admin` and the five provisioning
+   routines on the hosted origin.
+2. **Confirm the hosted project already has the owner's own account, and that it is an instance
+   admin.** The account predates this change, so `users_seed_first_admin` never fired for it: run
+   `insert into public.instance_admins (user_id, granted_by) select id, null from auth.users
+   where email = '<owner>' on conflict do nothing;` once, in the SQL editor. This is a **one-time
+   backfill on an existing origin**, not a step a fresh instance needs — on a fresh origin the
+   trigger does it, which is exactly what `logins-provisioning.test.ts` asserts. It is also the
+   **only** manual database intervention SC-001 permits, and it replaces the old step 2 (creating
+   account B by hand): account B is now minted **in the app**, which is the point of the demo.
+3. **Order matters: the admin must exist before the door closes.** Only after step 2 reports one row,
+   turn **off** public sign-up in the dashboard — Authentication → Providers → Email →
+   *Allow new users to sign up* → off (FR-046, ADR-0006 §F). Doing this before step 2 would leave an
+   origin with no admin and no way to make one without the dashboard. The local
+   `supabase/config.toml` keeps `enable_signup = true` and is **not** edited: the P0 harness
+   provisions through GoTrue and must keep passing unedited (FR-030). The two configurations differ
+   on purpose.
+4. `npm run build` and `npx wrangler deploy`, with the **same** `VITE_SUPABASE_URL` /
    `VITE_SUPABASE_ANON_KEY` values already in use. They are supplied from the operator's environment,
-   never from a file in the repository (FR-033, SC-013).
-4. Walk steps 1–11 on two browsers or two devices, A and B, recording pass/fail per step.
-5. Capture `git diff --stat` for FR-025's zero-change-under-`src/views` claim.
+   never from a file in the repository (FR-033, SC-013). There is no new variable: provisioning uses
+   the caller's own session, and **no `service_role` key is added to any environment** (SC-020).
+5. Walk steps 1–18 on two browsers or two devices, A and B, recording pass/fail per step. Step 1 is
+   A minting B's login in the Logins section and reading the credential out to hand over; the walk
+   only reaches B's device once that has happened.
+6. Verify the closed door from the outside: attempt a sign-up against the hosted origin and record
+   the refusal (FR-046).
+7. Capture `git diff --stat` for FR-025's zero-change-under-`src/views` claim.
 
 **Receipts go in `specs/002-team-workspaces/receipts.md`**, in the shape P0 established: full-suite
 receipt, CI receipt, the walk with a line per step, FINDINGS with dispositions, and
 `Sign-off: Andrii Tkhorenko (single-operator)`.
 
-**No key, token or hosted URL enters the repository at any point** (FR-033). Nothing in the automated
-suite touches a hosted project (SC-013); the hosted walk touches no automated suite.
+**No key, token or hosted URL enters the repository at any point** (FR-033) — and that now explicitly
+includes **the password minted in walk step 1**: the receipt records that a login was created and that
+it signed in, never the credential itself (FR-044, SC-020). Nothing in the automated suite touches a
+hosted project (SC-013); the hosted walk touches no automated suite.
 
-**Serves**: SC-001, SC-013, FR-025, FR-033.
+**Serves**: SC-001, SC-013, SC-020, FR-025, FR-033, FR-044, FR-046.
 
 ### D-15 — Map entries and receipts land in the same change as the behaviour
 
-**Decision.** `docs/validation-map.md` gains `membership`, `team-rls` and `multi-account-cache` as
-HIGH entries with the tiers, `paths` and `depends-on` that ARCHITECTURE §2 already assigns them; the
-`supabase-schema` and `local-cache` entries gain the new paths and are re-verified; `db-api` flips on
-its own new tests. Each flip to `VALIDATED` carries the command, the revision, the date and
-`Andrii Tkhorenko (single-operator)` — in the **same** PR as the behaviour (FR-031). A component
-whose `paths` change without its map entry changing is a reviewer FINDING (CLAUDE.md, reviewer duty 5).
+**Decision.** `docs/validation-map.md` gains `membership`, `team-rls`, `multi-account-cache` and
+**`account-provisioning`** as HIGH entries with the tiers, `paths` and `depends-on` that
+ARCHITECTURE §2 (plus ADR-0006 Consequences for the fourth) assigns them; the `supabase-schema` and
+`local-cache` entries gain the new paths and are re-verified; **`sync-engine` is re-verified and
+re-signed because D-18 changes its code**, with `push-refusal-fallback.test.ts` added to its `tests:`
+list; `db-api` flips on its own new tests. Each flip to `VALIDATED` carries the command, the
+revision, the date and `Andrii Tkhorenko (single-operator)` — in the **same** PR as the behaviour
+(FR-031). A component whose `paths` change without its map entry changing is a reviewer FINDING
+(CLAUDE.md, reviewer duty 5).
+
+`account-provisioning`'s entry, written out so the task that adds it has nothing to invent:
+
+```yaml
+account-provisioning:
+  tier: HIGH
+  status: UNTESTED
+  paths:
+    - supabase/schema.sql          # fork blocks D and E
+    - src/db/api.ts                # isAdmin/createLogin/setLoginPassword/deleteLogin/setLoginAdmin/listLogins
+    - src/sync/sync.ts             # the *Remote wrappers
+    - src/components/Settings.tsx  # the logins section
+  depends-on: [supabase-auth, supabase-schema, db-api]
+  verify: "npm test -- --run --project stack tests/stack/logins-provisioning.test.ts"
+  tests: [tests/stack/logins-provisioning.test.ts]
+  last-verified: <sha> <date>
+  sign-off: Andrii Tkhorenko (single-operator)
+```
+
+### D-16 — Provisioning is five `security definer` routines plus an admin table, and no key at all
+
+*Source: ADR-0006 §B/§C/§F, FR-037..FR-046, US7.*
+
+**Decision.** The instance's front door lives in Postgres, in `supabase/schema.sql`, as two fork
+blocks:
+
+- **Block D — the flag.** `public.instance_admins(user_id uuid primary key references auth.users(id)
+  on delete cascade, granted_by uuid references auth.users(id) on delete set null, created_at
+  timestamptz not null default now())`, with **RLS enabled and no policy at all**; `public.is_admin()`
+  (`language sql stable security definer set search_path = public, pg_temp`) as the only way the flag
+  is readable; and `users_seed_first_admin`, an `after insert on auth.users` trigger that inserts into
+  `instance_admins` **only while that table is empty** — the first account on an origin is an admin
+  structurally, so an instance is never adminless and no runbook step has to remember (FR-037).
+- **Block E — the routines.** `create_login`, `set_login_password`, `delete_login`,
+  `set_login_admin`, `list_logins`. Every one is `security definer`, carries
+  `set search_path = public, auth, extensions, pg_temp`, is revoked from `public` and `anon` and
+  granted to `authenticated`, and **begins by refusing a caller for whom `is_admin()` is false**
+  (`DA001`). Signatures, guards, returns and the full error-code register are contracted in
+  [contracts/rpc.md](./contracts/rpc.md), which is authoritative for this block; `policies.sql`
+  carries blocks A–D and points at it.
+
+The routines write GoTrue's own tables — `auth.users` with
+`encrypted_password = extensions.crypt(pw, extensions.gen_salt('bf'))` and `email_confirmed_at =
+now()`, plus the matching `auth.identities` row with `provider = 'email'` and `provider_id =
+user_id::text`. The exact column set is **probe-verified** (coordinator, 2026-09-13, GoTrue
+v2.196.0) and is reproduced verbatim in `contracts/rpc.md`; a login minted that way signs in through
+`signInWithPassword` with no further step, a password update refuses the old password and accepts the
+new, and the account can be taken out of service.
+
+**Error codes** (register in `contracts/rpc.md`): `DA001` not an admin · `DA010` malformed identifier
+· `DA011` password shorter than 8 · `DA012` duplicate identifier · `DA013` refusing self-removal ·
+`DA014` the login owns a live team workspace · `DA015` refusing to revoke the last admin · `DA404`
+no such login. The client branches on `error.code` only, never on message text — the server stays
+English while the interface renders ru or en (same discipline as `DA404` in D-9).
+
+**`delete_login` bans; it does not delete — decided from the schema, against ADR-0006 §B's wording.**
+ADR-0006 says `delete from auth.users`. The schema forbids it: `workspaces` (line 18), `labels` (32),
+`tasks` (44) and `notes` (81) each declare `user_id uuid not null references auth.users (id)
+**on delete cascade**`. Deleting the account row would therefore delete every task, label and note
+that login ever created — including rows living in a team workspace other people are still using —
+which is precisely what the spec's "their rows remain, the creator id is kept" and SC-016 forbid. So
+the routine sets `banned_until = 'infinity'`, scrambles `encrypted_password` to an unusable value,
+drops any `instance_admins` row, and **soft-deletes that login's `members` rows** with
+`updated_at = greatest(updated_at, now())` so `members_zz_clear_assignee` clears their assignees
+exactly as a manual removal does. Sign-in is refused by GoTrue; the data and the authorship stay.
+Consequences are recorded as **R-18**. The `DA013`/`DA014` guards are unaffected.
+
+**Why in Postgres rather than an Edge Function or a Worker route.** ADR-0006's alternatives (a)–(d),
+not re-argued here. The operative consequence for this plan: **no `service_role` key exists in the
+repo, in a build, in a platform secret or in the deployed client** (SC-020), and the whole surface is
+testable in the tier every other P1 claim is proven in. The coupling to GoTrue's table shape is the
+accepted cost, pinned by the canary in D-13 and recorded as **R-15**.
+
+**Client layering is D-9's, extended**: `src/db/api.ts` exposes `isAdmin`, `createLogin`,
+`setLoginPassword`, `deleteLogin`, `setLoginAdmin`, `listLogins`; each delegates to a `*Remote`
+wrapper in `src/sync/sync.ts`, which stays the only module holding the Supabase client. These
+mutators are **online-only and never queued** — a queued account creation would be a password sitting
+in Dexie (FR-044).
+
+**Serves**: FR-037..FR-046, US7, SC-015, SC-016, SC-018, SC-020, SC-021.
+
+### D-17 — The client's admin flag: an `is_admin()` answer cached per device, never an authority
+
+*Source: FR-038, FR-043, SC-018; the same shape as Q-A Option B.*
+
+**Decision.** `src/db/api.ts` exposes `isAdmin(): Promise<boolean>`, which returns the Dexie `meta`
+value under the key **`is-admin`** immediately and refreshes it from `is_admin()` (through
+`isAdminRemote()` in `src/sync/sync.ts`) **on every successful pull**, writing the new value back to
+`meta`. Settings renders the `logins` section from that cached value.
+
+**Why a cache at all.** Settings must decide what to draw before any network round trip completes, and
+on a device that is offline it must still draw *something*. Asking on every render would flicker the
+section in and out; asking once at boot and never again would leave a just-revoked admin holding the
+controls until a reload.
+
+**Why it is never authoritative, and why that is safe.** The flag decides *rendering only*. Every one
+of the five routines re-checks `is_admin()` inside the database, so a stale `true` buys a `DA001` and
+nothing else, and a stale `false` hides a control the person may still use after their next pull. That
+is exactly SC-018's split: the hidden UI is a convenience, the refusal is the control. Nothing in the
+system ever reads this key to decide access.
+
+**Storage and lifecycle.** A single `meta` key, so Dexie v3 needs no new store (D-10) and the cache
+is cleared for free by `wipeLocal()`'s existing `db.meta.clear()` — a device switching accounts cannot
+inherit the previous account's flag (FR-021, SC-012). `claimCache` is untouched.
+
+**Rejected alternatives.** (a) A synced `instance_admins` table in Dexie — it would put the whole
+instance's admin roster on every device and make the flag look like data the client owns; the table
+is deliberately unreachable through PostgREST (D-16). (b) A JWT claim — it would need a GoTrue hook
+and would go stale until the token refreshed, with no way to revoke early. (c) Calling `is_admin()`
+per render — flicker plus an RPC per keystroke in Settings.
+
+**Serves**: FR-038, FR-043, SC-018.
+
+### D-18 — A refused row does not wedge the queue: per-row retry in push
+
+*Source: ADR-0006 §E, FR-041, US6 acceptance 6, SC-017. Corrects D-7's reading of the refusal path,
+and fixes the seam recorded as R-14.*
+
+**The defect, precisely.** In `src/sync/sync.ts`'s push loop (lines ~176-300), each table's dirty rows
+are chunked and sent as batch upserts; `const { data, error } = await supabase.from(table).upsert(...)
+.select('id')` is followed by `if (error) throw error`, and the per-table `catch` at **274-277** sets
+`failed = true` and logs. An RLS refusal raises `42501` for the **whole batch**, so no row in it is
+ever marked clean, the same batch is re-sent every cycle, and that table's queue never drains. A
+removed member's queued edit, a banned login's queued edit and a team → personal switch all produce
+exactly that row.
+
+**The change, stated as lines.** Inside the existing per-table `try`, around the batch upsert only:
+
+1. keep the batch upsert as the fast path — on success, nothing changes at all, including the
+   refused-id bookkeeping at **240-272**;
+2. on `error`, instead of `throw error`, **retry that batch row by row**: one upsert per row, same
+   payload construction, same `onConflict: 'id'`, same `.select('id')`;
+3. a row that succeeds alone proceeds through the **normal** landed/refused bookkeeping — it is
+   marked `_dirty: 0` exactly as a batch-landed row is;
+4. a row that **errors alone** is marked `_dirty: 0` locally and left for the next pull to reconcile:
+   the pull brings down the server's truth — a tombstone, or nothing at all if the row is no longer
+   visible. **For a row belonging to a workspace the user can no longer reach, delete it from
+   Dexie**, because "no longer visible" means the pull will never send a correcting version and the
+   row would otherwise sit in the cache forever showing an edit the server refused. Which of the two
+   applies is decided by whether the local `workspaces` row is still reachable after the pull, not by
+   inspecting the error;
+5. `pushFailed` is set **only** for transport-level failures (a thrown fetch, a 5xx) — never for a
+   row the server deliberately refused. A refusal is an answer, not an outage, and letting it set
+   `pushFailed` is what would keep the banner up forever.
+
+**What is explicitly not touched.** `mergeRows` (**409-458**) and the server's `keep_newer`
+(`supabase/schema.sql:142-153`) are **unchanged, in the same change set and after it** — the conflict
+rule keeps one definition with two enforcement points, so ADR-0001 §3's lockstep and FR-020 hold
+exactly as before (ADR-0006 §E is an amendment about the path *around* the rule). The pull loop is
+untouched. The refused-id path at 240-272 is untouched. `SYNCED_TABLES` ordering is untouched.
+
+**Cost.** A batch that fails costs N extra round trips. Refusals are rare by construction — they
+happen once per removal, not per cycle — and the alternative is an infinite number of round trips,
+which is today's behaviour.
+
+**Test-first, non-negotiable (P-gate, ADR-0002).** `tests/stack/push-refusal-fallback.test.ts` is
+written and **red** before `src/sync/sync.ts` is edited. It provokes a *real* `42501` — account B
+queues an edit in a team workspace while removed, with dirty rows in other tables behind it — and
+asserts (i) every other table's dirty count reaches **0 within one push cycle**, (ii) the refused row
+is not re-sent on the next cycle, and (iii) `pushFailed` is false, because nothing failed to
+transport. `sync-engine`'s three P0 checks must pass **unedited** in the same run (FR-030): they are
+the proof the conflict rule did not move.
+
+**Map consequence.** `sync-engine` goes `VALIDATED → changed → re-verified`, with a receipt dated to
+this change set and `push-refusal-fallback.test.ts` added to its `tests:` list (D-15, SC-004).
+
+**Serves**: FR-041, FR-020 (by not breaking it), US6 acceptance 6, SC-017, SC-004.
 
 ## Project Structure
 
@@ -776,7 +1130,8 @@ specs/002-team-workspaces/
 ├── data-model.md        # Entities, columns, wire contract, Dexie version   (produced)
 ├── contracts/
 │   ├── policies.sql     # The replaced predicates + helpers, as they will be written  (produced)
-│   └── rpc.md           # add_member_by_email / workspace_member_emails, error codes  (produced)
+│   └── rpc.md           # the 8 backend operations: membership + provisioning, with the
+│                         #   verbatim GoTrue column set and the error-code register  (produced)
 ├── checklists/          # Existing
 ├── receipts.md          # Written during implementation (D-14, D-15)
 └── tasks.md             # NOT created by /speckit-plan — next step
@@ -790,8 +1145,13 @@ quickstart is still one command — `npm test` — documented in `docs/project-s
 
 ```text
 # ── data  (owns supabase/, src/db/, src/sync/, src/auth/) ──────────────────────
-supabase/schema.sql                   # kind, members, assignee, helpers, 4 new triggers,
+supabase/schema.sql                   # kind, members, assignee, helpers, 7 new triggers,
                                       #   replaced own_rows on 4 tables, members_access  (D-1..D-9)
+                                      #   + fork block D: instance_admins, is_admin(),
+                                      #     users_seed_first_admin on auth.users          (D-16)
+                                      #   + fork block E: create_login, set_login_password,
+                                      #     delete_login, set_login_admin, list_logins    (D-16)
+                                      #   + workspaces_zz_kind_change (no pin trigger)    (D-6')
                                       #   NO migration-007                                (D-2)
 src/db/types.ts                       # Member, WorkspaceKind; Workspace.kind; Task.assignee;
                                       #   SYNCED_TABLES + SYNCED_COLUMNS                  (D-8, D-10)
@@ -799,18 +1159,26 @@ src/db/local.ts                       # Dexie v3: members store + additive backf
                                       #   claimCache/wipeLocal UNCHANGED                  (D-10)
 src/db/api.ts                         # createWorkspace(name, kind); listMembers; memberEmails;
                                       #   addMemberByEmail; removeMember; TaskPatch.assignee (D-9, D-11)
+                                      #   + isAdmin (meta-cached), createLogin,
+                                      #     setLoginPassword, deleteLogin, setLoginAdmin,
+                                      #     listLogins                                   (D-16, D-17)
 src/db/hooks.ts                       # one useLiveQuery wrapper for members
-src/sync/sync.ts                      # the two online-only member calls ONLY;
-                                      #   no comparator, cursor or loop change            (D-8, D-9)
+src/sync/sync.ts                      # the two online-only member calls, the six *Remote
+                                      #   provisioning/admin wrappers, and the per-row
+                                      #   refusal fallback in PUSH ONLY                   (D-9, D-16, D-18)
+                                      #   mergeRows (409-458) and the pull loop UNCHANGED  (FR-020)
 src/auth/useSession.ts                # UNTOUCHED — FR-023, D-12
 
 # ── ui  (owns src/views/, src/components/, src/styles/) ────────────────────────
 src/components/Header.tsx             # affordance 1 — kind choice at creation
 src/components/Settings.tsx           # affordances 2-4 — members section, team-only;
+                                      #   affordance 6 — kind switch, owner-only, in the
+                                      #     existing workspace section                    (D-6')
+                                      #   affordance 7 — logins section, admin-only       (D-16, D-17)
                                       #   the sign-out path is UNTOUCHED                  (D-12)
 src/components/TaskDialog.tsx         # affordance 5 — assignee field, team-only
 src/components/Settings.css, TaskDialog.css   # styling for the above, nothing else
-src/i18n/dict.ts                      # the ~10 new keys, ru + en                          (D-11)
+src/i18n/dict.ts                      # the ~29 new keys, ru + en                         (D-11)
 src/views/**                          # ZERO CHANGES — FR-025, checked by git diff --stat
 
 # ── infra  (owns vite.config.ts, manifest/SW, wrangler.jsonc, .github/, README.md) ──
@@ -819,12 +1187,15 @@ src/views/**                          # ZERO CHANGES — FR-025, checked by git 
 
 # ── evidence (shared; written by data, reviewed by reviewer) ───────────────────
 tests/stack/{members-two-accounts,team-rls-both-halves,assignee-clear-on-removal,
-             member-offline-round-trip,team-triggers,personal-unchanged}.test.ts
+             member-offline-round-trip,team-triggers,personal-unchanged,
+             logins-provisioning,kind-switch,push-refusal-fallback}.test.ts
 tests/local/{db-api-p1-surface,no-wipe-on-reach-growth}.test.ts
-tests/harness/{accounts,seed}.ts      # additive exports only                              (D-13)
+tests/harness/{accounts,seed}.ts      # additive exports only, incl. the TEST-ONLY
+                                      #   adminClient()                                   (D-13)
 
 # ── docs (coordinator) ────────────────────────────────────────────────────────
-docs/validation-map.md                # 3 new HIGH entries + re-verifications              (D-15)
+docs/validation-map.md                # 4 new HIGH entries (incl. account-provisioning)
+                                      #   + re-verifications, incl. sync-engine           (D-15, D-18)
 docs/ARCHITECTURE.md, docs/architecture-index.md
                                       # only if an architecture fact changes — and then only with
                                       #   a new ADR + a STALE cascade + a regenerated index, in
@@ -835,7 +1206,7 @@ docs/ARCHITECTURE.md, docs/architecture-index.md
 **Structure Decision**: single project, unchanged shape. The split above is by **agent role
 ownership** (CLAUDE.md, *Agent roles*) so tasks can be assigned by layer without anyone crossing a
 boundary: `data` owns everything under `supabase/`, `src/db/`, `src/sync/`, `src/auth/` and writes the
-evidence; `ui` owns the five affordances and the dictionary and must wait until `data` has landed the
+evidence; `ui` owns the seven affordances and the dictionary and must wait until `data` has landed the
 membership model; `infra` is expected to have nothing to do, which is itself a checkable claim.
 
 ## Risks, seams and candidate FINDINGS
@@ -848,14 +1219,17 @@ goes to the owner as a FINDING rather than becoming an unplanned refactor.
   `infinite recursion detected in policy for relation "members"`. D-5's `security definer` helpers are
   the fix, and this is the reason they are not optional. **Test obligation**: one assertion that a
   plain authenticated select on `members` returns without error — the cheapest possible canary.
-- **R-2 (high): `security definer` + `search_path` hijack.** Every definer function in D-3, D-5, D-6
-  and D-9 must carry `set search_path`. One that does not is a privilege-escalation hole, not a style
+- **R-2 (high): `security definer` + `search_path` hijack.** Every definer function in D-3, D-5, D-6,
+  D-6′, D-9 and **D-16** must carry `set search_path` — the provisioning routines carry
+  `public, auth, extensions, pg_temp`, and they are the ones where a hijack would mint accounts. One that does not is a privilege-escalation hole, not a style
   nit. **Test obligation**: a query over `pg_proc` asserting `prosecdef and proconfig is not null` for
   every function this feature adds — a structural check that cannot be forgotten in review.
 - **R-3 (high): PostgREST exposes every `public` function as RPC, to `anon` by default.**
   `add_member_by_email` reachable by `anon` would be a membership-granting endpoint with no caller
   identity. The `revoke … from public, anon` / `grant … to authenticated` lines in D-5/D-9 are
-  load-bearing. **Test obligation**: an unauthenticated client calling each new RPC is refused.
+  load-bearing, and doubly so for **`create_login`**, which reachable by `anon` would be an open
+  account factory on a closed instance. **Test obligation**: an unauthenticated client calling each of
+  the **eight** RPCs is refused.
 - **R-4 (certain, bounded): the upstream merge surface moves into `schema.sql`.** ADR-0005 predicted
   it; this feature is where it becomes real. Upstream's policy block is now rewritten by the fork, so
   every future upstream change to those lines conflicts. Mitigation, and a reviewer check: the fork's
@@ -900,28 +1274,91 @@ goes to the owner as a FINDING rather than becoming an unplanned refactor.
   interface must not offer the control: Settings' delete-workspace button is hidden for a non-owner.
   The same is true of the rename field (`Settings.tsx:153-155`, `useAutosave` → `renameWorkspace` →
   dirty workspace row → push): a member's rename is refused by the unchanged workspace `with check`
-  (RLS `42501`), and the push loop's per-table catch (`sync.ts:205-277`) then re-sends that same
-  refused row every cycle — it wedges the workspaces queue for good, not just for that one edit. So
-  **both** the rename field and the delete button are hidden for a non-owner of a team workspace, not
-  the delete button alone. Flagged because it is exactly the kind of half-state a demo finds.
-- **R-12 (low): the members-email cache.** See **Owner question Q-A** — this is the one decision this
-  plan cannot make alone.
+  (RLS `42501`), and before D-18 the push loop's per-table catch would then re-send that same refused
+  row every cycle. **D-18 fixes that consequence** — the queue drains and the refused row is dropped —
+  but the guard stands unchanged and for its own reason: a member must not be *offered* rename or
+  delete at all, because the half-state (children soft-deleted, workspace row refused) is what the
+  control produces, not the wedge. So **both** the rename field and the delete button are hidden for a
+  non-owner of a team workspace, not the delete button alone. Flagged because it is exactly the kind
+  of half-state a demo finds.
+- **R-12 (low): the members-email cache — ANSWERED.** Owner question Q-A is decided: **Option B**,
+  the per-device unsynced cache in Dexie `meta` (see Owner questions, below). The residual risk is the
+  one Option B was chosen with open eyes about: a name can be one sync cycle stale. The same shape
+  now also carries the admin flag (D-17), so the discipline — display-only, never authoritative,
+  cleared by `wipeLocal()` — applies to two keys rather than one.
 - **R-13 (low): `add_member_by_email` and case.** Supabase stores emails lower-cased, but the owner
   types free text. The lookup trims and lower-cases both sides; otherwise "no account on this origin"
   fires for an account that exists, which is SC-010's message pointing at the wrong cause.
-- **R-14 (medium, inherited seam):** the push loop has no per-row refusal path (`sync.ts:274-277`) —
-  a single refused row re-fails its table's batch every cycle. P1 designs every new server rule to
-  coerce or silently drop (D-3, D-6, `keep_newer`) and hides the one UI path that would produce a
-  refused row (R-11), so no P1 behaviour can wedge the queue. It does not fix the seam. Recorded for
-  P2 alongside F-1 as a sync-engine seam observation; a fix (per-row error surfacing, dead-letter) is
-  a sync-engine change that needs its own spec.
+- **R-14 (medium, inherited seam) — FIXED IN THIS FEATURE by D-18.** The push loop had no per-row
+  refusal path (`sync.ts:274-277`): a single refused row re-failed its table's batch every cycle. The
+  original plan worked *around* it — every new server rule coerces or silently drops (D-3,
+  `keep_newer`), and the one UI path that would produce a refused row is hidden (R-11) — and deferred
+  the seam to P2. ADR-0006 §E overtakes that: removal, a banned login and team → personal each
+  produce a genuinely refused row that no guard can hide, so the seam is closed here instead, by
+  per-row retry in push (D-18), proven by `push-refusal-fallback.test.ts` and re-signed on the
+  `sync-engine` entry. What remains for P2 is only *surfacing* a refusal to the person who made the
+  edit; dropping it silently and reconciling on the next pull is what P1 does.
+
+- **R-15 (high, accepted — ADR-0006's named cost): the fork is coupled to GoTrue's table shape.**
+  `create_login` and `set_login_password` write `auth.users` / `auth.identities` column by column, and
+  the bcrypt convention, the empty-string token columns and the identity row are all GoTrue internals
+  that no contract promises to keep. A Supabase upgrade can change them. **The canary is the sign-in
+  test**: `logins-provisioning.test.ts` mints a login through the routine and then signs in with
+  `supabase.auth.signInWithPassword` — if the shape moves, that assertion fails loudly on the next run
+  rather than in production, and ADR-0006 alternative (a), the Edge Function holding `service_role`,
+  is the prepared replacement. Pinning the CLI version is not enough on its own, because the hosted
+  project upgrades independently of the local stack; the hosted walk (D-14) is therefore the second
+  place this is exercised.
+
+- **R-16 (medium, unresolved — watch): does a trigger on `auth.users` survive a Supabase upgrade?**
+  `users_seed_first_admin` lives in the `auth` schema's blast radius, and GoTrue owns that schema's
+  migrations. The pattern is the platform's own (the documented `handle_new_user` recipe has the same
+  shape), and `schema.sql` is idempotent and re-runnable, so the recovery is cheap: re-run it. But a
+  silent *drop* of the trigger would not fail any test on an existing origin — `instance_admins` is
+  already non-empty there, so the trigger would never have fired anyway. Recorded rather than solved.
+  **Obligation**: the schema-apply check asserts the trigger exists after apply, so the re-run that
+  fixes it is at least detectable in CI; on the hosted origin it is a step in the D-14 runbook.
+
+- **R-17 (low, structural): `extensions.crypt` needs `pgcrypto` in the `extensions` schema.** The
+  routines call `extensions.crypt` / `extensions.gen_salt('bf')`. Supabase installs `pgcrypto` into
+  `extensions` on every project, and the local stack matches — but a plain Postgres, or a project
+  where someone moved it, would fail at *call* time with a confusing "function does not exist" rather
+  than at apply time. **Obligation**: `schema.sql` does **not** try to `create extension` (it would
+  need privileges the file does not assume); instead the schema-apply check asserts the extension is
+  present and in that schema, so the failure is one clear line at the start of the suite.
+
+- **R-18 (medium, decided and documented): `delete_login` bans rather than deletes, and that is not
+  reversible into "never existed".** Forced by the FK cascade on `user_id` (D-16). Consequences worth
+  stating: the `auth.users` row persists, so the identifier stays taken and `create_login` with the
+  same email returns `DA012` — re-hiring the same person means lifting the ban, which P1 exposes no
+  control for; `list_logins()` keeps showing the row, so the admin sees removed logins unless the
+  query filters them, and it does **not** filter them, because a hidden row that still holds an
+  identifier is worse than a visible one; and a banned login's active JWT stays valid until it
+  expires, so "access ends" means at most one token lifetime, not instantly. Each is a candidate
+  FINDING if the demo trips on it, and each is cheaper than losing a team's rows.
+
+- **R-19 (low, answered by design): a kind switch racing a member's concurrent write.** Owner flips
+  team → personal while a member is mid-edit. The membership purge and the member's task edit are
+  separate rows, so LWW does not arbitrate between them: the purge lands, the member's next push is
+  refused by the (now personal) workspace's predicate, and D-18 drops that row rather than wedging the
+  queue. The only genuine race — a *stale* kind flip arriving after the roster was rebuilt — cannot
+  fire the purge at all, because `workspaces_zz_kind_change` is AFTER UPDATE and `keep_newer` has
+  already cancelled the stale update before it (D-6′). **Test obligation**: `kind-switch.test.ts`
+  asserts a membership purge does not happen for a kind write with an older `updated_at`.
 
 ## Owner questions
 
-Two, and only two. Both are recorded here rather than decided, per CLAUDE.md (*the coordinator is the
-only one who talks to the owner*).
+Two were raised at planning time. **Q-A is now answered** (owner session 2026-09-13, recorded with
+the ADR-0006 decisions): **Option B**. Q-B remains open and is the only question this plan still
+carries. Everything ADR-0006 settled — provisioning in Postgres, kind mutable, the refusal fallback,
+sign-up disabled on the hosted project — is decided and is written into D-6′, D-16, D-17 and D-18
+rather than asked again here.
 
-**Q-A — May member emails be cached on the device, or are they online-only?**
+**Q-A — May member emails be cached on the device, or are they online-only? — ANSWERED: Option B.**
+The per-device cache is adopted: `meta` holds `member-email:<uuid>`, refreshed on each successful
+`workspace_member_emails` call, never synced, never authoritative, cleared by `wipeLocal()`. The
+implementation follows `contracts/rpc.md` and D-10; D-17 reuses the same shape for the admin flag.
+The original framing is kept below because it is the reasoning the decision was taken against.
 FR-007 and clarification Q1 forbid "a second copy of the email" that can drift. That plainly rules out
 a `profiles` table (D-9 complies). It is **not** clear whether it also rules out a per-device,
 unsynced cache in Dexie `meta` — the same shape as the existing `gcal:<taskId>` signatures
@@ -937,8 +1374,9 @@ The choice is visible in the product:
   Drift is bounded to one sync cycle.
 **Recommendation: B**, because "a client that was offline learns … on its next cycle" (FR-019) reads
 as the intended standard for derived data, and because an assignee with no name is a worse product than
-a name that is one cycle stale. Adopting B needs the owner's word because it is arguably inside Q1's
-prohibition.
+a name that is one cycle stale. **Owner's answer: B.** Q1's prohibition is read as forbidding a
+*server-side second copy of record* (a `profiles` table), not a device-local render cache that cannot
+outlive a sign-out.
 
 **Q-B — F-5: re-record with an expiry, as D-12 recommends?**
 The spec says F-5 must end this feature covered **or** re-recorded with the owner's name, the date and
@@ -949,8 +1387,11 @@ is asked to confirm the wording, the name and the expiry, or to require option (
 
 ## Complexity Tracking
 
-> Filled because the post-design Constitution re-check produced one item worth recording.
+> Filled because the post-design Constitution re-check produced four items worth recording.
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |---|---|---|
 | `src/db/api.ts` gains two operations that cannot complete offline (`addMemberByEmail`, `memberEmails`), where every existing `db-api` mutator is offline-capable | An email→uuid lookup can only happen where `auth.users` lives (FR-008), and FR-026 forbids the UI calling the backend directly. Both layering rules are preserved by delegating through `src/sync/sync.ts` (D-9) | Calling the RPC straight from the component violates FR-026 outright. Storing a local copy of emails so the lookup could be offline is a `profiles` table by another name — forbidden by FR-007 and Q1. Removing the affordance fails FR-024 |
+| `src/db/api.ts` gains **six more** online-only operations — the provisioning surface and `isAdmin` (D-16, D-17) | Account creation can only happen where `auth.users` lives, and a queued one would be a password sitting in Dexie (FR-044). They widen the same layering rule the row above already widened, through the same `*Remote` delegation, so the shape is one exception rather than two | Queueing them offline would persist credentials on the device. Calling the RPC from the component violates FR-026. Leaving provisioning in the Supabase dashboard is ADR-0006 alternative (c), rejected by the owner |
+| `src/sync/sync.ts`'s push loop gains a second, slower path (per-row retry) where it had exactly one (D-18) | An RLS refusal raises `42501` for the whole batch and otherwise wedges that table's queue forever (FR-041, SC-017), and P1 now produces genuinely refused rows that no UI guard can hide | Hiding every path that can be refused is what the original plan did — it no longer covers removal, `delete_login` or team → personal. Surfacing the refusal to the user is a bigger change than P1 needs. Dropping the whole batch would lose innocent rows |
+| A **test-only** privileged helper, `adminClient()`, inserts into `instance_admins` over the direct `pg` connection (D-13) | The harness provisions users through the admin API, so "the first account is the admin" lands nondeterministically inside a suite; tests need a deterministic admin without asserting the trigger's behaviour as a side effect | Relying on creation order makes every provisioning test order-dependent and silently wrong on a dirty database. Exposing a real grant-first-admin routine to the client would be a privilege-escalation hole. The trigger itself is still asserted directly, on an empty `instance_admins` |
