@@ -28,8 +28,10 @@
 
 ## CI receipt (T024)
 - `.github/workflows/ci.yml` test + start-supabase steps uncommented at this feature. Actual CI
-  run: NOT RUN — the fork has no push remote yet (commits stay local per owner instruction); first
-  push will produce the run. Queued: confirm CI green on first push.
+  run: PASS — first push (2026-09-13, owner-authorized, temp private repo
+  AndriyTkh/dandori-team) at 6727ec4:
+  https://github.com/AndriyTkh/dandori-team/actions/runs/34739227659 — install, typecheck, lint,
+  build, start supabase, test all green in 3m10s on ubuntu-latest.
 
 ## FINDINGS (T028, spec FR-013)
 Each: observed vs documented, and disposition. No assertion was weakened to make the suite green.
