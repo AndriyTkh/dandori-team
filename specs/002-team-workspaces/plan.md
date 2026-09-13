@@ -1299,7 +1299,7 @@ goes to the owner as a FINDING rather than becoming an unplanned refactor.
   `sync-engine` entry. What remains for P2 is only *surfacing* a refusal to the person who made the
   edit; dropping it silently and reconciling on the next pull is what P1 does.
 
-- **R-15 (high, accepted — ADR-0006's named cost): the fork is coupled to GoTrue's table shape.**
+- **R-15 (high, owner-accepted 2026-09-13 — ADR-0006's named cost): the fork is coupled to GoTrue's table shape.**
   `create_login` and `set_login_password` write `auth.users` / `auth.identities` column by column, and
   the bcrypt convention, the empty-string token columns and the identity row are all GoTrue internals
   that no contract promises to keep. A Supabase upgrade can change them. **The canary is the sign-in
@@ -1310,7 +1310,11 @@ goes to the owner as a FINDING rather than becoming an unplanned refactor.
   project upgrades independently of the local stack; the hosted walk (D-14) is therefore the second
   place this is exercised.
 
-- **R-16 (medium, unresolved — watch): does a trigger on `auth.users` survive a Supabase upgrade?**
+- **R-16 (medium, owner-accepted 2026-09-13): does a trigger on `auth.users` survive a Supabase upgrade?**
+  Owner's word: an admin is provided either by the first-login trigger **or** by editing
+  `public.instance_admins` directly in the Supabase SQL editor (`insert into public.instance_admins
+  (user_id) select id from auth.users where email = '<owner>'`). The trigger is a convenience, the
+  table is the truth; a lost trigger costs one SQL-editor line, not access.
   `users_seed_first_admin` lives in the `auth` schema's blast radius, and GoTrue owns that schema's
   migrations. The pattern is the platform's own (the documented `handle_new_user` recipe has the same
   shape), and `schema.sql` is idempotent and re-runnable, so the recovery is cheap: re-run it. But a
@@ -1327,7 +1331,7 @@ goes to the owner as a FINDING rather than becoming an unplanned refactor.
   need privileges the file does not assume); instead the schema-apply check asserts the extension is
   present and in that schema, so the failure is one clear line at the start of the suite.
 
-- **R-18 (medium, decided and documented): `delete_login` bans rather than deletes, and that is not
+- **R-18 (medium, owner-accepted 2026-09-13): `delete_login` bans rather than deletes, and that is not
   reversible into "never existed".** Forced by the FK cascade on `user_id` (D-16). Consequences worth
   stating: the `auth.users` row persists, so the identifier stays taken and `create_login` with the
   same email returns `DA012` — re-hiring the same person means lifting the ban, which P1 exposes no
