@@ -286,12 +286,15 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   and a reminder that stops arriving because a token quietly expired is worse
   than no integration at all.
   Signing in is therefore a page of Google's, opened by the owner's own click
-  and coming back to the app: once, rather than once an hour. What comes back is
-  kept beside the local cache — the refresh token, which is the account, and the
-  hour in hand, which only saves the first call after a reload. Both go when the
-  account is disconnected, and Google is told to drop the grant as they do. The
-  address of the account is remembered as well and named on the consent screen,
-  so that a browser signed into several does not have to ask which is meant.
+  and coming back to the app: once, rather than once an hour. What comes back
+  and stays is the refresh token alone — it is the account, and it goes when the
+  account is disconnected, Google being told to drop the grant as it does. The
+  hour of access it buys lives in the tab and nowhere else: a reload spends one
+  silent request making another, and a second key kept at rest would buy nothing
+  but a thing to lose. The consent screen names no account either. A browser
+  signed into several has to ask which is meant, and being asked is the point:
+  the owner picks the calendar the events go to, and a hint remembered from the
+  first time would pick it for him for good.
   The secret itself is in Cloudflare's secrets and nowhere else: not in the
   repository, not in the bundle, not in anything the worker writes back.
 - One-way, but for one thing: an event that is gone. The calendar is told what

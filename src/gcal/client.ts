@@ -66,15 +66,13 @@ const listeners = new Set<(s: GcalState) => void>()
 
 // ----------------------------------------------------------------- what is kept
 /*
- * The refresh token is the account: while it is here the app can make itself an
- * hour of access whenever it likes, and when it is gone the owner has to say so
- * again. The access token is kept beside it only to save the first call after a
- * reload. Both go the moment the account is disconnected.
+ * The refresh token is the account, and the only thing kept: while it is here
+ * the app can make itself an hour of access whenever it likes, and when it is
+ * gone the owner has to say so again. The hour itself lives in the tab alone —
+ * a reload spends one request making another, silently, and a second long-lived
+ * key at rest buys nothing but a risk.
  */
 const REFRESH_KEY = 'dandori.gcalRefresh'
-const TOKEN_KEY = 'dandori.gcalToken'
-/** The address the consent screen is pointed at, so it does not ask which account. */
-const ACCOUNT_KEY = 'dandori.gcalAccount'
 /** The proof, for as long as he is away at the consent screen and no longer. */
 const PKCE_KEY = 'dandori.gcalPkce'
 
@@ -97,52 +95,6 @@ function write(key: string, value: string | null): void {
 
 function refreshToken(): string | null {
   return read(REFRESH_KEY)
-}
-
-/** The token as it was left, if it has any life left in it. */
-function storedToken(): Token | null {
-  const raw = read(TOKEN_KEY)
-  if (raw === null) return null
-  try {
-    const held = JSON.parse(raw) as Partial<Token>
-    if (typeof held.value !== 'string' || typeof held.expires !== 'number') return null
-    if (held.expires - EXPIRY_MARGIN_MS <= Date.now()) return null
-    return { value: held.value, expires: held.expires }
-  } catch {
-    return null
-  }
-}
-
-/** Holds the token, here and for the next load of the page. */
-function keepToken(next: Token | null): void {
-  token = next
-  write(TOKEN_KEY, next === null ? null : JSON.stringify(next))
-}
-
-/*
- * A copy of the address for as long as the tab lives. With storage blocked the
- * stored one reads back empty however often it is written, and every pass would
- * go asking Google for it again — once a minute, for ever.
- */
-let remembered: string | null = null
-
-function account(): string | null {
-  return remembered ?? read(ACCOUNT_KEY)
-}
-
-/**
- * The address of the connected account, learned from Google rather than typed:
- * it lists the owner's own calendar under it.
- */
-export function rememberAccount(address: string): void {
-  if (!address || address === account()) return
-  remembered = address
-  write(ACCOUNT_KEY, address)
-}
-
-/** True once the address is known, so nobody has to go looking for it twice. */
-export function accountKnown(): boolean {
-  return account() !== null
 }
 
 // ---------------------------------------------------------------------- the state
@@ -211,7 +163,6 @@ export async function connect(): Promise<boolean> {
     return false
   }
 
-  const at = account()
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     redirect_uri: redirectUri(),
@@ -228,7 +179,6 @@ export async function connect(): Promise<boolean> {
     code_challenge: challenge,
     code_challenge_method: 'S256',
     state: guard,
-    ...(at === null ? {} : { login_hint: at }),
   })
   location.assign(`${AUTH}?${params.toString()}`)
   return true
@@ -307,7 +257,7 @@ async function landed(): Promise<void> {
     return
   }
   write(REFRESH_KEY, answer.refresh_token)
-  keepToken({ value: answer.access_token, expires: Date.now() + answer.expires_in * 1000 })
+  token = { value: answer.access_token, expires: Date.now() + answer.expires_in * 1000 }
   refusedAt = 0
   setState('ready')
 }
@@ -320,7 +270,7 @@ let pending: Promise<string | null> | null = null
 async function renew(refresh: string): Promise<string | null> {
   const answer = await askWorker(TOKEN_PATH, { refresh })
   if (answer?.access_token && answer.expires_in) {
-    keepToken({ value: answer.access_token, expires: Date.now() + answer.expires_in * 1000 })
+    token = { value: answer.access_token, expires: Date.now() + answer.expires_in * 1000 }
     refusedAt = 0
     setState('ready')
     return answer.access_token
@@ -333,7 +283,7 @@ async function renew(refresh: string): Promise<string | null> {
    */
   if (answer !== null) {
     write(REFRESH_KEY, null)
-    keepToken(null)
+    token = null
     setState('needs-consent')
   }
   return null
@@ -358,16 +308,14 @@ export function getToken(): Promise<string | null> {
 
 /** Throws away the token in hand, so the next call has to fetch a new one. */
 export function forgetToken(): void {
-  keepToken(null)
+  token = null
 }
 
 /** Forgets the account on this device and tells Google to drop the grant. */
 export async function disconnect(): Promise<void> {
   const held = refreshToken()
   write(REFRESH_KEY, null)
-  write(ACCOUNT_KEY, null)
-  keepToken(null)
-  remembered = null
+  token = null
   refusedAt = 0
   setState(CLIENT_ID ? 'signed-out' : 'unconfigured')
   if (held === null) return
@@ -375,15 +323,13 @@ export async function disconnect(): Promise<void> {
 }
 
 /*
- * On start-up the device has whatever it was left with. A refresh token is an
- * account: the token beside it may well be spent, and the first call that wants
- * one makes another without anything being shown.
+ * On start-up the device has the account or it has not. An hour of access is not
+ * part of that: the first call that wants one asks for it, and nothing is shown.
  */
 if (CLIENT_ID) {
   if (location.pathname === CALLBACK_PATH) {
     void landed()
   } else if (refreshToken() !== null) {
-    token = storedToken()
     setState('ready')
   }
 }

@@ -8,7 +8,7 @@
  * devices reaching for the calendar at the same moment write one event instead
  * of two.
  */
-import { forgetToken, getToken, rememberAccount } from './client'
+import { forgetToken, getToken } from './client'
 import { taskDate } from '../db/types'
 import type { GcalConfig, Task } from '../db/types'
 
@@ -82,11 +82,6 @@ export async function listCalendars(): Promise<Calendar[]> {
   const body = (await res.json()) as {
     items?: { id: string; summary?: string; primary?: boolean }[]
   }
-  // Google lists the owner's own calendar under his address, which is the one
-  // thing a silent renewal needs to know and the only place the app can learn
-  // it: the token itself says nothing about whose it is.
-  const primary = (body.items ?? []).find((c) => c.primary === true)
-  if (primary) rememberAccount(primary.id)
   return (body.items ?? []).map((c) => ({
     // Google lists the main calendar under the account's own address, and also
     // answers to `primary` for it — which is what this app writes by default.

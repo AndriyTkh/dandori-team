@@ -15,16 +15,8 @@
 import { db, setMeta } from '../db/local'
 import { setTaskGcal } from '../db/api'
 import { currentSession, requestPush } from '../sync/sync'
-import {
-  currentZone,
-  deletedSince,
-  deleteEvent,
-  eventIdOf,
-  GcalError,
-  listCalendars,
-  putEvent,
-} from './api'
-import { accountKnown, getToken, isConnected } from './client'
+import { currentZone, deletedSince, deleteEvent, eventIdOf, GcalError, putEvent } from './api'
+import { getToken, isConnected } from './client'
 import {
   GCAL_COLOR_OF,
   gcalConfigOf,
@@ -348,26 +340,6 @@ async function sweep(
   }
 }
 
-/*
- * The address of the account, which only Google can say: it lists the owner's
- * own calendar under it. Asked for once and kept, because every silent renewal
- * after this one has to name it — with several accounts signed into the browser
- * Google otherwise has to ask which is meant, and asking needs a window nobody
- * clicked for.
- */
-async function learnAccount(mine: number): Promise<void> {
-  if (accountKnown()) return
-  try {
-    await listCalendars()
-  } catch (err) {
-    if (err instanceof SignedOut) throw err
-    // Not worth a pass: the next one asks again, and the renewal it is for is
-    // an hour away.
-    console.error('[gcal] account not learned', err)
-  }
-  still(mine)
-}
-
 async function pass(): Promise<void> {
   const mine = currentSession()
   const spaces = new Map((await db.workspaces.toArray()).map((w) => [w.id, w]))
@@ -385,7 +357,6 @@ async function pass(): Promise<void> {
    */
   const turned = new Set<ID>()
   try {
-    await learnAccount(mine)
     await sweep(tasks, spaces, labels, mine, turned)
   } catch (err) {
     if (err instanceof SignedOut) return
