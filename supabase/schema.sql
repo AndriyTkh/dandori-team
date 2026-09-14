@@ -101,6 +101,40 @@ begin
   end if;
 end $$;
 
+-- ==========================================================================
+-- fork block A -- added columns and the one added table            (plan D-1)
+-- ==========================================================================
+
+alter table public.workspaces
+  add column if not exists kind text not null default 'personal';
+
+alter table public.workspaces drop constraint if exists workspaces_kind_check;
+alter table public.workspaces
+  add constraint workspaces_kind_check check (kind in ('personal', 'team'));
+
+create table if not exists public.members (
+  id            uuid primary key,
+  user_id       uuid not null references auth.users (id) on delete cascade,       -- creator
+  workspace_id  uuid not null references public.workspaces (id) on delete cascade,
+  member_id     uuid not null references auth.users (id) on delete cascade,       -- the subject
+  level         text not null default 'member' check (level in ('owner', 'member')),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  synced_at     timestamptz not null default now(),
+  deleted       boolean not null default false
+);
+
+-- unconditional, NOT partial on (not deleted): re-adding a removed person must reuse this row
+create unique index if not exists members_one_per_person
+  on public.members (workspace_id, member_id);
+create index if not exists members_by_person
+  on public.members (member_id, synced_at);
+
+alter table public.members enable row level security;
+
+alter table public.tasks
+  add column if not exists assignee uuid references auth.users (id) on delete set null;
+
 -- `synced_at` is the server's own stamp: every write sets it, so the pull cursor
 -- can order rows by the moment the server saw them.
 create or replace function public.touch_synced_at() returns trigger
