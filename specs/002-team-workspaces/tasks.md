@@ -497,7 +497,7 @@ regardless (D-11).
   - verify: `npx tsc -b --noEmit && npm run lint && npm run build`, plus `git diff --stat -- src/views/` printing nothing
   - done-when: FR-005 holds in the interface as well as the backend; a personal workspace's Settings is unchanged (both controls still shown) (FR-025, SC-008)
   - blocked-by: T047
-- [ ] T050 [ui] [in-progress: ui-lane-review@wt/ui] **FR-025 / SC-008 receipt.** Capture and record the interface-non-change evidence: `git diff --stat $(git merge-base HEAD main) -- src/views/` showing **zero** lines, and `git diff --stat $(git merge-base HEAD main) -- src/components/ src/styles/` showing changes confined to `Header.tsx`, `Settings.tsx`, `Settings.css`, `TaskDialog.tsx`, `TaskDialog.css` and nothing else. No vitest claim is made for FR-025 — the spec says so explicitly
+- [x] T050 [done: receipt 2026-09-14] [ui] **FR-025 / SC-008 receipt.** Capture and record the interface-non-change evidence: `git diff --stat $(git merge-base HEAD main) -- src/views/` showing **zero** lines, and `git diff --stat $(git merge-base HEAD main) -- src/components/ src/styles/` showing changes confined to `Header.tsx`, `Settings.tsx`, `Settings.css`, `TaskDialog.tsx`, `TaskDialog.css` and nothing else. No vitest claim is made for FR-025 — the spec says so explicitly
   - Write: `specs/002-team-workspaces/receipts.md`
   - Read: spec.md FR-025, SC-008; plan.md "The UI entries stay UNTESTED, deliberately", D-14 step 5
   - substrate: `views-core`, `task-dialog`, `chrome-components` (all UNTESTED by design through P1)

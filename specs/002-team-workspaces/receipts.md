@@ -2404,3 +2404,28 @@ no caller; (3) note `useCurrentUserId` hides loading state; (4) note `updateWork
 `multi-account-cache` entry does not exist yet — created at T051. Map owed at merge: `local-cache`,
 `db-api` re-stamp; `sync-engine` STALE → T039 with `push-refusal-fallback` +
 `member-offline-round-trip` added; stack tier NOT RUN here (DB held by T023a).
+
+## T050 receipt — FR-025 / SC-008 interface-non-change diff (2026-09-14)
+
+Lane `wt/ui` @ a999e34, merge-base with `main` = 7cb8df6. Coordinator-run, mechanical.
+
+```
+$ git diff --stat 7cb8df6 -- src/views/
+(nothing)
+$ git diff --stat 7cb8df6 -- src/components/ src/styles/
+ src/components/Header.css     |  36 +++
+ src/components/Header.tsx     |  96 +++++++-
+ src/components/Settings.css   | 115 ++++++++++
+ src/components/Settings.tsx   | 511 ++++++++++++++++++++++++++++++++++++++++--
+ src/components/TaskDialog.tsx |  79 ++++++-
+ 5 files changed, 816 insertions(+), 21 deletions(-)
+$ git diff --stat 7cb8df6 -- src/i18n/
+ src/i18n/dict.ts | 74 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+```
+
+`src/views/` zero lines (FR-025). Five component files changed; the set differs from the card's
+named five by one: `Header.css` (T042 kind-toggle styling) changed and `TaskDialog.css` did not
+(T047 reused the existing `.field` class). Recorded as a reviewer note for the ui lane review,
+not rationalised away. Seven affordances covered: 1 Header.tsx (T042), 2/3/4/6/7 Settings.tsx
+(T044/T045/T046/T043/T048), 5 TaskDialog.tsx (T047); R-11 guard T049 in Settings.tsx. No vitest
+claim for FR-025.
