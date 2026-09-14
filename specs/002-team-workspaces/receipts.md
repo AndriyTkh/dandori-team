@@ -1003,3 +1003,111 @@ no spec, which was right for a `data` worker; the coordinator corrected both spe
 the code and stays red until T022.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T018 receipt — the admin-provisioned login surface (2026-09-14)
+
+Merged as `6f22722` from lane `wt/logins` (lane commit `ece2089`). Artefact:
+`tests/stack/logins-provisioning.test.ts`, `+735/-0`, twenty cases across the card's ten blocks
+(a)–(j), committed **red on purpose**.
+
+Red run, by the coordinator on the `supabase` CLI local stack, from the lane worktree:
+
+```
+npx vitest run --project stack tests/stack/logins-provisioning.test.ts
+Test Files  1 failed (1)
+     Tests  20 failed (20)
+```
+
+Twenty failed, **none skipped**, each on its own structural gap: `PGRST202` for the five routines
+and `is_admin`, `PGRST204` for columns that do not exist, and
+`relation "public.instance_admins" does not exist` raised from `adminClient()` at
+`tests/harness/accounts.ts:138`. Every case reaches the gap its own block is about.
+
+**The 20/20 count is itself the headline finding of this card, because the first honest count was
+`11 failed | 9 skipped (20)`.** Nine cases never ran, and the two causes are both instances of the
+taskgroup's second structural trap — a throwing hook aborting cases that would otherwise reach
+their own honest red:
+
+1. The `beforeEach` ran `delete from public.members`, which raises `42P01` before T020 exists. A
+   throwing `beforeEach` skips **every remaining case in its scope**.
+2. `setAdmins()` raised `42P01` on `public.instance_admins` from two describe-level hooks,
+   aborting both of those describes wholesale.
+
+The first repair was a `42P01`-only catch at both sites. The closer then improved on it, and the
+improvement is the one to carry forward: **a tolerance keyed on the SQLSTATE tolerates the right
+error for the wrong relation.** Once `public.members` exists, a `members_zz_clear_assignee` trigger
+raising `42P01` against some *other* not-yet-landed relation would be swallowed by the same catch,
+leaving stale `members` rows that a later case reads as fixture state. Both sites now probe
+`select to_regclass('public.members')` / `to_regclass('public.instance_admins')` and skip the
+cleanup when the relation is absent, rather than catching an error at all. A probe cannot
+misidentify what failed; a catch can.
+
+**The closer's remaining three blocking findings were all the third structural trap** — a negative
+assertion with no in-block positive control — and all three landed on `instance_admins`:
+
+- SC-016's "the removed login's `instance_admins` row is gone" read `toHaveLength(0)` while the
+  grant that was supposed to create that row was asserted only as `expect(grantErr).toBeNull()`, an
+  RPC success and never a read-back. If `set_login_admin` returned void without writing, the
+  length-0 read was green for an incidental reason and the "loses the admin flag too" half of R-18
+  was untested. The grant is now read back as exactly one row before the removal, so the later zero
+  measures a real transition.
+- Block (g)'s DA015 case, same shape twice over: `setAdmins(a, b)` was never read back, so the case
+  passed if the insert loop had never run and `a` was never admin; and it asserted only `a`'s
+  absence, so `set_login_admin` revoking **both** admins — a direct DA015 violation — went
+  unnoticed. Both halves are now asserted.
+- Sign-in refusal was `expect(err).not.toBeNull()` at two sites, including the SC-016/R-18 ban
+  assertion. That accepts a rate-limit, a transport error or an unconfirmed-email state as evidence
+  of a ban. **This file performs about twenty sign-ins against one local GoTrue**, so the
+  rate-limit path is not hypothetical. Both now assert `error?.status === 400`, with a comment
+  naming `invalid_credentials` as the tighter assertion to adopt once the code field is observed
+  against a running stack. The ban is separately corroborated by reading `banned_until` — which the
+  card permits *in addition* to the observable assertions, and forbids only as a substitute for
+  them.
+
+**FR-044 was raised blocking and the coordinator demoted it to advisory, applied anyway.** The
+closer found fifteen literal password strings and read the fork's rule as "generated, not literal".
+FR-044's actual text (`spec.md:755-757`) governs client-side storage and display surfaces — "A
+password MUST NOT be stored or logged client-side beyond the form field being typed into… no
+surface, anywhere, that displays an existing login's password" — and says nothing about test
+fixtures; T018's own done-when asks only that no password be a real credential and none reach this
+file. The throwaways passed both bars. The `randomUUID()`-based `throwawayPassword()` helper was
+applied regardless, because it costs nothing and removes a question that would otherwise be
+re-litigated by every future reviewer. The precedent is `tests/harness/accounts.ts:39`. No
+`service_role` literal appears anywhere in the diff — the file reaches it only through
+`adminClient()` / `createTestUsers` — so FR-033/SC-020 is clean.
+
+**What makes this file hard to fool.** Every refusal is an exact `DA0xx` string match; **no
+structural code is accepted as a refusal anywhere in the file**, so a missing routine can never
+masquerade as a working guard. The `PGRST202`s it produces today are failures, not passes. The
+closer verified all eight RPC call sites against `contracts/rpc.md` argument-name by
+argument-name, which matters because a signature typo would produce a `PGRST202` that stays red
+**forever** and reads exactly like an unlanded card. Case (c)'s R-15 canary builds a fresh
+`createClient` with `persistSession: false, autoRefreshToken: false` per call, so no harness session
+can satisfy it, and it gates on `signInError` being null before comparing ids, so the
+`undefined === undefined` vacuity is unreachable. Case (i)'s concurrency assertion pins exactly one
+success and exactly one failure with `error.code === 'DA012'`, so an unmapped `23505` surfaces as
+`'23505'` and fails — the case genuinely discriminates the `23505 → DA012` mapping annotated onto
+T026.
+
+**Green progression.** Nineteen cases turn green at **T026**. Block **(j)** — `is_admin()` called
+directly, added by the coordinator to discharge T008's deferred verify half rather than leave it
+inferred from five `DA001` refusals — turns green at **T025**, and is the only case green before
+T026. Block (f)'s ban case additionally needs T020 (`members`, `kind`, `assignee`), T021–T023 (the
+member write policy and `members_zz_clear_assignee`) and **T024** (`add_member_by_email`), because
+it removes a login that owns rows inside a team workspace. The card's verify line — "red before the
+schema cards for a named reason, green after T026" — is honest, and does not mislead by omitting
+(j)'s earlier green.
+
+**Recorded coverage residue, asserted nowhere:** `DA404` (no such login) is in the error-code
+register for `set_login_password`, `delete_login` and `set_login_admin` and is exercised by no case.
+Card T018's (a)–(j) does not ask for it, so this is not a done-when failure; it is carried forward
+beside `add_member_by_email`'s reactivation branch.
+
+The `account-provisioning` map entry is updated in the same change set: `tests:` now names this
+file, and its `verify` records that the evidence exists but is red by design until T025 and T026.
+Status stays **UNTESTED** — a red file is not a validation.
+
+**Not proven by this card:** no provisioning behaviour is verified. The file is evidence written
+before the code and stays red until T026.
+
+Sign-off: Andrii Tkhorenko (single-operator).

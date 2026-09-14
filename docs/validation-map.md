@@ -103,8 +103,8 @@ distinctions below.
   criticality: HIGH
   status: UNTESTED
   paths: [supabase/schema.sql]
-  verify: "NONE — needs writing; becomes `npx vitest run --project stack tests/stack/logins-provisioning.test.ts tests/stack/team-schema-guards.test.ts` once T018 and T026 land"
-  tests: —
+  verify: "NONE — the evidence exists but is red by design; becomes `npx vitest run --project stack tests/stack/logins-provisioning.test.ts tests/stack/team-schema-guards.test.ts` once T025 and T026 land"
+  tests: [tests/stack/logins-provisioning.test.ts]
   depends-on: [supabase-schema, supabase-auth]
   scenarios: []
   last-verified: —
