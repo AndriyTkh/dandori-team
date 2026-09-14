@@ -79,6 +79,7 @@ function localTask(o: {
     custom_fields: [],
     gcal: null,
     gcal_placed: null,
+    assignee: null,
     created_at: o.updated_at,
     updated_at: o.updated_at,
     deleted: false,
