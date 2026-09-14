@@ -2340,3 +2340,9 @@ Neither file is a P0 file; neither is touched by this lane's diff.
 **Status: FAIL.** Step 1 (P0-unedited) and step 4 (typecheck/lint/build) pass clean. The card's own `verify` — "`npm test -- --run` fully green twice consecutively" — is not met: 2 files/2 tests red, identically, on both runs. Both are pre-existing, committed-red-by-design tests waiting on other in-flight lanes (T029/`wt/sync-cache`, T036/`wt/push-refusal`) that have not merged into `002-team-workspaces`; this lane's own diff does not touch either failing file. **B1 (planning gap):** the card does not say whether "fully green" means the literal whole repo or the subset already integrated into this branch — owner ruling needed before this gate can close.
 
 sign-off: Andrii Tkhorenko (single-operator)
+
+## Schema lane review — 67a56d8..c5fda53 (2026-09-14)
+
+Reviewer verdict FAIL: transcription clean, three blocking RLS reachability findings + FR-010 gap; fixed by T023a. Full text follows.
+
+
