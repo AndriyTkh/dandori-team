@@ -100,7 +100,7 @@ distinctions below.
   sign-off: Andrii Tkhorenko (single-operator) — specs/002-team-workspaces/receipts.md "T022 receipt — fork block C" (re-verified after fork blocks A, B and C; specs/001-validation-spine/receipts.md remains the original P0 receipt)
 
 - id: account-provisioning
-  kind: backend
+  kind: store
   criticality: HIGH
   status: UNTESTED
   paths: [supabase/schema.sql, src/db/api.ts, src/sync/sync.ts, src/components/Settings.tsx]
@@ -113,7 +113,7 @@ distinctions below.
   accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T008 and T018 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers the provisioning routines, the first-account trigger on auth.users and the admin guards. Nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
 
 - id: membership
-  kind: backend
+  kind: store
   criticality: HIGH
   status: UNTESTED
   paths: [supabase/schema.sql, src/db/api.ts]
@@ -126,7 +126,7 @@ distinctions below.
   accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T010, T014, T017, T019, T021, T022, T024 and T026 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers `public.members`, the `members_one_per_person` constraint, `is_member`/`is_owner`, `on_workspace_kind_change` and the two membership RPCs. The red-first tests these cards write are committed **red** on purpose and prove nothing until the schema cards land; nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
 
 - id: team-rls
-  kind: backend
+  kind: store
   criticality: HIGH
   status: UNTESTED
   paths: [supabase/schema.sql]
