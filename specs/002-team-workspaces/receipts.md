@@ -1659,3 +1659,190 @@ T051 own that.
 **Not proven by this card:** nothing about the v3 schema is verified, because there is no v3 yet.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T035 receipt — one refused row must not wedge the rows queued behind it (2026-09-14)
+
+Merged as `650b4fa` from lane `wt/push-refusal` (lane commit `2eb0174`). Artefact:
+`tests/stack/push-refusal-fallback.test.ts`, `+434/-0`, two cases. **Authored ahead of its nominal
+`blocked-by: T032`, which is this card's whole point**: `sync-engine` is `VALIDATED` HIGH-tier
+substrate, so ADR-0002's test-first rule is at its strictest, and D-18 states the obligation in the
+card's own text. The test precedes the change it justifies.
+
+**The red run, which the card's done-when requires be recorded here so the defect is evidenced rather
+than asserted.** Run by the coordinator on the `supabase` CLI local stack:
+
+```
+npx vitest run --project stack tests/stack/push-refusal-fallback.test.ts
+ ✓ positive control: with no refused row anywhere in the batch, queued rows land and clear _dirty within one cycle  1144ms
+ × red (D-18): an innocent row queued behind a refused row in the same table batch must not be wedged  1527ms
+   → expected 1 to be +0 // Object.is equality
+
+AssertionError: expected 1 to be +0 // Object.is equality
+ ❯ tests/stack/push-refusal-fallback.test.ts:381:41
+      expect(innocentTaskAfter?._dirty).toBe(0)
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+```
+
+`_dirty === 1` on a row that did nothing wrong, after three push cycles. That is D-18's defect, on a
+real stack, with the control green in the same run.
+
+**This file is the first in the feature whose red is behavioural rather than structural**, and the
+distinction was the card's central design problem. No fork schema is used anywhere: no `members`, no
+`workspaces.kind`. Both cases run entirely against upstream's existing `own_rows`
+(`supabase/schema.sql:238-254`). Had the file needed any of T020's schema, it would have gone red for
+a structural reason and the defect would have been invisible underneath it.
+
+**The construction that makes the refusal reachable at all, and why it is delicate.** `42501` is
+raised only when a row passes the read half's `using` clause and its new values then fail
+`with check`. A row failing `using` matches **nothing** — zero rows, no error, PostgREST 204 with
+`error === null` — which would never reach the branch D-18 describes. The refused row is therefore
+deliberately a **fresh id**, never written to the server, so the `upsert` takes the INSERT path,
+where only `WITH CHECK` is evaluated and `USING` is never consulted. That is stated both in the
+header and inline at the fixture, because an edit that reuses an existing id would silently convert
+the red into a 204 and the file would pass while proving nothing.
+
+### The card's literal red-phase instruction was not followed, deliberately, and the closer upheld it
+
+The card says "assert exactly that in the red phase — the innocent row is still `_dirty` after three
+cycles". The file asserts the opposite: `expect(innocentTaskAfter?._dirty).toBe(0)`, which fails
+today and passes after T036.
+
+The card's own done-when is the binding half — "SC-017's 'one refused row does not block the others'
+has a **failing-then-passing** receipt". An assertion that the row *is still dirty* passes today and
+would have to be **inverted** at T036; an inverted assertion is a rewritten test, and a test rewritten
+between red and green proves nothing about the change that happened in between. It would also break
+ADR-0002's test-first rule at precisely the point where this card says the rule is strictest. The
+shape used here is the only one yielding **one unmodified file** that is red before T036 and green
+after.
+
+### Two blocking findings, both invisible in the first run, and the second one was dead code
+
+**B1 — the proof of the refusal mechanic could not survive the card it greens at.** The file
+originally proved a genuine `42501` had occurred by spying on `console.error`. That works today:
+`src/sync/sync.ts:227` `if (error) throw error` → per-table catch at `:274-277` →
+`console.error('[sync] push failed: ' + table, err)` at `:276`, with the PostgrestError as the second
+argument. It is the only `console.error` on the push path.
+
+**But T036 deletes that path.** D-18 point 2 replaces `throw error` with a row-by-row retry inside
+the same `try`; D-18 point 5 requires `pushFailed` be set only for transport failures, never for a
+row the server deliberately refused — so after T036 the batch `42501` never reaches `:274-277` and
+D-18 mandates no log at all. The assertion would then fail for a reason unrelated to what it
+measures, and **the file could not go green at T036** — exactly what its own header promises.
+
+Worse, nothing else in the file or the repo pinned the SQLSTATE.
+`tests/stack/rls-two-accounts.test.ts:104-113`, cited in the header as the independent pin, asserts
+only `expect(error).not.toBeNull()` and never inspects `.code`. With the spy gone, the card's
+requirement that no structural code be accepted as a refusal would have gone with it.
+
+The replacement is an out-of-band probe taken before `flushQueue()`, with the same fixture and the
+same INSERT shape the queued row takes:
+
+```ts
+const { error: probe } = await rawActing.from('tasks').insert({
+  id: randomUUID(), user_id: acting.user.id,
+  workspace_id: unreachableWorkspaceId, title: 'refusal probe',
+})
+expect(probe?.code).toBe('42501')
+```
+
+It never touches the sync loop, so T036 cannot disturb it; it pins the SQLSTATE rather than "an error
+happened"; and it excludes every structural code — `PGRST202`, `PGRST205`, `PGRST204`, `42P01`,
+`42703`, `23503`, `23514`, `22P02` — by construction. `tasks` carries defaults for every other NOT
+NULL column (`supabase/schema.sql:42-77`), so this insert can fail on RLS and on nothing else. The
+coordinator's re-run reached line 381, which means the probe **executes and passes today**.
+
+**B2 — the cursor assertion was dead code, and would have stayed dead after T036.** `readCursors()`
+reads `synced_at:<table>` (`src/sync/sync.ts:21`). `wipeLocal()` clears `db.meta`
+(`src/db/local.ts:115-123`) and runs in the `afterEach` and in the prior case's `finally`. Nothing
+between the start of the case and the capture pulled — `flushQueue()` is push-only
+(`src/sync/sync.ts:304-314`). So every `cursorsBefore[table]` was `null` and the
+`if (before === null) continue` guard skipped **every table on every run**. Obligation (iv) of the
+card — "no other table's cursor moved backwards" — was never executed, in red or in green. A cursor
+that never moved satisfied it without running a single assertion.
+
+The fix drives one full `driveSyncCycle()` after sign-in and **before** any row is seeded dirty, then
+captures. Non-perturbation was traced rather than assumed: nothing is dirty at that point, so the
+cycle's push half has nothing to send; `acting` already owns one server row, so
+`pullTable('workspaces')` receives a non-empty first page and sets `synced_at:workspaces`
+(`sync.ts:405`), while `labels` and `notes` legitimately stay `null` because their first page is
+empty and `stamp` never advances past `since`. A canary —
+`expect(Object.values(cursorsBefore).some((v) => v !== null)).toBe(true)` — now makes a relapse into
+dead code loud instead of silent.
+
+**Both findings sat in the region the first run never reached.** The run stopped at the central
+assertion, so everything after it — the server read-back, `remaining === 0`, the refused-row drop,
+`getSyncState()`, the cursor loop — was unexecuted, and stays unexecuted until T036. That is the
+condition under which a vacuous assertion survives review, and it is why the coordinator asked the
+closer to reason about the unexecuted region specifically rather than only about the failure.
+
+### Positive controls, of which there are two kinds
+
+The card's red phase is one large negative assertion, so the control question is the whole review.
+
+- A **separate `it`** proves the push path, the fixture and the flush all work in this process: with
+  no refused row in the batch, both queued rows land and `_dirty` clears in one cycle. It shares no
+  fixture state with the defect case, and it is the only thing proving the two rows would have landed
+  *together*.
+- A genuine **in-block** control: the label canary, a different-table row queued by the same account
+  in the same cycle, which drains today. So `_dirty === 1` on the task cannot be "sync never ran" or
+  "this account cannot push". A same-table in-block control is impossible by construction — the whole
+  batch is wedged — so this is as strong as the shape allows.
+
+### What is asserted, and what is honestly not
+
+Of the card's four post-T036 obligations: the innocent row landing and the refused row alone being
+dropped are asserted directly; the cursor obligation is asserted and, after B2, actually executed.
+The "next pull reconciles the dropped row's true state" assertion (`expect(refusedAfterPull)
+.toBeUndefined()`) is real and non-trivial — D-18 point 4 requires deletion from Dexie for a row whose
+workspace is unreachable — but D-18 leaves T036 free to delete during push or after pull, and the
+assertion passes either way. It does not distinguish the two, which is correct, because D-18's
+criterion is the deletion and not its timing. The header says so rather than overclaiming.
+
+`getSyncState()` not being `'error'` is an **indirect** stand-in for D-18's "`pushFailed` is false":
+`pushFailed` is module-private (`src/sync/sync.ts:56`) and reaches the outside only through `settle()`
+(`:65-68`), and the assertion is taken after a full cycle, so a pull failure would produce the same
+`'error'`. Recorded in the header rather than silently accepted, and no source change was made to
+expose it — that would be scope this card does not carry.
+
+**`keep_newer` is not a confounder here, and the header now explains why** — a question worth settling
+in writing because every other card in this feature has had to guard against it. `keep_newer` is
+attached `before update` **only** (`supabase/schema.sql:199-205`, the `before update` at `:202`), not
+`before insert or update` — contrast `touch_synced_at` at `:124`. Every row this file pushes carries
+a fresh `randomUUID()` id, so all writes are INSERTs and `keep_newer` never evaluates. That is what
+makes the plain `new Date().toISOString()` stamps safe here, where `tests/stack/lww-conflict.test.ts`
+needs fixed `T_NEWER`/`T_STALE` constants. A future edit reusing an existing id would need those same
+constants, or a `42501`-shaped red would silently become a `keep_newer`-refused UPDATE with
+`error === null` and zero rows changed.
+
+**`mergeRows` confirmed untouched**, as the card asks. It is at `src/sync/sync.ts:409-458`, and
+D-18's "What is explicitly not touched" names exactly `mergeRows (409-458)`, `keep_newer`, the pull
+loop, the refused-id path at `240-272` and `SYNCED_TABLES` ordering. The file never imports, calls or
+stubs it; the only path reaching it is the reconciliation cycle, exercised as every other stack test
+exercises the pull side.
+
+**A stale line cite in the plan was found and corrected in the same change set** (`9e0607b`). D-7's
+own 2026-09-13 correction placed the upsert-and-throw at `sync.ts:249-252`; the real lines are
+`:223-227` with the `throw` at `:227`, while `:249` is the closing brace of the `db.transaction`
+bookkeeping block at `:241-249`. The test file cited `:223-227` and was right; `plan.md` and T035's
+card were wrong and are now fixed. `:257-272` and `:274-277` were and remain accurate.
+
+**Declined, with the reason recorded:** the file does not assert the wire shape of the per-row retry —
+it does not count individual upsert requests. That would pin an implementation detail T036 is free to
+choose (a sequential loop or `Promise.all`) rather than the outcome FR-041 and SC-017 require. Stated
+in the header under what the file deliberately does not cover.
+
+Traps (i) and (ii) do not arise: no module-level fixture variable exists — every account, workspace
+and row is created inside its own `it`, so a throw in one case cannot unseed the other — and the hooks
+do only `signOut()` and `wipeLocal()`, with no SQL cleanup, so the `to_regclass`-probe-versus-SQLSTATE
+question does not apply. Teardown is in a `finally` in both cases. Emails are unique per call, ids are
+`randomUUID()`, clients are built `persistSession: false`, and server rows cascade from
+`auth.users` on delete, so nothing leaks between files. No credential, key, token or `service_role`
+literal appears — FR-044, FR-033 and SC-020 clean.
+
+**Not proven by this card:** the fallback does not exist. `sync-engine` keeps its `VALIDATED` status
+on its P0 receipts and is **not** re-signed here; T039 re-verifies it immediately after T036, which is
+the point of ordering those two cards adjacently.
+
+Sign-off: Andrii Tkhorenko (single-operator).
