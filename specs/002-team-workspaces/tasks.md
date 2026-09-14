@@ -303,7 +303,7 @@ parallel.
 satisfied by the path itself, and grow the local cache **additively** so FR-021/FR-022 and SC-012
 stay true. **The LWW rule does not change in this feature** — T038 asserts that mechanically.
 
-- [ ] T028 [data] Update `src/db/types.ts`: `SYNCED_TABLES` becomes `['workspaces','members','labels','notes','tasks']` (`members` after `workspaces`, which it FKs); `SYNCED_COLUMNS.workspaces` gains `kind: true`; `SYNCED_COLUMNS.tasks` gains `assignee: true`; a new `SYNCED_COLUMNS.members` entry carries exactly `id, workspace_id, member_id, level, created_at, updated_at, deleted` — **`user_id` and `synced_at` are in no entry** (push stamps, pull strips). Add `export type WorkspaceKind = 'personal' | 'team'`, `export type MemberLevel = 'owner' | 'member'`, `Workspace.kind: WorkspaceKind`, `Task.assignee: ID | null`, and the `Member` interface from data-model.md §3. The existing `satisfies { [K in SyncedTable]: ColumnsOf<SyncedRow[K]> }` check must remain the guard
+- [ ] T028 [data] [in-progress: coder-T028@wt/sync-cache] Update `src/db/types.ts`: `SYNCED_TABLES` becomes `['workspaces','members','labels','notes','tasks']` (`members` after `workspaces`, which it FKs); `SYNCED_COLUMNS.workspaces` gains `kind: true`; `SYNCED_COLUMNS.tasks` gains `assignee: true`; a new `SYNCED_COLUMNS.members` entry carries exactly `id, workspace_id, member_id, level, created_at, updated_at, deleted` — **`user_id` and `synced_at` are in no entry** (push stamps, pull strips). Add `export type WorkspaceKind = 'personal' | 'team'`, `export type MemberLevel = 'owner' | 'member'`, `Workspace.kind: WorkspaceKind`, `Task.assignee: ID | null`, and the `Member` interface from data-model.md §3. The existing `satisfies { [K in SyncedTable]: ColumnsOf<SyncedRow[K]> }` check must remain the guard
   - Write: `src/db/types.ts`
   - Read: data-model.md §3 (whole, including the TypeScript block); plan.md D-8, D-10; `src/db/types.ts` (whole); `src/sync/sync.ts:216`, `:418` (why `user_id`/`synced_at` are excluded); T006's R-10 verdict list
   - substrate: `local-cache` (VALIDATED — re-verified in this PR), `sync-engine` (VALIDATED)
@@ -411,7 +411,7 @@ by exactly one card (T041); every other card reads it. `src/components/Settings.
 enforces anything: every guard is convenience, and the server refuses a non-owner and a non-admin
 regardless (D-11).
 
-- [ ] T041 [ui] Add every new i18n key to `src/i18n/dict.ts` in **both** `ru` and `en`, in one card, so no other card in this taskgroup writes that file: `workspace.kindPersonal`, `workspace.kindTeam`, `members.section`, `members.owner`, `members.member`, `members.add`, `members.emailPlaceholder`, `members.noAccountHere`, `members.remove`, `members.confirmRemove`, `task.assignee`, `task.unassigned`. **No existing string is reworded, shortened or retranslated** (CLAUDE.md, `designer` role rule, applied here too). Hiding a control needs no key. Ownership: `src/i18n/` is owned by `ui` for adding keys (CLAUDE.md, ui role, amended 2026-09-13); the designer rule forbids rewording existing strings, which this card does not do.
+- [ ] T041 [ui] [in-progress: coder-T041@wt/ui] Add every new i18n key to `src/i18n/dict.ts` in **both** `ru` and `en`, in one card, so no other card in this taskgroup writes that file: `workspace.kindPersonal`, `workspace.kindTeam`, `members.section`, `members.owner`, `members.member`, `members.add`, `members.emailPlaceholder`, `members.noAccountHere`, `members.remove`, `members.confirmRemove`, `task.assignee`, `task.unassigned`. **No existing string is reworded, shortened or retranslated** (CLAUDE.md, `designer` role rule, applied here too). Hiding a control needs no key. Ownership: `src/i18n/` is owned by `ui` for adding keys (CLAUDE.md, ui role, amended 2026-09-13); the designer rule forbids rewording existing strings, which this card does not do.
   - Write: `src/i18n/dict.ts`
   - Read: plan.md D-11 (the table's i18n column and the note below it); `src/i18n/dict.ts:1-40` (the dictionary type that makes a missing language a compile error); `CLAUDE.md` → `designer` role, last bullet
   - substrate: `i18n-state` (UNTESTED, LOW — stays UNTESTED through P1 by design, ADR-0003 Consequences)
@@ -647,6 +647,14 @@ and no agent handles a hosted key.
 - **Owner gate cleared 2026-09-13: no card remains blocked on the owner.** Two follow-up decisions
   (in-app login provisioning; kind switchability) are recorded in spec.md and are **not** on this
   feature's path.
+
+- **Owner ruling 2026-09-14 (`docs/owner-approvals.md` gate 6, `docs/assumptions.md` A-003): feature lanes
+  replace the TG-1→TG-2→TG-3 hard gate.** `supabase/schema.sql` cards stay strictly serial on the
+  primary checkout. TG-2 runs in `wt/sync-cache` starting now (T028 → T029/T032/T034; T031/T033 once
+  T024/T025 are in). TG-3 runs in `wt/ui`: T041 now, the rest once T031 lands. `blocked-by: T027` on
+  T028 is superseded by this ruling. Review is per lane (T027 + whole-schema diff, T038, T050/T057),
+  not per card. Test-first cards keep their red-until-code rule; in-lane runs are `--project local` +
+  `tsc`, stack runs are serialized on the primary at integration (one local DB; T003's flake).
 
 **MVP scope**: TG-0 + TG-1. That alone is the whole access transform, proven at the data layer by
 two authenticated clients with no browser, and it is the half of this feature that can leak one
