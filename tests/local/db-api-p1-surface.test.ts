@@ -47,10 +47,28 @@ import { translate } from '../../src/i18n'
  * exercised in this Docker-free tier; TG-1's stack tests cover them instead.
  */
 
-vi.mock('../../src/sync/sync', () => ({
-  requestPush: vi.fn(),
-  isAdminRemote: vi.fn(),
-}))
+// `refreshIsAdminCache` (T036a) is the one write path for the `is-admin`
+// cache, now shared by `src/db/api.ts`'s `refreshIsAdmin()` (below) and
+// `src/sync/sync.ts`'s own pull cycle — so the mock reproduces its body
+// (fetch through the mocked `isAdminRemote`, write through the real,
+// unmocked `src/db/local.ts`) rather than stubbing it inertly: a bare
+// `vi.fn()` here would silently stop `refreshIsAdmin()` from writing `meta`
+// at all, since api.ts no longer does that write itself. `setMeta` is
+// reached through a dynamic import because `vi.mock` factories are hoisted
+// above this file's own top-level imports.
+vi.mock('../../src/sync/sync', () => {
+  const isAdminRemote = vi.fn()
+  return {
+    requestPush: vi.fn(),
+    isAdminRemote,
+    refreshIsAdminCache: vi.fn(async () => {
+      const admin = await isAdminRemote()
+      const { setMeta } = await import('../../src/db/local')
+      await setMeta('is-admin', String(admin))
+      return admin
+    }),
+  }
+})
 
 import { isAdminRemote, requestPush } from '../../src/sync/sync'
 
@@ -271,11 +289,12 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
   // ------------------------------------------------------------ deleteWorkspace
 
   describe('deleteWorkspace(id)', () => {
-    it('soft-deletes the workspace and every live label, task and note under it', async () => {
+    it('soft-deletes the workspace and every live label, task, note and member under it', async () => {
       await db.workspaces.add(workspaceRow({ id: 'ws-1' }))
       await db.labels.add(labelRow({ id: 'label-1', workspace_id: 'ws-1' }))
       await db.tasks.add(taskRow({ id: 'task-1', workspace_id: 'ws-1' }))
       await db.notes.add(noteRow({ id: 'note-1', workspace_id: 'ws-1' }))
+      await db.members.add(memberRow({ id: 'member-1', workspace_id: 'ws-1', member_id: 'user-1' }))
       vi.setSystemTime(new Date(T1))
 
       await deleteWorkspace('ws-1')
@@ -288,6 +307,7 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
         [db.labels, 'label-1'],
         [db.tasks, 'task-1'],
         [db.notes, 'note-1'],
+        [db.members, 'member-1'],
       ] as const) {
         const row = await table.get(id)
         expect(row, id).toBeDefined()
@@ -299,6 +319,7 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
       expect(await db.labels.count()).toBe(1)
       expect(await db.tasks.count()).toBe(1)
       expect(await db.notes.count()).toBe(1)
+      expect(await db.members.count()).toBe(1)
       expect(requestPushMock).toHaveBeenCalledTimes(1)
     })
 
@@ -318,6 +339,7 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
       await db.tasks.add(taskRow({ id: 'task-2', workspace_id: 'ws-2' }))
       await db.labels.add(labelRow({ id: 'label-2', workspace_id: 'ws-2' }))
       await db.notes.add(noteRow({ id: 'note-2', workspace_id: 'ws-2' }))
+      await db.members.add(memberRow({ id: 'member-2', workspace_id: 'ws-2', member_id: 'user-2' }))
       vi.setSystemTime(new Date(T1))
 
       await deleteWorkspace('ws-1')
@@ -326,6 +348,9 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
       expect(await db.tasks.get('task-2')).toEqual(taskRow({ id: 'task-2', workspace_id: 'ws-2' }))
       expect(await db.labels.get('label-2')).toEqual(labelRow({ id: 'label-2', workspace_id: 'ws-2' }))
       expect(await db.notes.get('note-2')).toEqual(noteRow({ id: 'note-2', workspace_id: 'ws-2' }))
+      expect(await db.members.get('member-2')).toEqual(
+        memberRow({ id: 'member-2', workspace_id: 'ws-2', member_id: 'user-2' }),
+      )
     })
 
     it('cascades to children even when the workspace row itself is absent locally', async () => {

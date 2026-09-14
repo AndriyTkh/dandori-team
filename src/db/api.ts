@@ -1,11 +1,11 @@
-import { db, getMeta, setMeta, stripLocal, type Local } from './local'
+import { db, getMeta, stripLocal, type Local } from './local'
 import {
   addMemberByEmailRemote,
   createLoginRemote,
   deleteLoginRemote,
-  isAdminRemote,
   listLoginsRemote,
   memberEmailsRemote,
+  refreshIsAdminCache,
   requestPush,
   setLoginAdminRemote,
   setLoginPasswordRemote,
@@ -125,11 +125,11 @@ export async function updateWorkspace(id: ID, patch: Pick<Workspace, 'kind'>): P
 
 /** Deleting a workspace soft-deletes its content too, or the orphans stay out of reach. */
 export async function deleteWorkspace(id: ID): Promise<void> {
-  await db.transaction('rw', db.workspaces, db.labels, db.tasks, db.notes, async () => {
+  await db.transaction('rw', db.workspaces, db.labels, db.tasks, db.notes, db.members, async () => {
     const ws = await db.workspaces.get(id)
     if (ws) await db.workspaces.put(touch({ ...ws, deleted: true }))
 
-    for (const table of [db.labels, db.tasks, db.notes]) {
+    for (const table of [db.labels, db.tasks, db.notes, db.members]) {
       const rows = await table.where('workspace_id').equals(id).toArray()
       for (const row of rows) {
         if (!row.deleted) await table.put(touch({ ...row, deleted: true }) as never)
@@ -222,9 +222,7 @@ export async function isAdmin(): Promise<boolean> {
  * shared device never leaves the next person believing they are an admin.
  */
 export async function refreshIsAdmin(): Promise<boolean> {
-  const admin = await isAdminRemote()
-  await setMeta('is-admin', String(admin))
-  return admin
+  return refreshIsAdminCache()
 }
 
 // -------------------------------------------------------------------- logins
