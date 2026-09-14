@@ -103,10 +103,10 @@ distinctions below.
   kind: backend
   criticality: HIGH
   status: UNTESTED
-  paths: [supabase/schema.sql]
+  paths: [supabase/schema.sql, src/db/api.ts, src/sync/sync.ts, src/components/Settings.tsx]
   verify: "NONE — the evidence exists but is red by design; becomes `npx vitest run --project stack tests/stack/logins-provisioning.test.ts tests/stack/team-schema-guards.test.ts` once T025 and T026 land"
   tests: [tests/stack/logins-provisioning.test.ts]
-  depends-on: [supabase-schema, supabase-auth]
+  depends-on: [supabase-schema, supabase-auth, db-api]
   scenarios: []
   last-verified: —
   sign-off: —
@@ -116,7 +116,7 @@ distinctions below.
   kind: backend
   criticality: HIGH
   status: UNTESTED
-  paths: [supabase/schema.sql]
+  paths: [supabase/schema.sql, src/db/api.ts]
   verify: "NONE — needs writing; becomes `npx vitest run --project stack tests/stack/members-two-accounts.test.ts tests/stack/kind-switch.test.ts` once T020–T024 land"
   tests: —
   depends-on: [supabase-schema, supabase-auth]
@@ -137,6 +137,18 @@ distinctions below.
   last-verified: —
   sign-off: —
   accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T011–T017 and T023 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers the replaced `own_rows` predicate block on `workspaces`/`labels`/`tasks`/`notes` and the fork-only `members_access` policy. **The asymmetry documented in the fork-substrate note below is the thing at risk**: both halves of each policy are replaced separately, and a single predicate pasted into both would change the security model silently. Until T023 lands and T011–T013 run green, the fork has no executed evidence that team access resolves correctly or that personal access is unchanged; nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
+
+- id: multi-account-cache
+  kind: store
+  criticality: HIGH
+  status: UNTESTED
+  paths: [src/db/local.ts, src/db/api.ts]
+  verify: "npx vitest run --project local tests/local/no-wipe-on-reach-growth.test.ts tests/local/claim-cache.test.ts"
+  tests: [tests/local/no-wipe-on-reach-growth.test.ts, tests/local/claim-cache.test.ts]
+  depends-on: [local-cache]
+  scenarios: []
+  last-verified: —
+  sign-off: —
 
 - id: supabase-auth
   kind: adapter
