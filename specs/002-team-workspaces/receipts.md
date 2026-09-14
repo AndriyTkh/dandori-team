@@ -2503,3 +2503,36 @@ Lanes `wt/sync-cache` (c783b3e) and `wt/ui` (dc7f49c) merged; T023a committed (5
 dropped by hand, `schema-apply.test.ts` 6/6 (idempotent double apply). Full suite `npm test -- --run`:
 run 1 — 201/203 (`soft-delete.test.ts` acceptances 1 and 4 failed in the parallel run, 3/3 alone,
 A-017); **run 2 — 20 files, 203/203 passed.** Pushed; PR #1 → main.
+
+## T058 — hosted schema re-run (2026-09-14)
+
+Applied `supabase/schema.sql` at **HEAD `f6ed810`**, not the earlier-named `521d99a` (A-018: the
+diff between them is the FR-010 trigger body, `is_superuser` → `auth.uid() is null`). Run through
+the Supabase **Management API** (`POST /v1/projects/{ref}/database/query`, token from the
+operator's environment) rather than the dashboard SQL editor — same statement stream, recorded
+output. Project `Dandori_host`, hosted ref not recorded here (FR-033).
+
+- apply: HTTP `201`, body `[]` — no error. 48894 bytes, one transaction.
+- **US1 acceptance 1:** `select kind, count(*) from public.workspaces group by 1`
+  → `[{"kind":"personal","n":"1"}]`, identical to the pre-apply read. No row changed value, no
+  row became `team` by omission, no backfill.
+- FR-010 trigger reconciled: installed `members_owner_invariant` source contains
+  `auth.uid() is null` (was the superseded `is_superuser` test from `521d99a`).
+- 22 public functions present (`is_member`/`is_owner`/`is_admin`, `add_member_by_email`,
+  `create_login`/`_create_login_impl`/`delete_login`/`list_logins`/`set_login_admin`/
+  `set_login_password`, `seed_first_admin`, `seed_workspace_owner`, `on_workspace_kind_change`,
+  `members_owner_invariant`, `assignee_must_be_member`, `clear_assignee_on_removal`,
+  `keep_creator`, `workspace_member_emails`, plus upstream's `keep_newer`,
+  `stay_deleted_with_workspace`, `follow_workspace_delete`, `touch_synced_at`).
+- Triggers present: `users_seed_first_admin`, `workspaces_seed_owner`,
+  `workspaces_zz_kind_change`, `members_zz_owner_invariant`, `members_zz_clear_assignee(_del)`,
+  `tasks_zz_assignee_member`, the four `*_zz_keep_creator`, and every upstream trigger
+  (`*_keep_newer`, `*_stay_deleted`, `*_synced_at`, `workspaces_cascade_delete`).
+- Policies: 10 — `own_rows` on the four upstream tables, `members_access`, and the five split
+  `*_zz_delete_creator_only` / `members_zz_delete_owner_only` halves.
+- Pre-state note: `521d99a`'s schema was already on the origin from an earlier attempt; this run
+  was a reconciliation, which is exactly the idempotence ADR-0005 claims.
+- `instance_admins` = **0 rows** → T059 still owed. `auth.users` = 1 pre-existing account; per
+  A-020 the owner mints a real account before the backfill.
+
+Status: **PASS**. Sign-off: Andrii Tkhorenko (single-operator).

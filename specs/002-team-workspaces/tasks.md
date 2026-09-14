@@ -580,7 +580,7 @@ suite is green. **Nothing here runs in the suite and nothing in the suite touche
 (SC-013). Steps marked **[owner]** are performed by the fork owner in person; no agent performs them
 and no agent handles a hosted key.
 
-- [ ] T058 [owner] Re-run the whole of `supabase/schema.sql` in the **hosted** project's SQL editor. It is idempotent, and re-running it is upstream's own convention (ADR-0005). Expect no error and no row change — in particular, every pre-existing workspace must read `kind = 'personal'` afterwards without a backfill (US1 acceptance 1, D-2)
+- [x] T058 [owner] Re-run the whole of `supabase/schema.sql` in the **hosted** project's SQL editor. It is idempotent, and re-running it is upstream's own convention (ADR-0005). Expect no error and no row change — in particular, every pre-existing workspace must read `kind = 'personal'` afterwards without a backfill (US1 acceptance 1, D-2)
   - Write: `specs/002-team-workspaces/receipts.md`
   - Read: plan.md D-14 step 1, D-2; `supabase/schema.sql` (post-TG-1); ADR-0005
   - substrate: `supabase-schema` (VALIDATED)
