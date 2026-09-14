@@ -61,13 +61,20 @@ import { assertStackReachable, DB_URL } from '../harness/stack'
  * `it.each` immediately above it — asserting them again here would just re-assert the read half
  * under a different name.
  *
- * Scope: T012 (the executed inversion demonstration, FR-013/SC-005) and T013 (the R-7
- * `user_id`-does-not-drift assertion) are separate, later cards and are deliberately NOT
- * written here. T012's block belongs directly after this file's describe blocks, before the
- * closing of the outer suite — it needs the same `teamWorkspaceId`/`userA`/`userB` fixtures
- * already seeded below and one raw `pg` transaction of its own. T013's assertion belongs
- * inside (or immediately after) the "write half" cases of the labels/tasks/notes
- * describe.each block below, since it needs the exact row B edits there.
+ * Scope: T012 (the executed inversion demonstration, FR-013/SC-005) is written here, as the
+ * file's last `describe` block, directly reusing `teamWorkspaceId`/`aPersonalWorkspaceId`/
+ * `userA`/`userB`/`userC` and one raw `pg` transaction per demonstration (see that block's own
+ * header comment for the technique and the table/technique choices). T013 (the R-7
+ * `user_id`-does-not-drift assertion) is a separate, later card and is deliberately NOT written
+ * here; its assertion belongs inside (or immediately after) the "write half" cases of the
+ * labels/tasks/notes describe.each block above, since it needs the exact row B edits there.
+ *
+ * T012 joins the same pre-T020 red as every other case in this file, and for the same reason:
+ * this file's top-level `beforeAll` throws before any `it` runs, so T012's cases never reach
+ * their own bodies today either — see that block's header comment for whether a *personal*-only
+ * demonstration could, in principle, run without `kind`/`members` (it could not, in this file:
+ * the shared seed dies on the team-workspace insert, which comes first, before any personal
+ * workspace is ever created).
  *
  * NOT discriminated by this file: T023's membership branch being conjoined with
  * `auth.uid() = user_id` (rather than OR'd, as it must be) on the child-table write half. Every
@@ -127,6 +134,157 @@ async function pg(): Promise<Client> {
  * their own members cleanup). Workspaces/labels/tasks/notes are also cascaded away by
  * `deleteTestUser` (auth.users -> ... on delete cascade), so this is belt-and-suspenders for
  * members specifically and a no-op if the table does not exist yet. */
+// ---------------------------------------------------------------------------------------------
+// T012 helpers — the executed inversion demonstration (FR-013, SC-005, plan.md D-13).
+//
+// Each demonstration below opens its own `pg` connection and one transaction that always rolls
+// back (`try { … } finally { rollback }`, never a bare sequential rollback an assertion's throw
+// could skip), drops and recreates `own_rows` with one half's *actual, currently-deployed* text
+// negated, and observes the outcome flip under `set local role authenticated` + `set local
+// request.jwt.claims` — exactly the plan.md D-13 pseudocode, one connection, one transaction, DDL
+// that Postgres never commits.
+//
+// The predicate text is read back from `pg_policies` rather than retyped from
+// `contracts/policies.sql`: this makes the demonstration correct against whatever is *actually*
+// deployed at run time — today's pre-T020 `auth.uid() = user_id` as much as T023's membership
+// predicate — rather than a guess of what T023 will land verbatim. A hand-copied assumption would
+// be the thing to distrust here, not the introspected text.
+//
+// Technique chosen — invert (negate), not equalize: FR-013/the card allow either, but on a
+// *personal* workspace, equalizing tasks' read half to its write half is a no-op with these
+// fixtures (`is_member` is always false for a personal workspace, and the write half's ownership
+// `exists(...)` clause is tautologically true whenever `auth.uid() = user_id`, which is exactly
+// when the read half already admits the caller) — so equalizing would not flip anything on
+// personal and would silently fail to demonstrate SC-005 there. Negation flips every combination
+// below deterministically, so it is used uniformly for personal and team alike.
+//
+// Tables chosen — `tasks` AND `workspaces`, not `labels`/`notes`. FR-013 names no table at all,
+// so `tasks` alone discharges it; SC-005's own text is "either half of either table", and a
+// reviewer applying that literally would not accept one table as "either table" — so `workspaces`
+// is demonstrated too, closing SC-005 on its plain reading rather than leaving an argument for
+// T057's whole-branch review. `tasks` is the sharpest of the three child tables (read AND write
+// halves both carry a membership branch), and `labels`/`notes` carry the exact same predicate
+// shape as `tasks` — two more near-identical copies would buy no additional coverage and only
+// make this block harder to read, so they are deliberately left out.
+//
+// `workspaces` is structurally different from the child tables in a way worth calling out before
+// the four cases below: its read half is the interesting one at T023 (it widens with
+// `public.is_member(id)`, so the team case below exercises owner, member AND stranger, same as
+// `tasks`), but its write half is owner-only unconditionally for both kinds — there is no
+// membership branch to invert there at all. SC-005 does not ask that personal and team differ on
+// this half, only that inverting it fails a check, so both kinds are demonstrated anyway; the two
+// write-half cases end up looking structurally similar (one flips the owner alone, the personal
+// case, because `workspaces` has no related-row `exists()` clause the way the child tables do, so
+// USING excludes a personal stranger before WITH CHECK is ever reached; the other flips the owner
+// AND the member, the team case, because membership admits the member past USING first). That
+// similarity is intentional, not a copy-paste leftover — see each case's own comment.
+//
+// Independent of execution order — each demonstration re-affirms (via `ensureTeamMembership`,
+// upserted inside its own transaction, as the bypass-RLS `postgres` role, and rolled back with
+// everything else) that A is owner and B is member of `teamWorkspaceId`, rather than trusting
+// whatever state a sibling `describe` (in particular "post-removal", which soft-deletes B's
+// membership in its own `beforeAll` with no reversal) happened to leave behind. Depending on
+// declaration-order execution to still find B a live member would be exactly the kind of
+// cross-block state bleed the file's other structural traps warn about.
+async function runAsClaim(client: Client, userId: string, sql: string, params: unknown[] = []): Promise<unknown[]> {
+  await client.query('set local role authenticated')
+  await client.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: userId })])
+  const res = await client.query(sql, params)
+  await client.query('reset role')
+  return res.rows
+}
+
+/** A write attempt as a specific claimed user, savepointed so a `42501` (or any other error)
+ * leaves the outer transaction usable for the next attempt — without the savepoint, one refused
+ * insert would abort every statement after it, including the later `rollback`'s sibling
+ * assertions and the policy-swap DDL itself. */
+async function tryWriteAsClaim(
+  client: Client,
+  userId: string,
+  sql: string,
+  params: unknown[],
+): Promise<{ ok: boolean; code?: string }> {
+  await client.query('savepoint t012_attempt')
+  try {
+    await client.query('set local role authenticated')
+    await client.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: userId })])
+    await client.query(sql, params)
+    await client.query('reset role')
+    await client.query('release savepoint t012_attempt')
+    return { ok: true }
+  } catch (err) {
+    await client.query('rollback to savepoint t012_attempt')
+    await client.query('reset role')
+    return { ok: false, code: (err as { code?: string }).code }
+  }
+}
+
+/** An UPDATE attempt as a specific claimed user, for tables (namely `workspaces`) where "refused"
+ * can mean either of two different things and the demonstration needs to tell them apart: a row
+ * that fails the read half's USING clause simply matches nothing (`rowCount: 0`, no exception —
+ * the same 204-with-no-error shape PostgREST returns), while a row that passes USING but whose
+ * new values then fail WITH CHECK raises a real `42501`. `tryWriteAsClaim`'s INSERT-only,
+ * exception-or-nothing shape can't distinguish these, so this is a separate helper rather than a
+ * shared one pretending an UPDATE is an INSERT. Savepointed for the same reason as
+ * `tryWriteAsClaim`. */
+async function tryUpdateAsClaim(
+  client: Client,
+  userId: string,
+  sql: string,
+  params: unknown[],
+): Promise<{ rowCount: number; code?: string }> {
+  await client.query('savepoint t012_attempt')
+  try {
+    await client.query('set local role authenticated')
+    await client.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: userId })])
+    const res = await client.query(sql, params)
+    await client.query('reset role')
+    await client.query('release savepoint t012_attempt')
+    return { rowCount: res.rowCount ?? 0 }
+  } catch (err) {
+    await client.query('rollback to savepoint t012_attempt')
+    await client.query('reset role')
+    return { rowCount: 0, code: (err as { code?: string }).code }
+  }
+}
+
+/** The two halves of `own_rows` on `table`, exactly as currently deployed — introspected, never
+ * retyped from the contract, so the demonstration is honest about what it is actually inverting. */
+async function fetchPolicyHalves(client: Client, table: string): Promise<{ qual: string; withCheck: string }> {
+  const { rows } = await client.query(
+    `select qual, with_check from pg_policies where schemaname = 'public' and tablename = $1 and policyname = 'own_rows'`,
+    [table],
+  )
+  if (rows.length !== 1) {
+    throw new Error(`fetchPolicyHalves(${table}): expected exactly one own_rows policy, found ${rows.length}`)
+  }
+  return { qual: rows[0].qual as string, withCheck: rows[0].with_check as string }
+}
+
+async function installPolicy(client: Client, table: string, usingClause: string, checkClause: string): Promise<void> {
+  await client.query(`drop policy own_rows on public.${table}`)
+  await client.query(`create policy own_rows on public.${table} for all using (${usingClause}) with check (${checkClause})`)
+}
+
+/** Upserts A as owner and B as an active member of `workspaceId`, regardless of what a sibling
+ * `describe` in this file left behind — see the block comment above for why this must not depend
+ * on declaration order. Run as the bypass-RLS `postgres` role, inside the caller's own
+ * rolled-back transaction. */
+async function ensureTeamMembership(client: Client, workspaceId: string, ownerId: string, memberId: string): Promise<void> {
+  await client.query(
+    `insert into public.members (id, user_id, workspace_id, member_id, level, deleted)
+     values ($1, $2, $3, $2, 'owner', false)
+     on conflict (workspace_id, member_id) do update set deleted = false, level = 'owner'`,
+    [randomUUID(), ownerId, workspaceId],
+  )
+  await client.query(
+    `insert into public.members (id, user_id, workspace_id, member_id, level, deleted)
+     values ($1, $2, $3, $4, 'member', false)
+     on conflict (workspace_id, member_id) do update set deleted = false, level = 'member'`,
+    [randomUUID(), ownerId, workspaceId, memberId],
+  )
+}
+
 async function cleanupMembers(): Promise<void> {
   const client = await pg()
   try {
@@ -556,6 +714,405 @@ describe('team RLS — both halves (T011, US3)', () => {
         .select()
       expect(controlErr).toBeNull()
       expect(controlData).toHaveLength(1)
+    })
+  })
+
+  describe('T012 — executed inversion demonstration on own_rows (FR-013, SC-005)', () => {
+    it("read half inverted — personal workspace: the owner's access and a stranger's both flip", async () => {
+      const client = await pg()
+      try {
+        await client.query('begin')
+        const taskId = randomUUID()
+        // Seeded as the bypass-RLS `postgres` role — RLS is not under test at seeding time,
+        // exactly as the file's own beforeAll seeds (see file header).
+        await client.query(
+          `insert into public.tasks (id, user_id, workspace_id, title) values ($1, $2, $3, $4)`,
+          [taskId, userA.user.id, aPersonalWorkspaceId, 'T012 personal probe'],
+        )
+
+        const { qual, withCheck } = await fetchPolicyHalves(client, 'tasks')
+
+        // Baseline, under the real, currently-deployed read half: the owner sees the row (a
+        // positive control for the stranger's zero right below it), the stranger sees nothing.
+        const baselineOwner = await runAsClaim(client, userA.user.id, 'select id from public.tasks where id = $1', [taskId])
+        const baselineStranger = await runAsClaim(client, userB.user.id, 'select id from public.tasks where id = $1', [taskId])
+        expect(baselineOwner).toHaveLength(1)
+        expect(baselineStranger).toHaveLength(0)
+
+        await installPolicy(client, 'tasks', `not (${qual})`, withCheck)
+
+        const mutatedOwner = await runAsClaim(client, userA.user.id, 'select id from public.tasks where id = $1', [taskId])
+        const mutatedStranger = await runAsClaim(client, userB.user.id, 'select id from public.tasks where id = $1', [taskId])
+
+        // The flip itself, not merely a new outcome: each caller's mutated result must differ
+        // from that same caller's baseline above.
+        expect(mutatedOwner).not.toHaveLength(baselineOwner.length)
+        expect(mutatedStranger).not.toHaveLength(baselineStranger.length)
+        expect(mutatedOwner).toHaveLength(0)
+        expect(mutatedStranger).toHaveLength(1)
+      } finally {
+        await client.query('rollback').catch(() => {})
+        await client.end()
+      }
+    })
+
+    it("read half inverted — team workspace: owner, member and a non-member stranger all flip", async () => {
+      const client = await pg()
+      try {
+        await client.query('begin')
+        await ensureTeamMembership(client, teamWorkspaceId, userA.user.id, userB.user.id)
+        const taskId = seededRowIds.tasks
+
+        const { qual, withCheck } = await fetchPolicyHalves(client, 'tasks')
+
+        // Baseline: owner and member both see A's seeded row (each a positive control for the
+        // stranger's zero); the stranger sees nothing.
+        const baselineOwner = await runAsClaim(client, userA.user.id, 'select id from public.tasks where id = $1', [taskId])
+        const baselineMember = await runAsClaim(client, userB.user.id, 'select id from public.tasks where id = $1', [taskId])
+        const baselineStranger = await runAsClaim(client, userC.user.id, 'select id from public.tasks where id = $1', [taskId])
+        expect(baselineOwner).toHaveLength(1)
+        expect(baselineMember).toHaveLength(1)
+        expect(baselineStranger).toHaveLength(0)
+
+        await installPolicy(client, 'tasks', `not (${qual})`, withCheck)
+
+        const mutatedOwner = await runAsClaim(client, userA.user.id, 'select id from public.tasks where id = $1', [taskId])
+        const mutatedMember = await runAsClaim(client, userB.user.id, 'select id from public.tasks where id = $1', [taskId])
+        const mutatedStranger = await runAsClaim(client, userC.user.id, 'select id from public.tasks where id = $1', [taskId])
+
+        expect(mutatedOwner).not.toHaveLength(baselineOwner.length)
+        expect(mutatedMember).not.toHaveLength(baselineMember.length)
+        expect(mutatedStranger).not.toHaveLength(baselineStranger.length)
+        expect(mutatedOwner).toHaveLength(0)
+        expect(mutatedMember).toHaveLength(0)
+        expect(mutatedStranger).toHaveLength(1)
+      } finally {
+        await client.query('rollback').catch(() => {})
+        await client.end()
+      }
+    })
+
+    it("write half inverted — personal workspace: the owner's insert and a stranger's insert both flip", async () => {
+      const client = await pg()
+      try {
+        await client.query('begin')
+        const { qual, withCheck } = await fetchPolicyHalves(client, 'tasks')
+
+        const insertSql = `insert into public.tasks (id, user_id, workspace_id, title) values ($1, $2, $3, $4)`
+        const ownerRowId = randomUUID()
+        const strangerRowId = randomUUID()
+
+        // Baseline, under the real, currently-deployed write half: the owner's own insert is
+        // accepted (a positive control for the stranger's refusal right below it), the
+        // stranger's is refused with a real 42501.
+        const baselineOwner = await tryWriteAsClaim(client, userA.user.id, insertSql, [
+          ownerRowId,
+          userA.user.id,
+          aPersonalWorkspaceId,
+          'T012 owner insert',
+        ])
+        const baselineStranger = await tryWriteAsClaim(client, userB.user.id, insertSql, [
+          strangerRowId,
+          userB.user.id,
+          aPersonalWorkspaceId,
+          'T012 stranger insert',
+        ])
+        expect(baselineOwner.ok).toBe(true)
+        expect(baselineStranger.ok).toBe(false)
+        expect(baselineStranger.code).toBe('42501')
+
+        await installPolicy(client, 'tasks', qual, `not (${withCheck})`)
+
+        const mutatedOwner = await tryWriteAsClaim(client, userA.user.id, insertSql, [
+          randomUUID(),
+          userA.user.id,
+          aPersonalWorkspaceId,
+          'T012 owner insert (mutated)',
+        ])
+        const mutatedStranger = await tryWriteAsClaim(client, userB.user.id, insertSql, [
+          randomUUID(),
+          userB.user.id,
+          aPersonalWorkspaceId,
+          'T012 stranger insert (mutated)',
+        ])
+
+        expect(mutatedOwner.ok).not.toBe(baselineOwner.ok)
+        expect(mutatedStranger.ok).not.toBe(baselineStranger.ok)
+        expect(mutatedOwner.ok).toBe(false)
+        expect(mutatedOwner.code).toBe('42501')
+        expect(mutatedStranger.ok).toBe(true)
+      } finally {
+        await client.query('rollback').catch(() => {})
+        await client.end()
+      }
+    })
+
+    it('write half inverted — team workspace: owner, member and a non-member stranger all flip', async () => {
+      const client = await pg()
+      try {
+        await client.query('begin')
+        await ensureTeamMembership(client, teamWorkspaceId, userA.user.id, userB.user.id)
+        const { qual, withCheck } = await fetchPolicyHalves(client, 'tasks')
+
+        const insertSql = `insert into public.tasks (id, user_id, workspace_id, title) values ($1, $2, $3, $4)`
+
+        // Baseline: owner (ownership branch) and member (membership branch) both succeed, each a
+        // positive control for the non-member stranger's refusal right below them.
+        const baselineOwner = await tryWriteAsClaim(client, userA.user.id, insertSql, [
+          randomUUID(),
+          userA.user.id,
+          teamWorkspaceId,
+          'T012 owner insert',
+        ])
+        const baselineMember = await tryWriteAsClaim(client, userB.user.id, insertSql, [
+          randomUUID(),
+          userB.user.id,
+          teamWorkspaceId,
+          'T012 member insert',
+        ])
+        const baselineStranger = await tryWriteAsClaim(client, userC.user.id, insertSql, [
+          randomUUID(),
+          userC.user.id,
+          teamWorkspaceId,
+          'T012 stranger insert',
+        ])
+        expect(baselineOwner.ok).toBe(true)
+        expect(baselineMember.ok).toBe(true)
+        expect(baselineStranger.ok).toBe(false)
+        expect(baselineStranger.code).toBe('42501')
+
+        await installPolicy(client, 'tasks', qual, `not (${withCheck})`)
+
+        const mutatedOwner = await tryWriteAsClaim(client, userA.user.id, insertSql, [
+          randomUUID(),
+          userA.user.id,
+          teamWorkspaceId,
+          'T012 owner insert (mutated)',
+        ])
+        const mutatedMember = await tryWriteAsClaim(client, userB.user.id, insertSql, [
+          randomUUID(),
+          userB.user.id,
+          teamWorkspaceId,
+          'T012 member insert (mutated)',
+        ])
+        const mutatedStranger = await tryWriteAsClaim(client, userC.user.id, insertSql, [
+          randomUUID(),
+          userC.user.id,
+          teamWorkspaceId,
+          'T012 stranger insert (mutated)',
+        ])
+
+        expect(mutatedOwner.ok).not.toBe(baselineOwner.ok)
+        expect(mutatedMember.ok).not.toBe(baselineMember.ok)
+        expect(mutatedStranger.ok).not.toBe(baselineStranger.ok)
+        expect(mutatedOwner.ok).toBe(false)
+        expect(mutatedOwner.code).toBe('42501')
+        expect(mutatedMember.ok).toBe(false)
+        expect(mutatedMember.code).toBe('42501')
+        expect(mutatedStranger.ok).toBe(true)
+      } finally {
+        await client.query('rollback').catch(() => {})
+        await client.end()
+      }
+    })
+
+    // -----------------------------------------------------------------------------------------
+    // `workspaces` counterparts (coordinator review: SC-005 says "either table", and one table
+    // alone would leave that reading open to argument at T057). Read half is the one that widens
+    // with `is_member(id)` at T023 — the team case below asserts owner, member AND stranger, same
+    // shape as `tasks`' read-half cases. Write half is owner-only, unconditionally, for both
+    // kinds — see the block's own header comment for why the two write-half cases below look
+    // structurally different from each other in how many callers flip (one for personal, two for
+    // team) despite testing "the same" owner-only clause: that asymmetry is `workspaces` having no
+    // related-row `exists()` clause the way the child tables do, so USING alone excludes a
+    // personal stranger before WITH CHECK is ever reached, whereas team membership admits the
+    // member past USING first. Neither case is a placeholder or a copy of the other.
+
+    it("read half inverted — personal workspace (workspaces): the owner's access and a stranger's both flip", async () => {
+      const client = await pg()
+      try {
+        await client.query('begin')
+        const { qual, withCheck } = await fetchPolicyHalves(client, 'workspaces')
+
+        // Baseline, under the real, currently-deployed read half: the owner sees the workspace (a
+        // positive control for the stranger's zero right below it), the stranger sees nothing.
+        const baselineOwner = await runAsClaim(client, userA.user.id, 'select id from public.workspaces where id = $1', [
+          aPersonalWorkspaceId,
+        ])
+        const baselineStranger = await runAsClaim(client, userB.user.id, 'select id from public.workspaces where id = $1', [
+          aPersonalWorkspaceId,
+        ])
+        expect(baselineOwner).toHaveLength(1)
+        expect(baselineStranger).toHaveLength(0)
+
+        await installPolicy(client, 'workspaces', `not (${qual})`, withCheck)
+
+        const mutatedOwner = await runAsClaim(client, userA.user.id, 'select id from public.workspaces where id = $1', [
+          aPersonalWorkspaceId,
+        ])
+        const mutatedStranger = await runAsClaim(client, userB.user.id, 'select id from public.workspaces where id = $1', [
+          aPersonalWorkspaceId,
+        ])
+
+        expect(mutatedOwner).not.toHaveLength(baselineOwner.length)
+        expect(mutatedStranger).not.toHaveLength(baselineStranger.length)
+        expect(mutatedOwner).toHaveLength(0)
+        expect(mutatedStranger).toHaveLength(1)
+      } finally {
+        await client.query('rollback').catch(() => {})
+        await client.end()
+      }
+    })
+
+    it('read half inverted — team workspace (workspaces): owner, member and a non-member stranger all flip', async () => {
+      const client = await pg()
+      try {
+        await client.query('begin')
+        await ensureTeamMembership(client, teamWorkspaceId, userA.user.id, userB.user.id)
+        const { qual, withCheck } = await fetchPolicyHalves(client, 'workspaces')
+
+        // Baseline: owner and member both see the team workspace (each a positive control for the
+        // stranger's zero); the stranger sees nothing — this is the half that is supposed to
+        // widen at T023 (`is_member(id)`), so a dead membership branch here is exactly what this
+        // case exists to catch.
+        const baselineOwner = await runAsClaim(client, userA.user.id, 'select id from public.workspaces where id = $1', [
+          teamWorkspaceId,
+        ])
+        const baselineMember = await runAsClaim(client, userB.user.id, 'select id from public.workspaces where id = $1', [
+          teamWorkspaceId,
+        ])
+        const baselineStranger = await runAsClaim(client, userC.user.id, 'select id from public.workspaces where id = $1', [
+          teamWorkspaceId,
+        ])
+        expect(baselineOwner).toHaveLength(1)
+        expect(baselineMember).toHaveLength(1)
+        expect(baselineStranger).toHaveLength(0)
+
+        await installPolicy(client, 'workspaces', `not (${qual})`, withCheck)
+
+        const mutatedOwner = await runAsClaim(client, userA.user.id, 'select id from public.workspaces where id = $1', [
+          teamWorkspaceId,
+        ])
+        const mutatedMember = await runAsClaim(client, userB.user.id, 'select id from public.workspaces where id = $1', [
+          teamWorkspaceId,
+        ])
+        const mutatedStranger = await runAsClaim(client, userC.user.id, 'select id from public.workspaces where id = $1', [
+          teamWorkspaceId,
+        ])
+
+        expect(mutatedOwner).not.toHaveLength(baselineOwner.length)
+        expect(mutatedMember).not.toHaveLength(baselineMember.length)
+        expect(mutatedStranger).not.toHaveLength(baselineStranger.length)
+        expect(mutatedOwner).toHaveLength(0)
+        expect(mutatedMember).toHaveLength(0)
+        expect(mutatedStranger).toHaveLength(1)
+      } finally {
+        await client.query('rollback').catch(() => {})
+        await client.end()
+      }
+    })
+
+    it("write half inverted — personal workspace (workspaces): the owner's rename flips; a stranger's stays refused throughout", async () => {
+      const client = await pg()
+      try {
+        await client.query('begin')
+        const { qual, withCheck } = await fetchPolicyHalves(client, 'workspaces')
+        const updateSql = 'update public.workspaces set name = $1 where id = $2'
+
+        // Baseline, under the real, currently-deployed write half: the owner's own rename is
+        // accepted (a positive control for the mutated refusal below), the stranger's matches no
+        // row at all — `workspaces` has no related-row `exists()` clause, so the read half alone
+        // (unchanged by this demonstration) already excludes a personal stranger; that refusal
+        // shape (rowCount 0, no error) cannot flip by inverting WITH CHECK, because the row is
+        // never reached — this is the read half's job, tested separately above, not this one's.
+        const baselineOwner = await tryUpdateAsClaim(client, userA.user.id, updateSql, ['renamed by A', aPersonalWorkspaceId])
+        const baselineStranger = await tryUpdateAsClaim(client, userB.user.id, updateSql, [
+          'renamed by B',
+          aPersonalWorkspaceId,
+        ])
+        expect(baselineOwner.rowCount).toBe(1)
+        expect(baselineStranger.rowCount).toBe(0)
+        expect(baselineStranger.code).toBeUndefined()
+
+        await installPolicy(client, 'workspaces', qual, `not (${withCheck})`)
+
+        const mutatedOwner = await tryUpdateAsClaim(client, userA.user.id, updateSql, [
+          'renamed by A (mutated)',
+          aPersonalWorkspaceId,
+        ])
+        const mutatedStranger = await tryUpdateAsClaim(client, userB.user.id, updateSql, [
+          'renamed by B (mutated)',
+          aPersonalWorkspaceId,
+        ])
+
+        // The flip: the owner, previously accepted, is now refused with a real 42501 (passed
+        // USING, failed the inverted CHECK). The stranger is asserted unchanged (still rowCount
+        // 0, still no error) — named explicitly so it reads as a deliberate domain fact, not a
+        // forgotten second flip.
+        expect(mutatedOwner.rowCount).not.toBe(baselineOwner.rowCount)
+        expect(mutatedOwner.rowCount).toBe(0)
+        expect(mutatedOwner.code).toBe('42501')
+        expect(mutatedStranger.rowCount).toBe(0)
+        expect(mutatedStranger.code).toBeUndefined()
+      } finally {
+        await client.query('rollback').catch(() => {})
+        await client.end()
+      }
+    })
+
+    it('write half inverted — team workspace (workspaces): the owner and the member both flip; a non-member stranger stays refused throughout', async () => {
+      const client = await pg()
+      try {
+        await client.query('begin')
+        await ensureTeamMembership(client, teamWorkspaceId, userA.user.id, userB.user.id)
+        const { qual, withCheck } = await fetchPolicyHalves(client, 'workspaces')
+        const updateSql = 'update public.workspaces set name = $1 where id = $2'
+
+        // Baseline: the owner's rename is accepted; the member's is admitted by USING (membership
+        // widens the read half) but refused by the unchanged owner-only WITH CHECK — a real
+        // 42501, the same shape the file's own FR-005 acceptance test above asserts directly. The
+        // stranger, not a member, never reaches USING at all (rowCount 0, no error) — the read
+        // half's job, not this one's, exactly as in the personal case above.
+        const baselineOwner = await tryUpdateAsClaim(client, userA.user.id, updateSql, ['renamed by A', teamWorkspaceId])
+        const baselineMember = await tryUpdateAsClaim(client, userB.user.id, updateSql, ['renamed by B', teamWorkspaceId])
+        const baselineStranger = await tryUpdateAsClaim(client, userC.user.id, updateSql, ['renamed by C', teamWorkspaceId])
+        expect(baselineOwner.rowCount).toBe(1)
+        expect(baselineMember.rowCount).toBe(0)
+        expect(baselineMember.code).toBe('42501')
+        expect(baselineStranger.rowCount).toBe(0)
+        expect(baselineStranger.code).toBeUndefined()
+
+        await installPolicy(client, 'workspaces', qual, `not (${withCheck})`)
+
+        const mutatedOwner = await tryUpdateAsClaim(client, userA.user.id, updateSql, [
+          'renamed by A (mutated)',
+          teamWorkspaceId,
+        ])
+        const mutatedMember = await tryUpdateAsClaim(client, userB.user.id, updateSql, [
+          'renamed by B (mutated)',
+          teamWorkspaceId,
+        ])
+        const mutatedStranger = await tryUpdateAsClaim(client, userC.user.id, updateSql, [
+          'renamed by C (mutated)',
+          teamWorkspaceId,
+        ])
+
+        // Two-way flip: the owner is now refused (42501); the member, previously refused, now
+        // succeeds — USING still admits the member via membership, and the inverted CHECK now
+        // accepts what it used to refuse. The stranger stays unmatched throughout, same reasoning
+        // as the personal case's stranger.
+        expect(mutatedOwner.rowCount).not.toBe(baselineOwner.rowCount)
+        expect(mutatedMember.rowCount).not.toBe(baselineMember.rowCount)
+        expect(mutatedOwner.rowCount).toBe(0)
+        expect(mutatedOwner.code).toBe('42501')
+        expect(mutatedMember.rowCount).toBe(1)
+        expect(mutatedMember.code).toBeUndefined()
+        expect(mutatedStranger.rowCount).toBe(0)
+        expect(mutatedStranger.code).toBeUndefined()
+      } finally {
+        await client.query('rollback').catch(() => {})
+        await client.end()
+      }
     })
   })
 })
