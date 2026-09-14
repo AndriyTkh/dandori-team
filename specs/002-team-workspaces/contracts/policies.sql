@@ -209,8 +209,11 @@ create trigger members_zz_clear_assignee_del after delete on public.members
 -- user_id keeps meaning "who created this row" in a team workspace too.  Without this the
 -- push path (sync.ts stamps user_id on every payload row) would rewrite it to whoever edited
 -- last.  No-op on a personal row -- same value assigned.
+-- set search_path (T023a finding 8): every other definer/plain function this feature adds
+-- carries one; this was the one omission, closed for consistency even though the function
+-- reads nothing beyond its own NEW/OLD rows.
 create or replace function public.keep_creator() returns trigger
-language plpgsql as $fn$
+language plpgsql set search_path = public, pg_temp as $fn$
 begin
   new.user_id := old.user_id;
   return new;
@@ -219,13 +222,73 @@ end $fn$;
 do $blk$
 declare t text;
 begin
-  foreach t in array array['labels', 'tasks', 'notes'] loop
+  -- 'workspaces' joins the loop here (T023a finding 3): without it, `PATCH workspaces
+  -- {user_id: <self>}` let a member overwrite the creator field and pass WITH CHECK
+  -- (`auth.uid() = user_id`) trivially, because the value they just set is their own --
+  -- a creator hijack.  Same mechanism labels/tasks/notes already had from T022; sorts as
+  -- workspaces_zz_keep_creator, after workspaces_keep_newer/_synced_at (name order).
+  foreach t in array array['workspaces', 'labels', 'tasks', 'notes'] loop
     execute format('drop trigger if exists %I on public.%I', t || '_zz_keep_creator', t);
     execute format('create trigger %I before update on public.%I
                     for each row execute function public.keep_creator()',
                    t || '_zz_keep_creator', t);
   end loop;
 end $blk$;
+
+-- FR-010 (T023a finding 4): nothing above stops the sole owner of a team workspace soft-
+-- deleting or demoting their own membership, or promoting/transferring another member to
+-- `level = 'owner'` -- P1 has no ownership transfer at all.  A trigger, not a policy: the rule
+-- has to see BOTH the row being written and the current owner-of-record (workspaces.user_id),
+-- and members_access/members_update's predicates only ever see the row + auth.uid().
+-- Exempted while the invariant would otherwise be meaningless or would fight a legitimate
+-- structural purge: workspace gone (FK cascade already removed it), workspace `deleted`
+-- (irrelevant once the whole workspace is gone), or `kind <> 'team'` (a kind-switch purge,
+-- `on_workspace_kind_change`, runs AFTER the workspace row's own `kind` is already 'personal',
+-- so this trigger reads the post-switch value and steps aside for its purge -- verified by
+-- tests/stack/team-rls-delete-and-owner-invariant.test.ts (e1)).
+create or replace function public.members_owner_invariant() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $fn$
+declare
+  ws record;
+begin
+  select id, user_id, deleted, kind into ws
+    from public.workspaces
+   where id = coalesce(new.workspace_id, old.workspace_id);
+
+  if ws.id is null or ws.deleted or ws.kind <> 'team' then
+    if tg_op = 'DELETE' then
+      return old;
+    end if;
+    return new;
+  end if;
+
+  if tg_op in ('INSERT', 'UPDATE') and new.level = 'owner' and new.member_id <> ws.user_id then
+    raise exception using errcode = 'DA016',
+      message = 'only the workspace creator may hold level=owner -- no promote or transfer in P1';
+  end if;
+
+  if tg_op = 'UPDATE' and old.level = 'owner' then
+    if new.deleted and not old.deleted then
+      raise exception using errcode = 'DA016', message = 'the owner cannot remove their own membership';
+    end if;
+    if new.level <> 'owner' then
+      raise exception using errcode = 'DA016', message = 'the owner cannot demote themselves';
+    end if;
+  end if;
+
+  if tg_op = 'DELETE' and old.level = 'owner' then
+    raise exception using errcode = 'DA016', message = 'the owner row cannot be hard-deleted directly';
+  end if;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  return new;
+end $fn$;
+
+drop trigger if exists members_zz_owner_invariant on public.members;
+create trigger members_zz_owner_invariant before insert or update or delete on public.members
+  for each row execute function public.members_owner_invariant();
 
 -- ==========================================================================
 -- policy block -- REPLACED, both halves of each policy, separately    (plan D-4)
@@ -234,21 +297,71 @@ end $blk$;
 -- tests pass unedited.  Reads stay looser than writes on the child tables, as today.
 -- ==========================================================================
 
+-- T023a findings 1 and 2: `for all` applies its one `using` clause to SELECT, UPDATE and
+-- DELETE alike (and `with check` to INSERT and UPDATE) -- there is no way to give DELETE a
+-- narrower `using` than SELECT/UPDATE share while keeping a single `for all` policy. Both
+-- `own_rows` (workspaces + the three child tables) and `members_access` are replaced by four
+-- single-command policies apiece so DELETE can carry its own, narrower predicate. Every other
+-- predicate text below is byte-identical to what `for all` carried at c5fda53 -- this is a
+-- mechanical split, not a re-decision of any half already reviewed.
 do $blk$
 declare t text;
 begin
-  -- workspaces: READ widens to membership; WRITE deliberately does not.
-  -- A member may not rename or delete the workspace (FR-005).
+  -- workspaces: READ (select/update-using) widens to membership; WRITE (insert/update-check)
+  -- deliberately does not, and DELETE narrows to the owner alone (FR-005/FR-006) -- at c5fda53
+  -- DELETE inherited the widened `using` through `for all` and let any member hard-delete the
+  -- workspace, cascading away its labels/tasks/notes/members (finding 1).
   execute 'drop policy if exists own_rows on public.workspaces';
-  execute 'create policy own_rows on public.workspaces
-             for all
+  execute 'drop policy if exists workspaces_select on public.workspaces';
+  execute 'drop policy if exists workspaces_insert on public.workspaces';
+  execute 'drop policy if exists workspaces_update on public.workspaces';
+  execute 'drop policy if exists workspaces_delete on public.workspaces';
+
+  execute 'create policy workspaces_select on public.workspaces
+             for select using (auth.uid() = user_id or public.is_member(id))';
+  execute 'create policy workspaces_insert on public.workspaces
+             for insert with check (auth.uid() = user_id)';
+  execute 'create policy workspaces_update on public.workspaces
+             for update
              using      (auth.uid() = user_id or public.is_member(id))
              with check (auth.uid() = user_id)';
+  execute 'create policy workspaces_delete on public.workspaces
+             for delete using (auth.uid() = user_id)';
 
+  -- labels/tasks/notes: same split. DELETE narrows to the creator alone, exactly as upstream's
+  -- own_rows always meant for these tables -- a member editing another member's row (the whole
+  -- point of a team workspace) is unaffected, since that lives in the UPDATE branch, which
+  -- keeps its membership widening. No committed test exercises a member's hard-DELETE of a
+  -- child row; the app itself never issues one (src/db/api.ts, src/sync/sync.ts only ever
+  -- soft-delete), so narrowing DELETE here is not a product regression, only a closed hole.
   foreach t in array array['labels', 'tasks', 'notes'] loop
     execute format('drop policy if exists own_rows on public.%I', t);
-    execute format('create policy own_rows on public.%I
-      for all
+    execute format('drop policy if exists %I_select on public.%I', t, t);
+    execute format('drop policy if exists %I_insert on public.%I', t, t);
+    execute format('drop policy if exists %I_update on public.%I', t, t);
+    execute format('drop policy if exists %I_delete on public.%I', t, t);
+
+    execute format('create policy %I_select on public.%I
+      for select using (
+        auth.uid() = user_id
+        or public.is_member(workspace_id)
+      )', t, t);
+
+    execute format('create policy %I_insert on public.%I
+      for insert with check (
+        (
+          auth.uid() = user_id
+          and exists (select 1 from public.workspaces w
+                       where w.id = workspace_id and w.user_id = auth.uid())
+        )
+        or public.is_member(workspace_id)
+      )', t, t);
+
+    -- NOTE: the membership branch is NOT conjoined with auth.uid() = user_id.  Conjoining it
+    -- would stop a member editing a row another member created, which is the whole point of
+    -- a team workspace.
+    execute format('create policy %I_update on public.%I
+      for update
       using (
         auth.uid() = user_id
         or public.is_member(workspace_id)
@@ -260,23 +373,35 @@ begin
                        where w.id = workspace_id and w.user_id = auth.uid())
         )
         or public.is_member(workspace_id)
-      )', t);
-    -- NOTE: the membership branch is NOT conjoined with auth.uid() = user_id.  Conjoining it
-    -- would stop a member editing a row another member created, which is the whole point of
-    -- a team workspace.
+      )', t, t);
+
+    execute format('create policy %I_delete on public.%I
+      for delete using (auth.uid() = user_id)', t, t);
   end loop;
 
-  -- members: fork-only table, fork-only policy name.  own_rows keeps meaning exactly what
-  -- upstream means by it.
+  -- members: fork-only table. Read stays any-member (FR-007, FR-015); insert/update stay
+  -- owner-only, recording the caller as creator; DELETE narrows to owner-only too -- at c5fda53
+  -- it inherited the same `using` as SELECT through `for all`, so any member could hard-delete
+  -- any membership row, the owner's included (finding 2).
   execute 'drop policy if exists members_access on public.members';
-  execute 'create policy members_access on public.members
-             for all
+  execute 'drop policy if exists members_select on public.members';
+  execute 'drop policy if exists members_insert on public.members';
+  execute 'drop policy if exists members_update on public.members';
+  execute 'drop policy if exists members_delete on public.members';
+
+  execute 'create policy members_select on public.members
+             for select using (public.is_member(workspace_id))';
+  execute 'create policy members_insert on public.members
+             for insert with check (public.is_owner(workspace_id) and auth.uid() = user_id)';
+  execute 'create policy members_update on public.members
+             for update
              using      (public.is_member(workspace_id))
              with check (public.is_owner(workspace_id) and auth.uid() = user_id)';
-  -- read: any member sees the workspace''s membership rows (FR-007, FR-015)
-  -- write: owners only, recording themselves as the row''s creator.  The creator''s own first
-  --        owner row comes from workspaces_seed_owner, which is security definer and so does
-  --        not have to satisfy this predicate -- that is what closes the chicken-and-egg hole.
+  execute 'create policy members_delete on public.members
+             for delete using (public.is_owner(workspace_id))';
+  -- The creator's own first owner row still comes from workspaces_seed_owner, which is
+  -- security definer and so does not have to satisfy any of the above -- that is what closes
+  -- the chicken-and-egg hole.
 end $blk$;
 
 -- ==========================================================================
@@ -337,10 +462,13 @@ create trigger users_seed_first_admin after insert on auth.users
 
 -- ==========================================================================
 -- fork block E -- the provisioning routines               (ADR-0006 §B, plan D-16)
--- create_login / set_login_password / delete_login / set_login_admin / list_logins.
--- Signatures, guards, error codes and the verbatim auth.users / auth.identities column set
--- are contracted in ./rpc.md, which is authoritative for them.  All five are
--- security definer, all carry `set search_path = public, auth, extensions, pg_temp`, all are
--- revoked from public and anon and granted to authenticated, and every one of them refuses a
--- caller for whom public.is_admin() is false (FR-038, SC-018).
+-- create_login / set_login_password / delete_login / set_login_admin / list_logins -- five
+-- public routines, plus a sixth, `_create_login_impl`, the impl-split helper `create_login`
+-- delegates to (T023a finding 7 -- this pointer previously said "five"). Signatures, guards,
+-- error codes and the verbatim auth.users / auth.identities column set are contracted in
+-- ./rpc.md, which is authoritative for the five public ones. All six are security definer, all
+-- carry `set search_path = public, auth, extensions, pg_temp`, and every one of them refuses a
+-- caller for whom public.is_admin() is false (FR-038, SC-018). The five public routines are
+-- revoked from public and anon and granted to authenticated; `_create_login_impl` is revoked
+-- from public, anon AND authenticated (T023a finding 5) -- it has no caller of its own.
 -- ==========================================================================
