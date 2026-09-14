@@ -280,6 +280,154 @@ revoke execute on function public.is_owner(uuid)  from public, anon;
 grant  execute on function public.is_member(uuid) to authenticated;
 grant  execute on function public.is_owner(uuid)  to authenticated;
 
+-- ==========================================================================
+-- fork block C -- the fork's own triggers                    (plan D-3, D-6, D-8)
+-- Naming: every new BEFORE trigger carries a _zz_ infix so it sorts AFTER upstream's
+-- keep_newer -> stay_deleted -> synced_at.  Postgres fires same-timing triggers in name
+-- order; a new trigger sorting first would run before keep_newer abandons a stale row and
+-- would change observable behaviour (FR-014).
+-- ==========================================================================
+
+-- members gets the SAME housekeeping every synced table has, added here rather than by
+-- editing upstream's array['workspaces','labels','tasks','notes'] loops.
+drop trigger if exists members_synced_at on public.members;
+create trigger members_synced_at before insert or update on public.members
+  for each row execute function public.touch_synced_at();
+
+drop trigger if exists members_keep_newer on public.members;
+create trigger members_keep_newer before update on public.members
+  for each row execute function public.keep_newer();
+
+-- creator becomes owner, in the same operation, on every path into the table
+create or replace function public.seed_workspace_owner() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $fn$
+begin
+  if new.kind = 'team' then
+    insert into public.members (id, user_id, workspace_id, member_id, level)
+    values (gen_random_uuid(), new.user_id, new.id, new.user_id, 'owner')
+    on conflict (workspace_id, member_id) do nothing;
+  end if;
+  return null;
+end $fn$;
+
+drop trigger if exists workspaces_seed_owner on public.workspaces;
+create trigger workspaces_seed_owner after insert on public.workspaces
+  for each row execute function public.seed_workspace_owner();
+
+-- kind is MUTABLE, by the workspace's owner, in either direction (ADR-0006 §D, owner
+-- decision C, spec FR-034..FR-036).  There is no pin trigger: pin_workspace_kind and
+-- workspaces_zz_kind_fixed of the superseded plan D-6 do NOT exist.  Kind is an ordinary
+-- column under keep_newer and under the unchanged workspaces write half, which is already
+-- owner-only -- so "only the owner may switch it" needs no new predicate (FR-034).
+-- Two values only: workspaces_kind_check still refuses a third, at creation and at a switch
+-- alike (FR-001, US8 acceptance 7).
+--
+-- The consequences of a switch are a trigger, because they must hold for every path into the
+-- table -- the app's push, an offline-created workspace synced later, the SQL editor.
+create or replace function public.on_workspace_kind_change() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $fn$
+begin
+  if new.kind = 'personal' then
+    -- team -> personal: every membership of this workspace ends, through exactly the
+    -- soft-delete path a removal uses.  members_zz_clear_assignee then fires per row and
+    -- clears that person's assignees with an outranking stamp -- one mechanism, not two
+    -- (FR-035).  greatest(updated_at, now()) for the same reason follow_workspace_delete
+    -- uses it: the end of the membership must outrank an edit already in flight.
+    update public.members
+       set deleted = true, updated_at = greatest(updated_at, now())
+     where workspace_id = new.id and not deleted;
+  else
+    -- personal -> team: seed exactly ONE owner row, re-activating a previously
+    -- soft-deleted one rather than adding a second (FR-036, SC-019).  Nobody who was a
+    -- member during an earlier team period is restored -- only new.user_id is touched.
+    insert into public.members (id, user_id, workspace_id, member_id, level)
+    values (gen_random_uuid(), new.user_id, new.id, new.user_id, 'owner')
+    on conflict (workspace_id, member_id) do update
+       set deleted    = false,
+           level      = 'owner',
+           updated_at = greatest(public.members.updated_at, now());
+  end if;
+  return null;
+end $fn$;
+
+drop trigger if exists workspaces_zz_kind_change on public.workspaces;
+create trigger workspaces_zz_kind_change after update on public.workspaces
+  for each row when (new.kind is distinct from old.kind)
+  execute function public.on_workspace_kind_change();
+-- AFTER, so keep_newer (BEFORE, returning null on a stale write) has already abandoned a
+-- stale row before this can fire -- a kind flip arriving out of order changes nothing.
+
+-- assignee must be a live member.  A trigger, not RLS: no access decision may read assignee.
+-- Coerce, never raise: same reasoning as pin_workspace_kind above -- a raise inside a sync
+-- batch would abort the whole upsert and wedge the tasks queue for every device that queued an
+-- assignment to a member removed in the meantime (the exact race US5 describes).  Coercion is
+-- also the same structural answer as clear_assignee_on_removal below, so the two rules agree.
+create or replace function public.assignee_must_be_member() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $fn$
+begin
+  if new.assignee is not null
+     and not exists (select 1 from public.members m
+                      where m.workspace_id = new.workspace_id
+                        and m.member_id = new.assignee and not m.deleted) then
+    new.assignee := null;
+  end if;
+  return new;
+end $fn$;
+
+drop trigger if exists tasks_zz_assignee_member on public.tasks;
+create trigger tasks_zz_assignee_member before insert or update on public.tasks
+  for each row execute function public.assignee_must_be_member();
+
+-- removal auto-clears assignment, structurally, never by the client.
+-- greatest(updated_at, now()) so the clear outranks an edit already queued on the removed
+-- member's device (same technique as follow_workspace_delete).
+create or replace function public.clear_assignee_on_removal() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $fn$
+declare ws uuid; who uuid;
+begin
+  if tg_op = 'DELETE' then
+    ws := old.workspace_id; who := old.member_id;
+  elsif new.deleted and not old.deleted then
+    ws := new.workspace_id; who := new.member_id;
+  else
+    return null;
+  end if;
+
+  update public.tasks
+     set assignee = null, updated_at = greatest(updated_at, now())
+   where workspace_id = ws and assignee = who;
+  return null;
+end $fn$;
+
+drop trigger if exists members_zz_clear_assignee on public.members;
+create trigger members_zz_clear_assignee after update on public.members
+  for each row execute function public.clear_assignee_on_removal();
+
+drop trigger if exists members_zz_clear_assignee_del on public.members;
+create trigger members_zz_clear_assignee_del after delete on public.members
+  for each row execute function public.clear_assignee_on_removal();
+
+-- user_id keeps meaning "who created this row" in a team workspace too.  Without this the
+-- push path (sync.ts stamps user_id on every payload row) would rewrite it to whoever edited
+-- last.  No-op on a personal row -- same value assigned.
+create or replace function public.keep_creator() returns trigger
+language plpgsql as $fn$
+begin
+  new.user_id := old.user_id;
+  return new;
+end $fn$;
+
+do $blk$
+declare t text;
+begin
+  foreach t in array array['labels', 'tasks', 'notes'] loop
+    execute format('drop trigger if exists %I on public.%I', t || '_zz_keep_creator', t);
+    execute format('create trigger %I before update on public.%I
+                    for each row execute function public.keep_creator()',
+                   t || '_zz_keep_creator', t);
+  end loop;
+end $blk$;
+
 -- Access to your own rows only. The app talks with the anon key,
 -- so all data protection rests on these policies.
 --
