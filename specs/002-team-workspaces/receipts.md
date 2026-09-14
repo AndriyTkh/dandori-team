@@ -1528,3 +1528,134 @@ torn down in the `finally` with the `auth.users` cascade as a backstop. No crede
 code and stays red until T022. No map entry is flipped — a red file is not a validation.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T030 receipt — growing reach is not an account switch (2026-09-14)
+
+Merged as `5754c0c` from lane `wt/nowipe` (lane commit `3361aa2`). Artefact:
+`tests/local/no-wipe-on-reach-growth.test.ts`, `+389/-0`, three cases in the Docker-free `local`
+tier. **Authored ahead of its nominal `blocked-by: T028`**, under the coordinator reordering recorded
+in `tasks.md` (`f938cbc`).
+
+Verify, run by the coordinator over the whole `local` project — no stack, no Docker:
+
+```
+npx vitest run --project local
+ ✓  local  tests/local/claim-cache.test.ts (5 tests)
+ ❯  local  tests/local/no-wipe-on-reach-growth.test.ts (3 tests | 1 failed)
+   × Dexie v2 -> v3 upgrade keeps every row and every cursor (R-9) > turns green at T029 …
+     → expected false to be true
+   ✓ … re-claiming as the same account, after its reach has grown, wipes nothing
+   ✓ … claiming as a different account still wipes everything, reach or no reach
+ ✓  local  tests/local/db-api-p1-surface.test.ts (22 tests)
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 29 passed (30)
+```
+
+**This file is deliberately two-thirds green on the day it lands, which is unusual in this feature and
+worth stating rather than leaving a reader to wonder.** `claimCache` and `wipeLocal` are code this
+feature does **not** change (D-10), so the two cases that exercise them are regression guards from the
+moment they exist — they pin today's correct behaviour against T029's rework of `src/db/local.ts`.
+Only the upgrade case is red, on `expect(db.tables.some((t) => t.name === 'members')).toBe(true)`,
+because `src/db/local.ts` declares no `version(3)` yet. The test title carries "turns green at T029"
+so a reader hitting the failure knows immediately it is expected.
+
+**The concern the coordinator put to the closer, and the receipt that settles it.** A v2→v3 upgrade
+test that runs against a database nobody upgraded asserts nothing, and it would keep asserting nothing
+forever without anyone noticing. The closer reproduced the post-T029 topology under `fake-indexeddb`
+— a v2-shaped seed handle, then a `version(1)/version(2)/version(3)` Dexie opened over it:
+
+```
+seed idb version = 20   verno = 2
+after open: verno = 3   idb = 30
+v2 upgrade ran? false    v3 upgrade ran? true
+members table present? true
+workspaces count = 1   tasks = 1
+backfilled ws.kind = personal   backfilled task.assignee = null
+meta owner = user-aaaaaaaa
+```
+
+The seed pins IDB version 20 via `V2_STORES`, byte-identical to `src/db/local.ts:32-38`; T029's
+`version(3)` becomes IDB 30; Dexie runs the v3 upgrader and correctly does **not** re-run v2's
+calendar backfill. `seed.close()` releases the connection so nothing blocks the version change. Case
+1 therefore becomes a genuine upgrade test at T029 **automatically**, with no intervention. No
+silent-vacuity trap.
+
+**One blocking finding, and it would have broken the build.** The header claimed "once T029 lands,
+this same file is unchanged and the same seed exercises a real v2→v3 upgrade". False in a way that
+stops the tree compiling: **T028** (`tasks.md:306`) makes `Workspace.kind` and `Task.assignee`
+**required, non-optional**, and cases 2 and 3 build rows through the typed `EntityTable` path with
+neither field. The closer confirmed with an isolated `tsc` probe against this worktree's Dexie:
+
+```
+error TS2345: Argument of type '{ id: string; name: string; _dirty: 0; }' is not assignable
+  to parameter of type 'InsertType<Local<W>, "id">'.
+  Property 'kind' is missing in type '…' but required in type 'Omit<Local<W>, "id">'.
+```
+
+The untyped raw-handle path case 1's seed uses (`seed.table('workspaces').add(…)`) does **not**
+reject the omission — correct and necessary, since a v2-shaped row has no `kind` at all, but true by
+construction rather than by stated design. The header now scopes the "unchanged" claim to case 1's
+seed, says cases 2 and 3 **must** gain the two fields when T028 lands, and says case 1's seed must
+**not**, plainly enough that nobody later "fixes" it by aligning the seed with production. It also
+carries the forward note that `ws-team-newly-reached` takes `kind: 'team'` at that edit while
+`ws-a-own` keeps `kind: 'personal'` — today the two differ only by a `name` string, so the second is a
+team workspace in prose only.
+
+**One advisory was taken beyond the card's done-when, deliberately.** `expect(db.verno)
+.toBeGreaterThan(2)` and backfill assertions on the pre-existing rows (`ws-legacy`'s `kind` is
+`'personal'`, `task-legacy-1`'s `assignee` is null) were added **after** the `members` assertion, so
+today's recorded red is unchanged. Two reasons. First, R-9 (`plan.md:1260-1261`) requires v3 to
+"backfill two fields" and **no file in this feature asserted that** — this closes a real gap for free.
+Second, and the reason it is not merely nice to have: the T028 edit forced by the blocking finding is
+exactly the moment someone will be editing this file, and "aligning" the seed with production would
+silently revert case 1 to the no-upgrade state. `db.verno > 2` makes that revert loud.
+
+**A vacuous assertion was found and repaired rather than deleted.** Case 3 asserted
+`expect(await db.tasks.count()).toBe(0)` after the wipe, but the case seeded only workspaces — zero
+against a table that was already zero, the one assertion in the file with no positive-control
+sibling. A task row was added to the seed and a `toBe(1)` control placed beside the existing
+workspace control, so the later zero measures a real transition. The alternative, dropping the
+assertion, would have left `claim-cache.test.ts` as the only place a wiped task is observed.
+
+**Reach growth is modelled correctly, which is this card's centre of gravity.** The second workspace
+is added *after* the first claim, not seeded up front, and the pull cursor is advanced with it — so
+"reach grew" is rows **plus** a cursor advance, which is what a real pull does, rather than merely
+"there are more rows now". The abstraction is justified in the header against D-10's "team mode
+changes what one account can reach, not how many accounts a device holds". A version of this case
+with A's reach unchanged would have proved only the boring half.
+
+**Positive controls, one per case.** Cases 2 and 3 take theirs through the same `db` handle with the
+same `count()` / `getMeta()` query shapes as the assertions they control, immediately before the act.
+Case 1's control necessarily reads through the `seed` handle rather than `db` — the different-handle
+shape normally worth flagging — but here reading through `db` before `db.open()` *is* the act under
+test, so the seed handle is the only control available; it proves the seed landed, which is the
+failure mode that matters, since a silent no-op seed would otherwise leave `count()).toBe(1)` tested
+against nothing.
+
+**Duplication, recorded honestly:** case 3 is substantially `claim-cache.test.ts`'s acceptances 2 and
+3 merged with a second workspace row added. The card explicitly demands the B-claim half so it is not
+redundant, but its incremental value over P0 is small, and **case 2 is where this file's genuine new
+evidence lives**.
+
+**Carried forward, belonging to T029 and not fixable here:** once T028 puts `members` in
+`SYNCED_TABLES`, `tests/setup.ts` still clears only five tables, so `members` rows will leak between
+tests repo-wide; and `data-model.md §5`'s requirement that `wipeLocal()` grow its table list to
+include `members` is asserted by nothing, which case 3 cannot yet do.
+
+SC-012's text was read directly (`spec.md:895-897`) rather than taken from the card's paraphrase:
+"wipes its cache exactly **once per switch** and **0** times when the same account signs in again,
+including when that account's reach has grown by a new membership." Both directions are asserted.
+R-9's obligation (`plan.md:1260-1264`) is row counts and cursor values, which case 1 covers, plus the
+backfill, which it now also covers.
+
+No source file moved — `git diff --stat` empty, `src/db/local.ts` untouched and T029's territory
+intact. No credential, key, token or `service_role` literal; the two account labels are byte-identical
+to `claim-cache.test.ts`'s own.
+
+The `multi-account-cache` map entry is **not** created or flipped here — a file that is two-thirds
+green against unchanged code and one-third red against unlanded code is not a validation. T039 and
+T051 own that.
+
+**Not proven by this card:** nothing about the v3 schema is verified, because there is no v3 yet.
+
+Sign-off: Andrii Tkhorenko (single-operator).
