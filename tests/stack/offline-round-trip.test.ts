@@ -16,61 +16,17 @@ import { Client } from 'pg'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { updateTask, type TaskPatch } from '../../src/db/api'
 import { db, wipeLocal } from '../../src/db/local'
-import { onSyncState, startSync, type SyncState } from '../../src/sync/sync'
 import { SYNCED_COLUMNS, type ID } from '../../src/db/types'
 import { createTestUser, deleteTestUser, type TestUser } from '../harness/accounts'
 import { seedWorkspaceWithTask } from '../harness/seed'
 import { DB_URL, assertStackReachable } from '../harness/stack'
+import { driveSyncCycle } from '../harness/sync'
 
-/*
- * `tests/harness/sync.ts`'s `driveSyncCycle` (plan.md D-5) finishes as soon
- * as sync state has left its initial value and rested once. `push()` calls
- * its own `settle()` unconditionally at its very end, whether or not it had
- * anything dirty to send (`src/sync/sync.ts`, end of `push()`) — so a cycle
- * with nothing to push settles once from `push()` alone, before `cycle()`'s
- * `await pull()` (`src/sync/sync.ts:462-479`) ever runs, and the harness
- * stops the handle right there. Invisible whenever the cycle also has
- * something to push (the useful work already happened), but a pull-only
- * cycle — acceptance 3's "second client, empty cache" — would never
- * actually pull. This drives the same `startSync()`/`onSyncState()` seam
- * (plan.md D-5's own words) but waits for the *second* settle, so both
- * push and pull complete before the handle stops. Kept local to this file:
- * the write surface for this task is this file alone, and the harness
- * itself is unmodified.
- */
-async function drivePushAndPullCycle(timeoutMs = 10_000): Promise<void> {
-  const handle = startSync()
-  try {
-    await new Promise<void>((resolve, reject) => {
-      let leftInitial = false
-      let rests = 0
-      const timer = setTimeout(() => {
-        finish(new Error(`drivePushAndPullCycle: timed out after ${timeoutMs}ms waiting for two settles`))
-      }, timeoutMs)
-      let unsubscribe: () => void = () => {}
-      let done = false
-      function finish(err?: Error) {
-        if (done) return
-        done = true
-        clearTimeout(timer)
-        unsubscribe()
-        if (err) reject(err)
-        else resolve()
-      }
-      unsubscribe = onSyncState((state: SyncState) => {
-        if (state === 'syncing') {
-          leftInitial = true
-          return
-        }
-        if (!leftInitial) return
-        rests += 1
-        if (rests >= 2) finish()
-      })
-    })
-  } finally {
-    handle.stop()
-  }
-}
+// The full push+pull cycle is driven by the harness's `driveSyncCycle`
+// (`tests/harness/sync.ts`), which waits for both push's and pull's settle
+// and first drains the debounced push queue so no stray `push()` can be
+// counted as the pull (002 receipts, "sync-engine flake receipt (T003)").
+// The private two-settle driver this file used to carry is gone with it.
 
 const TASK_COLUMNS = Object.keys(SYNCED_COLUMNS.tasks)
 
@@ -160,7 +116,7 @@ it(
     // Establish the "existing task" baseline on the server before going
     // offline — `seedWorkspaceWithTask` only writes through `db-api` locally
     // (tests/harness/seed.ts), it does not itself sync.
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
 
     const original = await serverTaskRow(taskId)
     expect(original).toBeTruthy()
@@ -198,7 +154,7 @@ it(
     // acceptance is stated as its own "given" (an edited-but-unsent task).
     const seeded = await seedWorkspaceWithTask(testUser, { workspaceName: 'us1 workspace 2' })
     taskId = seeded.taskId
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
 
     Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })
     await updateTask(taskId, EDIT)
@@ -206,7 +162,7 @@ it(
     expect(localBeforeSync?._dirty).toBe(1)
 
     Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
 
     const server = await serverTaskRow(taskId)
     expect(server).toBeTruthy()
@@ -237,11 +193,11 @@ it(
   async () => {
     const seeded = await seedWorkspaceWithTask(testUser, { workspaceName: 'us1 workspace 3' })
     taskId = seeded.taskId
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
     Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })
     await updateTask(taskId, EDIT)
     Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
     const server = await serverTaskRow(taskId)
 
     // "Second client, empty local cache": same signed-in account (the app
@@ -251,7 +207,7 @@ it(
     await wipeLocal()
     expect(await db.tasks.get(taskId)).toBeUndefined()
 
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
 
     const pulled = await db.tasks.get(taskId)
     expect(pulled).toBeTruthy()
@@ -276,7 +232,7 @@ it(
     // claims ("does not receive it repeatedly", not "is never sent again").
     const watch = watchTaskWrites(taskId)
     try {
-      await drivePushAndPullCycle()
+      await driveSyncCycle()
     } finally {
       watch.stop()
     }
@@ -293,11 +249,11 @@ it(
   async () => {
     const seeded = await seedWorkspaceWithTask(testUser, { workspaceName: 'us1 workspace 4' })
     taskId = seeded.taskId
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
     Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })
     await updateTask(taskId, EDIT)
     Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
 
     // "Restart, cache preserved": close and reopen the same Dexie database —
     // fake-indexeddb keeps its backing store across a close/open pair, the
