@@ -570,8 +570,12 @@ to that workspace are refused by RLS at the server (edge case 1, US6 acceptance 
 take "the already-pinned refused-row path (`sync.ts:257-272`)" — the path where PostgREST accepts the
 batch and silently returns fewer ids than were sent. **That is not what happens.** An RLS refusal on a
 write is not a silent drop: PostgREST raises SQLSTATE **`42501` for the whole upsert batch**, the
-`const { data, error } = ...; if (error) throw error` at `sync.ts:249-252` throws, and the per-table
-catch at `sync.ts:274-277` marks the push failed **without clearing a single row's `_dirty` flag**. One
+`const { data, error } = ...; if (error) throw error` at `sync.ts:223-227` throws, and the per-table
+catch at `sync.ts:274-277` marks the push failed **without clearing a single row's `_dirty` flag**.
+(Line cite corrected 2026-09-14: the upsert-and-throw is `sync.ts:223-227`, with the `throw` itself at
+`:227`; the correction above originally said `:249-252`, which is the closing brace of the
+`db.transaction` bookkeeping block at `:241-249`. Found by the T035 closer. `:257-272` and `:274-277`
+were and remain accurate.) One
 refused row therefore keeps that entire table's queue re-sending the same batch every cycle, forever —
 the exact wedge the silent-drop path exists to avoid, arrived at by a different route. The refused-id
 bookkeeping at `sync.ts:257-272` is real and still needed, but it handles the *other* case (a row the
