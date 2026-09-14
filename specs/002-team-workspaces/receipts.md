@@ -2383,3 +2383,24 @@ Map owed at lane close: `supabase-schema` re-stamp → post-T023a SHA; `membersh
 `account-provisioning` UNTESTED → VALIDATED with verify commands filled — **held until T023a is
 green** (a VALIDATED stamp backed by a suite that never issues a member hard-DELETE is a claim
 without a receipt).
+
+## T038 receipt — LWW lockstep statement + sync lane review (2026-09-14)
+
+Reviewer (dev-main), lane `wt/sync-cache` @ 5923c31, base c1add66, 12 commits. **T038 PASS.**
+`git diff c1add66 wt/sync-cache -- src/sync/sync.ts` hunks: `@@ -1,6 +1,7 @@` (import), `@@ -224,10 +225,46 @@`
+and `@@ -254,7 +291,9 @@` (D-18 push loop), `@@ -505,3 +544,90 @@` (eight `*Remote` wrappers).
+`supabase/schema.sql`: no diff in this lane. Protected ranges byte-identical (md5 base = head):
+merge helpers `isNewer`/`sameRow` :104-141 → :105-142 `ef6c488c…`; `mergeRows` :409-458 → :448-497
+`a1b1ae0b…`; displaced +1 line by the type import only. `keep_newer()` untouched. FR-020 evidenced.
+
+Lane review: **PASS with findings** (0 blocking). tsc 0, lint 0, local tier 46/46. Gate 9 verified:
+P0 test diffs are `kind:`/`assignee:` fixture literals only (+3, +1 lines), zero assertion change.
+Personal-must-not-regress clean (Dexie v3 adds a store only; backfill mirrors v2; `createWorkspace`
+default unchanged). Origin invariant clean. Spec control clean.
+Findings → T036a (A-015): (1) should-fix `sync.ts:255` unconditional delete on `42501` loses a
+readable row (refused UPDATE) until an unrelated server edit; (2) should-fix `refreshIsAdmin` has
+no caller; (3) note `useCurrentUserId` hides loading state; (4) note `updateWorkspace` no-op
+`queue()` is house style; (5) note local `deleteWorkspace` cascade skips `members`; (6) map:
+`multi-account-cache` entry does not exist yet — created at T051. Map owed at merge: `local-cache`,
+`db-api` re-stamp; `sync-engine` STALE → T039 with `push-refusal-fallback` +
+`member-offline-round-trip` added; stack tier NOT RUN here (DB held by T023a).
