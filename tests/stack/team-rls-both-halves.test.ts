@@ -64,10 +64,14 @@ import { assertStackReachable, DB_URL } from '../harness/stack'
  * Scope: T012 (the executed inversion demonstration, FR-013/SC-005) is written here, as the
  * file's last `describe` block, directly reusing `teamWorkspaceId`/`aPersonalWorkspaceId`/
  * `userA`/`userB`/`userC` and one raw `pg` transaction per demonstration (see that block's own
- * header comment for the technique and the table/technique choices). T013 (the R-7
- * `user_id`-does-not-drift assertion) is a separate, later card and is deliberately NOT written
- * here; its assertion belongs inside (or immediately after) the "write half" cases of the
- * labels/tasks/notes describe.each block above, since it needs the exact row B edits there.
+ * header comment for the technique and the table/technique choices).
+ *
+ * T013 (the R-7 `user_id`-does-not-drift assertion, FR-011) lives inside the labels/tasks/notes
+ * `describe.each` block above, as the third `it` per table, immediately after the "write half —
+ * B creates, edits and deletes" case whose seeded row (`seededRowIds[table]`, created by A) it
+ * reuses. It greens at T022 (the `<t>_zz_keep_creator` trigger) + T023 (the widened child write
+ * half) together — T022 alone leaves the write refused outright (no membership branch yet to
+ * admit B), and T023 alone leaves the trigger absent to reset `user_id` back to A.
  *
  * T012 joins the same pre-T020 red as every other case in this file, and for the same reason:
  * this file's top-level `beforeAll` throws before any `it` runs, so T012's cases never reach
@@ -76,12 +80,16 @@ import { assertStackReachable, DB_URL } from '../harness/stack'
  * the shared seed dies on the team-workspace insert, which comes first, before any personal
  * workspace is ever created).
  *
- * NOT discriminated by this file: T023's membership branch being conjoined with
- * `auth.uid() = user_id` (rather than OR'd, as it must be) on the child-table write half. Every
- * write-half case here has B insert with `user_id = userB.user.id` (a true membership grant) and
- * has C refused by both the ownership and the membership branch regardless of how they combine
- * — so a wrongly-conjoined predicate would pass every acceptance in this file exactly as a
- * correctly-OR'd one would. That specific defect is T013's to catch, not this file's.
+ * NOT discriminated by the insert-only cases elsewhere in this file: T023's membership branch
+ * being conjoined with `auth.uid() = user_id` (rather than OR'd, as it must be) on the
+ * child-table write half. Every write-half insert case here has B insert with
+ * `user_id = userB.user.id` (a true membership grant), so `auth.uid() = user_id` is trivially
+ * true regardless of how the branches combine — a wrongly-conjoined predicate would pass those
+ * cases exactly as a correctly-OR'd one would. T013's case is what catches it, incidentally: it
+ * sends `user_id: userB.user.id` too (mirroring `sync.ts:216`'s push payload exactly), but
+ * `<t>_zz_keep_creator` resets `new.user_id` back to A's id *before* WITH CHECK is evaluated
+ * (BEFORE ROW triggers run first), so by the time the predicate runs, `auth.uid()` (B) and
+ * `user_id` (A) genuinely differ — the one shape this file otherwise never produces.
  */
 
 const CHILD_TABLES = ['labels', 'tasks', 'notes'] as const
@@ -576,6 +584,75 @@ describe('team RLS — both halves (T011, US3)', () => {
       expect(deleteErr).toBeNull()
       expect(softDeleted).toHaveLength(1)
       expect(softDeleted?.[0]?.deleted).toBe(true)
+    })
+
+    it(`write half — B's edit of A's ${table} row does not drift user_id from A (R-7, FR-011; card T013)`, async () => {
+      // `seededRowIds[table]` is the row A created in the shared `beforeAll`, untouched by the
+      // "write half — B creates, edits and deletes" case above (that test operates on its own,
+      // separately-inserted row) — so its `user_id` is still genuinely A's going in.
+      //
+      // The stamp must genuinely outrank the row's own, or `keep_newer()` (schema.sql:142-153)
+      // silently cancels the whole update — a 204 with `error === null` that would leave
+      // `user_id` trivially unchanged and this case green while proving nothing. Read the row's
+      // current `updated_at` back from Postgres and add to it, rather than using the host clock
+      // (Docker Desktop / WSL2 clock skew trap).
+      const seedClient = await pg()
+      let newStamp: string
+      try {
+        const { rows } = await seedClient.query(
+          `select updated_at from public.${table} where id = $1`,
+          [seededRowIds[table]],
+        )
+        expect(rows).toHaveLength(1)
+        const currentUpdatedAt = rows[0].updated_at as Date
+        newStamp = new Date(currentUpdatedAt.getTime() + 60_000).toISOString()
+      } finally {
+        await seedClient.end()
+      }
+
+      // `notes` has no `title` column (schema.sql:79-90) — only `tasks` is titled, the other
+      // two child tables are named.
+      const editFieldKey = table === 'tasks' ? 'title' : 'name'
+
+      // Mirrors `src/sync/sync.ts:216`'s push payload exactly: the client stamps its own
+      // `user_id` on every row it sends, member or not — `payload = batch.map((row) => ({
+      // ...forServer(table, row), user_id: userId }))`. This is *why* `<t>_zz_keep_creator`
+      // is needed at all: without it, B's genuinely-sent `user_id` would land untouched. An
+      // update that only sets `editFieldKey` would never give the trigger anything to
+      // overwrite, and such a case would stay green even with the trigger dropped — exactly
+      // the decorative trap this card is written against.
+      const clientB = await asUser(userB)
+      const { data: edited, error: editErr } = await clientB
+        .from(table)
+        .update({ [editFieldKey]: 'edited by B (R-7)', user_id: userB.user.id, updated_at: newStamp })
+        .eq('id', seededRowIds[table])
+        .select()
+
+      // Positive control, in the same block: B's edit actually landed. Without this half, a
+      // T023 regression that refuses B's writes outright would leave the row untouched —
+      // `user_id` trivially still A's — and the assertion below would pass while proving
+      // nothing. `.select()` is load-bearing for the same reason noted above: a PostgREST
+      // UPDATE whose USING half matches nothing returns 204 with no error at all.
+      expect(editErr).toBeNull()
+      expect(edited).toHaveLength(1)
+      expect((edited?.[0] as Record<string, unknown> | undefined)?.[editFieldKey]).toBe('edited by B (R-7)')
+
+      // The R-7 assertion itself, read back server-side over a direct `pg` connection (not
+      // merely trusted from the PostgREST response): `user_id` still names A, who created the
+      // row — never B, who only edited it. `<t>_zz_keep_creator` is what resets
+      // `new.user_id := old.user_id` before WITH CHECK is ever evaluated; drop it and B's
+      // genuinely-sent `user_id` lands untouched, and this assertion goes red.
+      const verifyClient = await pg()
+      try {
+        const { rows } = await verifyClient.query(
+          `select user_id from public.${table} where id = $1`,
+          [seededRowIds[table]],
+        )
+        expect(rows).toHaveLength(1)
+        expect(rows[0].user_id).toBe(userA.user.id)
+      } finally {
+        await verifyClient.end()
+      }
     })
   })
 
