@@ -8,7 +8,7 @@ does first. Not a log — overwrite, don't append.
 - **2026-09-14 close:** all three lanes merged into `002-team-workspaces` @ f6ed810 (T023a incl.
   no-JWT exemption on the FR-010 trigger; sync + ui lanes). Pushed; **PR #1 → main** open.
   Full suite: schema-apply 6/6, then 201/203 in the parallel run (`soft-delete` acc. 1/4 flaked,
-  3/3 alone — A-017); second full run was in progress at close — record its result in receipts.md.
+  3/3 alone — A-017); second full run **203/203 green** (merge receipt in receipts.md).
   Local DB had stale split policies from T023a's first attempt; dropped by hand (hosted unaffected).
 - **Deploy status:** NOT deployed from this machine — no `.env.local`/`VITE_*` here, so a local
   `wrangler deploy` would ship a client without a Supabase URL. Path: owner runs T058 (hosted

@@ -2495,3 +2495,11 @@ unknown reason. OPEN PROBLEM, unresolved at cutoff. B2.
 Not run: `npx tsc -b --noEmit`, `npm run lint`, diff stat.
 
 Not committed (per scope). No `.md` file edited besides this receipt.
+
+## Merge receipt — 002-team-workspaces @ f6ed810 (2026-09-14)
+
+Lanes `wt/sync-cache` (c783b3e) and `wt/ui` (dc7f49c) merged; T023a committed (521d99a + f6ed810).
+`tsc -b` 0, lint 0, `npm run build` 0. Local DB: stale split policies from T023a's first attempt
+dropped by hand, `schema-apply.test.ts` 6/6 (idempotent double apply). Full suite `npm test -- --run`:
+run 1 — 201/203 (`soft-delete.test.ts` acceptances 1 and 4 failed in the parallel run, 3/3 alone,
+A-017); **run 2 — 20 files, 203/203 passed.** Pushed; PR #1 → main.
