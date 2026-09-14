@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { listLabels, listNotes, listTasks, listWorkspaces } from './api'
+import { listLabels, listMembers, listNotes, listTasks, listWorkspaces } from './api'
 import { db } from './local'
-import type { ID, Label, Note, Task, Workspace } from './types'
+import type { ID, Label, Member, Note, Task, Workspace } from './types'
 
 /*
  * Reactive reads from the local database.
@@ -39,5 +39,9 @@ export function useTask(id: ID | null): Task | null | undefined {
 
 export function useNotes(workspaceId: ID | null): Note[] | undefined {
   return useLiveQuery(() => (workspaceId ? listNotes(workspaceId) : []), [workspaceId])
+}
+
+export function useMembers(workspaceId: ID | null): Member[] | undefined {
+  return useLiveQuery(() => (workspaceId ? listMembers(workspaceId) : []), [workspaceId])
 }
 
