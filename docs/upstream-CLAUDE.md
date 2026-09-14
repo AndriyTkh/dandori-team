@@ -190,7 +190,13 @@ One schema for all workspaces. No per-workspace schemas.
   mode, only the zoom differs. The choice is remembered per device.
   The phone gets no switch and is always `Месяц`: 400 px cannot hold a year of
   anything, so days stay readable and the rest of the scale is scrolled to. The
-  corner there stays a bare spacer and leaves its width to the axis.
+  two ends of the name column — the corner above the names and the foot below
+  them — hold nothing there, so the scale runs over them rather than under.
+  Pinned and painted, as they are on the laptop where one of them carries the
+  switch, they cost the scale a third of a 390 px screen: every scroll slid the
+  first day and half a month's name in under a blank block and cut them down the
+  middle. The column's own line stays along the names, which is the stretch of
+  it that divides anything.
 - A column is a day only while days are wide enough to read. Past that the step
   grows to a week and then to a month, so a grant two years out still fits on the
   screen instead of squeezing every day into a hairline. Dates keep their exact
@@ -242,6 +248,13 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   and whether a notification or an e-mail), which calendar, and the event's colour.
   Saving creates the event. Beside a ticked checkbox stands «Править», which opens
   the same window again.
+- An event takes the colour of the task's first label, and the colour picked in
+  the window stands for a task that carries none. A workspace synced whole put
+  every event it made in one colour, which is the one thing a calendar full of
+  them cannot be read by — and the labels are already the colours the owner
+  sorts by, in both places at once. The nine label colours map onto nine of
+  Google's eleven, one to one, and the picker keeps its job where there is no
+  label to take a colour from.
 - **Time of day belongs to the event, never to the task.** A reminder has to name
   a moment, so the event has a clock time — but the task does not, and no view
   ever shows one. The board and the timeline stay date-only, and nothing sorts,
@@ -274,13 +287,57 @@ is not an integration for its own sake; it is the reminder the banner cannot giv
   and because the alternative, ticking each new task by hand, is the chore the
   switch exists to spare him.
 - The exchange runs in the browser while the app is open, like the rest of the
-  sync. There is no server and no client secret anywhere: Google's token client
-  hands the page an access token, and renews it silently for as long as the
-  browser is signed in to Google. An edit made with the app closed reaches the
-  calendar the next time it is opened.
-- One-way, always. The calendar is told what the task says; what happens to the
-  event in Google is never read back. Two directions would need a server to
-  listen, and a second answer to every conflict.
+  sync, bar one step. An edit made with the app closed reaches the calendar the
+  next time it is opened.
+  Google hands out an hour of access at a time, and gives the means of making
+  the next hour only to a client that can keep a secret. A page delivered to a
+  browser keeps none: everything in it is read by whoever opens it. So the
+  site's own worker — the one already serving these files — holds the secret and
+  takes that one step: it trades the code the consent screen sends back, and
+  trades the refresh token for another hour. It keeps nothing, since the tokens
+  go straight back to the browser that asked, and it answers no request that did
+  not come from this site. That is the whole of the server side of this project:
+  no data passes through it, nothing is stored on it, and if the calendar ever
+  goes the file goes with it. The rule it breaks was written in this file, and
+  it was right until it was measured — Google's token client opens a window even
+  when it has nothing to ask, a blocked window is what a browser does to a window
+  nobody clicked for, and so every reload ended the connection and cost a click
+  to restore. This integration exists to deliver the reminder the app cannot,
+  and a reminder that stops arriving because a token quietly expired is worse
+  than no integration at all.
+  Signing in is therefore a page of Google's, opened by the owner's own click
+  and coming back to the app: once, rather than once an hour. What comes back
+  and stays is the refresh token alone — it is the account, and it goes when the
+  account is disconnected, Google being told to drop the grant as it does. The
+  hour of access it buys lives in the tab and nowhere else: a reload spends one
+  silent request making another, and a second key kept at rest would buy nothing
+  but a thing to lose. The consent screen names no account either. A browser
+  signed into several has to ask which is meant, and being asked is the point:
+  the owner picks the calendar the events go to, and a hint remembered from the
+  first time would pick it for him for good.
+  The secret itself is in Cloudflare's secrets and nowhere else: not in the
+  repository, not in the bundle, not in anything the worker writes back.
+- One-way, but for one thing: an event that is gone. The calendar is told what
+  the task says and nothing that happens to the event in Google is read back —
+  except its deletion, which unticks the task's checkbox exactly as unticking it
+  by hand would, and on a task under a whole-synced workspace is written as that
+  task's own refusal, so the switch cannot put the event back. Without it the
+  only way out of a sweep was inside the app: clearing the thing off the
+  calendar is the gesture that comes to hand, and it held only until the next
+  edit of the task rewrote the event into place.
+  While the app is open, each calendar it has events in is asked once a pass
+  what changed in it since the last time it was asked. Asking creates nothing —
+  it is a read — and the answer is acted on before the same pass writes
+  anything, so a task whose event was deleted leaves the sync before it can be
+  rewritten. Nothing else in the answer is looked at: not a moved event, not a
+  renamed one, not an event of the owner's that was never ours. A deletion made
+  while the app is shut is noticed the next time it is opened.
+  Two directions in full would need a server to listen and a second answer to
+  every conflict. This is one bit travelling the other way, and all it can do is
+  turn something off. It has a price: an event dragged into another calendar
+  inside Google reads as a deletion and unticks its task, leaving that event
+  behind where it was dragged — which calendar an event stands in is chosen in
+  the app, and Google is not asked.
 - Which calendar an event stands in travels with the task. It is the only record
   that the event exists at all: a device that did not create it — a second one,
   or the same one after signing out cleared its local notes — would otherwise
@@ -451,7 +508,7 @@ The list is closed. Any item from here, in the code or in the interface, is a bu
 | Backend | Supabase (Postgres + Auth + RLS) |
 | Markdown | `marked` |
 | PWA | `vite-plugin-pwa` |
-| Hosting | Cloudflare Workers (static assets) |
+| Hosting | Cloudflare Workers (static assets, plus the one route above) |
 
 The timeline, the monthly grid and the day feed are written by hand on CSS grid.
 We do not pull in Gantt or calendar libraries: they all drag in time slots and hours,
@@ -563,7 +620,8 @@ Owns: `src/views/`, `src/components/`, `src/styles/`.
 
 ### `infra` — build and deploy
 
-Owns: `vite.config.ts`, the manifest and the service worker, `wrangler.jsonc`, CI, `README.md`.
+Owns: `vite.config.ts`, the manifest and the service worker, `wrangler.jsonc`,
+`worker/`, CI, `README.md`.
 
 - Build configuration, PWA, deploy to Cloudflare Workers (static assets).
 - Checking the install to the home screen.

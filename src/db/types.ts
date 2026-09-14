@@ -22,6 +22,23 @@ export const LABEL_COLORS = [
 
 export type LabelColor = (typeof LABEL_COLORS)[number]
 
+/*
+ * The same colour in Google's palette, for the event a task with this label
+ * makes. Google's eleven and our nine meet one to one, so no two labels arrive
+ * in the calendar looking alike.
+ */
+export const GCAL_COLOR_OF: Record<LabelColor, string> = {
+  red: '11',
+  orange: '6',
+  amber: '5',
+  green: '10',
+  teal: '2',
+  blue: '7',
+  violet: '3',
+  pink: '4',
+  slate: '8',
+}
+
 /** Fields shared by every synced row. */
 export interface Synced {
   id: ID

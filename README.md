@@ -60,10 +60,34 @@ npm run icons
    so these are build variables, not runtime ones.
 5. Save and deploy. After that every push to the main branch deploys itself.
 
+### The Google Calendar half
+
+Only needed if the calendar is used at all. Everything else works without it.
+
+1. Google Cloud Console → APIs & Services → **Credentials** → the OAuth client
+   of type "Web application":
+   - **Authorized JavaScript origins**: the app's address.
+   - **Authorized redirect URIs**: the same address with `/gcal/callback`.
+   - the same page shows the **client secret**. It is used by nothing but the
+     worker and belongs in no file.
+2. APIs & Services → **OAuth consent screen** → publishing status **In
+   production**. In "Testing" Google expires a refresh token after seven days,
+   which is the one thing the worker exists to avoid. An app used by its own
+   author needs no verification; the screen says it is unverified once.
+3. The secret goes to the worker, not to the build. Cloudflare Dashboard →
+   the Worker → Settings → **Variables and Secrets**, as secrets:
+   - `GOOGLE_CLIENT_ID` — the same id as in the build variable above.
+   - `GOOGLE_CLIENT_SECRET`.
+
+   Or from the command line: `npx wrangler secret put GOOGLE_CLIENT_SECRET`.
+   These are runtime values and are never built into the bundle.
+
 Serving the static files is described in `wrangler.jsonc`: the `assets` block gives out
 the built `./dist`, and `not_found_handling: single-page-application` returns
-`index.html` for any unknown path. There is no `public/_redirects` file any more —
-`not_found_handling` does its job, and nothing has to be set up separately in the dashboard.
+`index.html` for any unknown path. Beside it stands `worker/index.ts`, which
+answers `/api/gcal/*` and hands everything else to those same files — the one
+step of the Google sign-in that needs a secret a browser cannot keep. It stores
+nothing and serves no one but this site.
 
 After changing the environment variables the deploy has to be repeated:
 the old bundle was built with the old values.
