@@ -251,14 +251,14 @@ language plpgsql security definer set search_path = public, pg_temp as $fn$
 declare
   ws record;
 begin
-  -- A real Postgres superuser (the local stack's harness connects as `postgres` directly, and a
-  -- self-hoster's own admin SQL does the same) already has unconditional power over every row
-  -- and every trigger in the database -- `ALTER TABLE ... DISABLE TRIGGER`,
-  -- `session_replication_role = replica`, or simply `DROP TRIGGER` would get there anyway, so
-  -- refusing it here would not be a real boundary, only friction on admin housekeeping (test
-  -- fixture teardown included). RLS-facing roles (`authenticated`, `anon`, `service_role`) are
-  -- never superusers, so this cannot be used to route around the invariant from the app.
-  if current_setting('is_superuser') = 'on' then
+  -- The invariant guards the API surface. A caller with no JWT -- a direct database connection
+  -- (the local stack's harness as `postgres`, a self-hoster's own admin SQL, the SQL editor) --
+  -- is admin housekeeping, already able to `DISABLE TRIGGER` or `DROP TRIGGER`, so refusing it
+  -- here is friction, not a boundary. Every app write arrives through PostgREST with a JWT, so
+  -- `auth.uid()` is non-null there and the checks below apply. (`service_role` also has no uid,
+  -- and bypasses RLS anyway.) Note: Supabase's `postgres` role is not a superuser, so an
+  -- `is_superuser` test would not recognise the harness.
+  if auth.uid() is null then
     if tg_op = 'DELETE' then
       return old;
     end if;

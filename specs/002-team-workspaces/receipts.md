@@ -2450,3 +2450,48 @@ the real owner until the seeded owner row is pulled (offline right after creatin
 `kindPersonal`/`kindTeam` — acceptable; (6) note `Header.css`/`Settings.css` are in no map entry's
 `paths` — widen `chrome-components` to `src/components/` at the next map edit (T052).
 Fixes (1) and (2) dispatched as the lane's fix pass.
+
+## T023a — RLS reachability fixes (schema lane review 67a56d8..c5fda53) — INTERRUPTED, NOT DONE
+
+Status: STOPPED mid-verification on coordinator instruction; session closing, coordinator to finish.
+Do not treat as green. Map entries (`supabase-schema`, `team-rls`, `membership`) untouched, as scoped.
+
+Findings 1-8 state in `supabase/schema.sql` (mirrored byte-identical in
+`specs/002-team-workspaces/contracts/policies.sql`, verified via `diff -u`, exit 0, for both the
+policy-block range and the keep_creator/members_owner_invariant trigger-block range):
+- (1)/(2) DELETE narrowing: DONE, but NOT via the dispatch's literal 4-named-policy split — that
+  broke `schema-apply.test.ts` ("own_rows" name assertion) and would have broken
+  `team-rls-both-halves.test.ts`'s `fetchPolicyHalves`. Redesigned as `AS RESTRICTIVE FOR DELETE`
+  policies (`<t>_zz_delete_creator_only`, `members_zz_delete_owner_only`) AND-ed onto the untouched
+  `own_rows`/`members_access`. Deviation, rationale in schema.sql comment above the block. B3.
+- (3) keep_creator on workspaces: DONE.
+- (4) FR-010 members_owner_invariant() + trigger: DONE but REGRESSED other tests (see below) — a
+  fix (superuser exemption) is IN PLACE in both files but NOT CONFIRMED WORKING at cutoff. B2, open.
+- (5) revoke execute _create_login_impl from public/anon/authenticated: DONE.
+- (6) block-E header comment: DONE.
+keep_newer/stay_deleted_with_workspace/follow_workspace_delete: not touched, assumed intact (not
+re-diffed this pass).
+
+New test `tests/stack/team-rls-delete-and-owner-invariant.test.ts`: RED confirmed pre-fix (12 failed
+for named reasons, 5 green incl. exemptions), then GREEN in isolation post-fix: 17/17 passed
+(`npx vitest run --project stack tests/stack/team-rls-delete-and-owner-invariant.test.ts`).
+Deviation: case (c)'s control substituted (owner-succeeds, not "member PATCH name succeeds" —
+that contradicts FR-005 and `team-rls-both-halves.test.ts`). B3.
+
+Whole-tier run (`npx vitest run --project stack`), LATEST: **5 files failed / 11 passed (16)**,
+**29 tests failed / 123 passed (152)**. Beyond the expected-red `push-refusal-fallback.test.ts`
+(1 failure there too, unverified against pre-fix baseline this session — flag, don't assume same
+red-by-design reason): `logins-provisioning.test.ts` (20/20 failed), `members-two-accounts.test.ts`
+(suite-level), `personal-triggers-after-t022.test.ts` (1), `team-rls-both-halves.test.ts`
+(suite-level cleanup + 9 assertion fails), ALL erroring `"the owner row cannot be hard-deleted
+directly"` — the new FR-010 trigger fires on the test harness's own admin cleanup (`pg` client
+connects as the local stack's `postgres` superuser, DELETEs `members` rows directly in
+afterAll/beforeAll teardown; not a member hard-delete assertion, so per dispatch rule this is
+"fix the schema, not the test"). Applied fix: `if current_setting('is_superuser') = 'on' then`
+early-exempt at the top of `members_owner_invariant()` in both files (diff-verified identical) —
+**re-run after this fix showed the SAME failures**, so the exemption is not taking effect for an
+unknown reason. OPEN PROBLEM, unresolved at cutoff. B2.
+
+Not run: `npx tsc -b --noEmit`, `npm run lint`, diff stat.
+
+Not committed (per scope). No `.md` file edited besides this receipt.
