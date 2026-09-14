@@ -372,3 +372,118 @@ token or credential literal in the added code.
 
 Verdict: PASS, mergeable, two advisory findings both actioned above. Sign-off: Andrii Tkhorenko
 (single-operator).
+
+## T009 receipt — structural schema guards (2026-09-14)
+
+Merge commit `f810738` (lane `wt/guards`, worker commit `67e5569`).
+
+**What landed.** `tests/stack/team-schema-guards.test.ts`, 12 cases pinning five structural risks
+from `plan.md` against the deployed schema, independent of any application code: **R-17** pgcrypto
+installed in the `extensions` schema, asserted first so a missing extension fails as one clear line;
+**R-16** the `users_seed_first_admin` trigger on `auth.users`; **R-1** a plain authenticated select
+on `public.members` that does not recurse; **R-2** `prosecdef` and a pinned `search_path` for all
+fifteen functions this feature adds; **R-3** an anon client refused on each of the eight RPCs.
+
+**Red verify, run three times, and what each run changed.**
+
+Run 1 was red on R-16, R-1 and R-2 for their named reasons, and **green on all eight R-3 cases for
+the wrong reason**: the routines do not exist yet, so PostgREST answers `PGRST202` "could not find
+the function", the error is truthy, and a bare truthiness assertion is satisfied. The author had
+documented the vacuity honestly in the file header rather than hiding it. Sent back.
+
+Run 2, after the eight cases were tightened to require a Postgres `42501` privilege refusal with
+`permission denied for function <name>`: `Tests 11 failed | 1 passed (12)`. Each R-3 case now reads
+`create_login: expected privilege refusal 42501, got PGRST202: Could not find the function
+public.create_login(email, password) in the schema cache`. Red for the right reason, and a real
+regression guard once the routines land with their `revoke ... from public, anon`.
+
+Run 3, after the closer's findings were actioned: `Tests 11 failed | 1 passed (12)`, with R-1 now
+failing on a stronger precondition — `members_access policy not found on public.members (found:
+(none))`.
+
+**Closer verdict: PASS, mergeable, five advisory findings, none blocking.** The closer verified
+red-first integrity case by case — all eleven reds trace to an absent schema object, none to a typo,
+column name or harness error — and cross-checked the arithmetic (1+1+1+1+8 = 12) so that no case was
+silently skipped. It confirmed all fifteen R-2 names exist in the contracts and that all eight R-3
+argument name-sets match the contracted signatures character for character. It confirmed R-17's green
+is genuine: the query joins `pg_extension` to `pg_namespace` and requires `nspname = 'extensions'`,
+so pgcrypto in `public` would fail it. It confirmed `public.keep_creator()` is correctly **excluded**
+from the fifteen, the contract defining it without `security definer` on purpose.
+
+**Three findings actioned before merge.**
+
+1. The file promised the wrong card. Its header said T024 turns it green. It does not. R-1 clears
+   at T023, two R-3 cases at T024, R-16 and the third R-3 case at T025, and R-2 plus the last five
+   R-3 cases at **T026** — the first point the whole file is green. R-2 clears cumulatively: 2/15 at
+   T021, 6/15 at T022, 8/15 at T024, 10/15 at T025, 15/15 at T026. Header rewritten; T009's verify
+   line corrected in `tasks.md`. **The author caught an arithmetic error in the coordinator's own
+   correction** — the coordinator had written "ten of the fifteen by T024" and "the first three R-3
+   cases at T024"; re-reading the task bodies gives eight and two, because `is_admin` is not defined
+   until T025. The author flagged it rather than copying it, and the numbers above are the corrected
+   ones.
+2. R-1 went vacuously green in the T020 to T023 window — the same class of defect already sent back
+   once on R-3. Between fork block A (table created, RLS enabled) and T023 (the `members_access`
+   policy), the table has RLS on and no policy, so a select returns zero rows with no error and the
+   test passes without exercising any policy. Closed by asserting through `pg_policies` that
+   `members_access` exists on `public.members`, as a precondition before the untouched recursion
+   canary. This is what run 3's new red line shows.
+3. R-2 asserted that a `search_path` exists, not what it is — `startsWith('search_path=')` would
+   accept an empty one. Replaced with a structural check requiring the pinned path's first segment to
+   be `public` and its last to be `pg_temp`, which admits all three contract forms and rejects the
+   degenerate ones, with each offending function's actual `proconfig` in the message.
+
+**Two findings recorded, not fixed.** `tests/` sits outside every tsconfig include, so continuous
+integration never typechecks this file or any other test — pre-existing and repo-wide, not introduced
+here; the closer typechecked the file out of band, clean. And the R-3 cases now pin the eight
+routines' parameter names, so a rename would leave the guard permanently red while looking like a
+schema bug; recorded as a done-when note on T024 and T026 rather than loosened here.
+
+**Other checks.** Lint and typecheck clean, re-run by the closer. Personal-must-not-regress: not
+applicable, one file under `tests/stack/`, nothing under `src/`, `supabase/` or `worker/`. Spec
+control: every assertion traces to the card and the contracts. Origin-invariant: no origin column,
+table or cross-origin reference. Map discipline: no mapped paths touched; `supabase-auth` is used
+as incidental substrate under the owner's accepted risk and the file makes no claim about auth.
+FR-044: no credential literal; the two throwaway password strings are payload for calls asserted to
+be refused.
+
+Sign-off: Andrii Tkhorenko (single-operator).
+
+## Coordinator correction — three cards named the wrong refusal mechanism (2026-09-14)
+
+Three workers, on three unrelated cards, independently reported the same thing: a card (or a
+coordinator instruction) asserted a Postgres `42501` where the deployed behaviour will be zero rows
+and no error at all. In two of the three the wrong text was the coordinator's own. Recording the
+mechanic once, and the three corrections it forced.
+
+**The mechanic.** An `own_rows`-style policy has two halves. A write statement is refused with
+`42501` only when the row **passes** the read half's `using` clause and its new values then fail
+`with check`. When the row fails `using`, the statement matches nothing — it behaves like a `WHERE`
+that selected no rows, reports `count: 0` and **raises no error and no SQLSTATE**. "Refused" has two
+observable shapes, and a test that asserts the wrong one is a test that fails against correct code.
+
+**T016 (`personal-unchanged.test.ts`), twice.** The card first required asserting that a non-owner's
+`kind` update is pinned back to `personal` by a trigger. That trigger does not exist: plan decision
+D-6 was withdrawn in favour of D-6′, `contracts/policies.sql:117-122` states authoritatively that no
+pin trigger exists, `kind` is an ordinary owner-writable column, and `on_workspace_kind_change`
+(AFTER UPDATE) only draws the consequences. Asserting a pin-back would also have contradicted T017,
+which asserts the switch succeeds. Corrected. The coordinator then told the worker to assert `42501`
+for the non-owner case, which was **also wrong** — account B is a stranger to A's workspace, fails
+the read half, and gets zero rows with no error. The worker corrected the coordinator. Card text
+fixed a second time.
+
+**T017 (`kind-switch.test.ts`).** The worker hit the same mechanic independently on case (e) and
+reported it rather than working around it. Its consequence is a scope correction on T022: that
+card's verify line previously expected `kind-switch.test.ts` green after T022, but case (e) needs a
+*member* to be visible under the read half, which only widens at T023. T022's verify line now
+excludes case (e) and names T023 as where it turns green.
+
+**T010 (`members-two-accounts.test.ts`).** The card said adding and removing a member are both
+refused with `DA001`. They are different operations with different mechanisms. `add_member_by_email`
+is `security definer` and raises `DA001`; removal **is not an RPC** (`contracts/rpc.md:293`) but an
+ordinary soft-delete write, refused by RLS. Card corrected against the contract.
+
+No requirement changed in any of the three. The contracts were already owner-approved and were
+correct throughout; what was wrong was three task-card restatements of them, and the fix in every
+case was to read the contract and make the card match it.
+
+Sign-off: Andrii Tkhorenko (single-operator).
