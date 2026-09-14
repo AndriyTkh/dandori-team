@@ -11,8 +11,7 @@ does first. Not a log — overwrite, don't append.
     If uncommitted edits exist and the new test + whole stack tier are green, commit as
     `rls: split policies so DELETE stays creator-only; owner invariant; keep_creator on workspaces (T023a)`.
     If unfinished, re-dispatch T023a from its card; its receipt may already be in receipts.md.
-  - `wt/ui` (C:\ProjectsC\KSE\Dandori-wt-ui @ 0f4f5db): ui-lane fix pass — `Header.tsx`, `Confirm.tsx`,
-    `Settings.tsx` (password state clear; A-012 `AskName` collapse). Commit if tsc/lint/build pass.
+  - `wt/ui` (C:\ProjectsC\KSE\Dandori-wt-ui @ dc7f49c): fix pass **committed**; ui lane complete.
 - **Lane `wt/sync-cache`** @ c783b3e: code complete, reviewed (T038 PASS). Owed at merge: T039
   `sync-engine` re-verify, map re-stamps `local-cache`, `db-api`; `multi-account-cache` flip.
 - **Lane `wt/ui`**: T041–T050 done, reviewed PASS; fix pass above. Owed: nothing else.
