@@ -228,3 +228,41 @@ Sign-off: Andrii Tkhorenko (single-operator).
   ADR-0007 + `ARCHITECTURE.md` §gcal/§5 update + regenerated index + `gcal-integration` paths
   (`worker/index.ts`), same change set. `gcal-integration` stays UNTESTED.
 - Sign-off: Andrii Tkhorenko (single-operator).
+
+## T007 receipt — harness `createTestUsers` / `asUser` (2026-09-14)
+
+Merge commit `8579911` (lane `wt/harness-accounts`, worker commit `66ac420`).
+
+**What landed.** `tests/harness/accounts.ts` gained two additive exports and nothing else:
+`createTestUsers(n, label = 'user'): Promise<TestUser[]>` and `asUser(testUser): Promise<SupabaseClient>`,
+the latter memoized on a `WeakMap<TestUser, Promise<SupabaseClient>>` so a file that switches
+between accounts A/B/C signs in once per account rather than once per assertion. `git diff --stat`
+on the lane: `1 file changed, 31 insertions(+)`, zero deletions. `createTestUser`, `clientFor`,
+`deleteTestUser` and the `TestUser` type are byte-identical to `4991c33` — verified by the closer
+against `git show 4991c33:tests/harness/accounts.ts`, not assumed.
+
+**Verification (closer, Gate-2).**
+
+- Throwaway probe `tests/stack/zz-t007-closer.test.ts`: 3 passed / 3 — `asUser(u0)` returns the
+  same promise on repeat calls, and `auth.getUser()` on three memoized clients returned three
+  distinct ids matching each `TestUser.user.id`. Probe deleted afterwards; `git status --short`
+  then showed `accounts.ts` alone.
+- Full stack suite, 5 files: `Test Files 5 passed (5) / Tests 24 passed (24)`, 13.0s.
+- `npm run lint` (oxlint) exit 0, no diagnostics. `npx tsc -b --noEmit` exit 0, no output.
+
+**FR-030.** This is an additive-only edit to a P0 harness helper file: new exports, no existing
+signature changed, no existing assertion touched. The P0 checks themselves remain unedited, so
+this is outside FR-030's "unedited checks" scope and is *not* a third exception — the two recorded
+exceptions remain T004 and T004a.
+
+**Substrate.** `supabase-auth` is `UNTESTED` under the owner's accepted-risk entry of 2026-09-14
+(`docs/validation-map.md`). T007 leans on it and does not improve it; recorded here so the debt is
+visible rather than laundered through a green harness card.
+
+**Advisory findings, no fix at T007.** (1) `createTestUsers` uses `Promise.all`, so a partial
+failure orphans the already-created users in the local stack; this matches the file's existing
+"teardown is best-effort, never required for isolation" stance and emails are unique per call.
+(2) `asUser` caches a rejected promise for the life of the file; `clientFor` throws loudly on a
+sign-in error, so it surfaces as a clear failure rather than a silent one.
+
+Verdict: PASS, mergeable. Sign-off: Andrii Tkhorenko (single-operator).
