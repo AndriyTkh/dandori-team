@@ -401,6 +401,8 @@ function MembersSection({ workspace, t }: { workspace: Workspace; t: T }) {
         >
           <input
             className="field"
+            type="email"
+            required
             placeholder={t('members.emailPlaceholder')}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -661,6 +663,8 @@ function LoginsSection({ t, onAdminChange }: { t: T; onAdminChange: (admin: bool
               <input
                 className="field"
                 type="password"
+                required
+                minLength={8}
                 autoFocus
                 placeholder={t('logins.passwordPlaceholder')}
                 value={newPassword}
@@ -704,6 +708,8 @@ function LoginsSection({ t, onAdminChange }: { t: T; onAdminChange: (admin: bool
       >
         <input
           className="field"
+          type="email"
+          required
           placeholder={t('logins.emailPlaceholder')}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -711,6 +717,8 @@ function LoginsSection({ t, onAdminChange }: { t: T; onAdminChange: (admin: bool
         <input
           className="field"
           type="password"
+          required
+          minLength={8}
           placeholder={t('logins.passwordPlaceholder')}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
