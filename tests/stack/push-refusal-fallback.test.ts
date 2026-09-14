@@ -70,6 +70,28 @@
 // in scope here — but it means these assertions prove "no push OR pull
 // failure", not "no push failure" precisely.
 //
+// T036a (A-015, sync lane review finding 1): the case above is deliberately
+// the *unreadable* shape — `acting` never held `unreachableWorkspaceId` at
+// all, so a probe `select` after the `42501` comes back empty and the row is
+// still deleted outright, exactly as before. The case below is the other
+// half D-18's fallback did not originally distinguish: a row the account
+// *can* still read (a team member, via `is_member`) but whose `UPDATE` is
+// refused (`workspaces`' `with check` stays owner-only — schema.sql
+// "workspaces: READ widens to membership; WRITE deliberately does not",
+// FR-005). There the probe comes back non-empty, so the row is left off
+// `droppedByRefusal` and instead falls into the pre-existing refused-id
+// merge (`mergeRows(table, kept, true)`, `sync.ts` ~:298-311) — untouched by
+// T036a, and exercised here exactly as it already was for a `keep_newer()`
+// staleness refusal. That merge keeps whichever of local/remote is
+// `isNewer` (`sync.ts:105-106`, part of the protected range), so this case's
+// fixture is built with the local edit's `updated_at` held at *exactly* the
+// row's current server stamp — not bumped to `now()` — the same "why the
+// timestamps are safe" care the file header above gives the INSERT case,
+// just aimed at the opposite failure mode: a bumped stamp would make the
+// local edit read as newer, `isNewer` would keep it, and the row would stay
+// dirty forever rather than demonstrating the restore this case exists to
+// pin.
+//
 // What this file deliberately does not cover: the exact wire shape of the
 // per-row retry (one request per row vs. the initial batch request) is not
 // asserted by counting network calls — that would pin an implementation
@@ -88,6 +110,7 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { clientFor, createTestUser, deleteTestUser } from '../harness/accounts'
+import { seedTeamWorkspace } from '../harness/seed'
 import { assertStackReachable } from '../harness/stack'
 import { driveSyncCycle, flushQueue } from '../harness/sync'
 import { supabase } from '../../src/auth/supabase'
@@ -122,6 +145,7 @@ function localTask(o: {
     custom_fields: [],
     gcal: null,
     gcal_placed: null,
+    assignee: null,
     created_at: o.updated_at,
     updated_at: o.updated_at,
     deleted: false,
@@ -423,6 +447,85 @@ it(
       await supabase.auth.signOut()
       await deleteTestUser(owner)
       await deleteTestUser(acting)
+      await wipeLocal()
+    }
+  },
+  30_000,
+)
+
+it(
+  'T036a: a member’s refused UPDATE on a readable row is restored from the server, not deleted',
+  async () => {
+    const owner = await createTestUser('push-refusal-ws-owner')
+    const memberB = await createTestUser('push-refusal-ws-member')
+    try {
+      const rawOwner = await clientFor(owner)
+      const seeded = await seedTeamWorkspace(owner, [memberB])
+
+      const { data: serverBefore, error: readErr } = await rawOwner
+        .from('workspaces')
+        .select('name, updated_at')
+        .eq('id', seeded.workspaceId)
+        .single()
+      expect(readErr).toBeNull()
+      const originalName = serverBefore?.name as string
+      expect(originalName).toBeTruthy()
+
+      // Hand the app singleton to B and wipe the owner's local cache first —
+      // the same account-switch convention `tests/stack/lww-conflict.test.ts`
+      // and `tests/stack/member-offline-round-trip.test.ts` use, rather than
+      // relying on `claimCache`'s own wipe-on-mismatch to do it implicitly
+      // mid-cycle.
+      await supabase.auth.signOut()
+      await wipeLocal()
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: memberB.email,
+        password: memberB.password,
+      })
+      expect(signInErr).toBeNull()
+
+      // B's first cycle: nothing dirty to push, so this is pull-only in
+      // effect. The workspace is readable to B via `is_member(id)` now that
+      // `seedTeamWorkspace` added B to it, so it lands in Dexie clean.
+      await driveSyncCycle()
+      const before = await db.workspaces.get(seeded.workspaceId)
+      expect(before).toMatchObject({ name: originalName, _dirty: 0 })
+
+      // B "edits" the name locally. Built directly, like `localTask`/
+      // `localLabel` above, rather than through `renameWorkspace()`: the
+      // `updated_at` is deliberately left exactly as pulled (see the header
+      // note above this test) so the refused-id merge's `isNewer` check does
+      // not read this as a strictly newer local edit.
+      await db.workspaces.put({ ...before!, name: 'renamed by a member, should be refused', _dirty: 1 })
+
+      // Out-of-band proof of the refusal mechanic this case relies on: a
+      // member's `UPDATE` on a row it can still read is refused with exactly
+      // `42501` — `USING` passes (`is_member`), only `WITH CHECK` fails
+      // (owner-only) — never the silent 0-row outcome a `USING`-side refusal
+      // or a `keep_newer()` staleness drop would give.
+      const rawB = await clientFor(memberB)
+      const { error: probe } = await rawB
+        .from('workspaces')
+        .update({ name: 'probe, ignored', updated_at: before!.updated_at })
+        .eq('id', seeded.workspaceId)
+      expect(probe?.code).toBe('42501')
+
+      // The central claim: a push cycle neither deletes the row nor leaves
+      // it dirty with an edit that can never land — it is restored from the
+      // server within this same cycle.
+      await driveSyncCycle()
+
+      const after = await db.workspaces.get(seeded.workspaceId)
+      expect(after).toBeDefined()
+      expect(after).toMatchObject({ name: originalName, _dirty: 0 })
+
+      // A refusal is an answer, not an outage (D-18 point 5, same as the
+      // case above).
+      expect(getSyncState()).not.toBe('error')
+    } finally {
+      await supabase.auth.signOut()
+      await deleteTestUser(owner)
+      await deleteTestUser(memberB)
       await wipeLocal()
     }
   },

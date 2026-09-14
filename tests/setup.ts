@@ -15,5 +15,6 @@ afterEach(async () => {
   await db.labels.clear()
   await db.tasks.clear()
   await db.notes.clear()
+  await db.members.clear()
   await db.meta.clear()
 })
