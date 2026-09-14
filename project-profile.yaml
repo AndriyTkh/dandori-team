@@ -1,0 +1,96 @@
+profile-version: 5
+
+# Dandori fork — plumbline project profile.
+# Contract: project-compass/references/project-profile.md (suite plumbline@0.9).
+# Written 2026-09-14 by audit Gate 3b; owner ruled the stage values in chat the same day
+# (docs/owner-approvals.md gate 1). Re-confirm current_stage + rigor + autonomy at every sprint plan.
+#
+# Phase labels here are plumbline's (P0 Foundations, P1 Scaffold, P2 Feature, P3 Harden), which
+# happen to line up with the fork's own P0–P3 in ADR-0002 (validation spine → team transform →
+# route scenarios → agent layer). ADR-0008 records the mapping; the fork's gates stay authoritative.
+
+project:
+  name: Dandori (fork)
+  type: product
+  mode: solo                     # one fork owner. An upstream teammate works the main (personal-only) version; commits flow one way, upstream -> here. That is a merge source, not a team member.
+  skill_version: plumbline@0.9
+
+deadlines:
+  note: "post-demo has no date yet; the owner sets it at the first sprint plan after the demo."
+  sprint_end: 2026-09-16         # Wednesday — demo functionality complete
+  demo: 2026-09-20               # end of this week — main testing + user testing done
+  global: null                   # open-ended
+
+stages:
+  - id: demo-rush
+    phase: P1
+    rigor: rushed                # thin breadth, HIGH-tier floor still applies (table[tier][rigor])
+    autonomy: high
+    decision_debt_max: 5
+    gate: sprint
+    mode: solo
+    exec_block: 3h
+    checkins: [15m, 60m]
+    playtest: optional
+    ends: sprint_end
+  - id: demo-harden
+    phase: P2
+    rigor: standard
+    autonomy: high
+    decision_debt_max: 5
+    gate: sprint
+    mode: solo
+    exec_block: 3h
+    checkins: [15m, 60m]
+    playtest: required           # user testing is this stage's point
+    ends: demo
+  - id: post-demo
+    phase: P3
+    rigor: standard              # owner wants "more regulated"; `regulated` is invalid with mode solo — re-tier via ADR or add a human
+    autonomy: normal
+    decision_debt_max: 2
+    gate: feature
+    mode: solo
+    exec_block: 2h
+    checkins: [15m, 60m]
+    playtest: required
+    ends: global
+current_stage: demo-rush
+
+autonomy:
+  decision_log: docs/assumptions.md      # §A — every decision, unconditionally
+  assumptions: docs/assumptions.md       # §B — known unknowns with the default in use
+  state_file: docs/state.md
+  review_latency_tracked: true
+  on_budget_exhausted: block
+  escalate_always:
+    - irreversible
+    - inv-violation
+    - tier-change
+    - adr-level
+    - evidence-below-cell
+    - personal-regression          # any observable change to a kind: personal workspace (CLAUDE.md rule 1)
+    - origin-crossing              # anything relating two origins (ADR-0004)
+    - lww-lockstep-split           # client merge and keep_newer() changed in different change sets
+    - default-branch-write         # commit/push/merge on main; opening or merging a PR
+    - secret-in-diff
+
+metrics:
+  ledger: artifacts/metrics/events.jsonl
+  defects: docs/defects.jsonl
+  cost_tracking: true
+
+agents:
+  tiers:
+    main:   { model: opus, effort: medium }
+    worker: { model: sonnet, effort: high }
+  roles:
+    orchestrate: main
+    plan-draft: main
+    review: main
+    scout: worker
+    coder: worker
+    tests: worker
+    bugfix: worker
+    validation: worker
+    closer: worker
