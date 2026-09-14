@@ -5,26 +5,23 @@ prints it, so keep it under ~30 lines: where work stopped, what is in flight, wh
 does first. Not a log — overwrite, don't append.
 
 - **Stage:** `demo-rush` (rushed / high / solo), ends 2026-09-16. Then `demo-harden` to 2026-09-20.
-- **Session ended 2026-09-14 with two agents possibly mid-flight — check `git status` first:**
-  - primary (`002-team-workspaces`): **T023a** coder — `supabase/schema.sql`, `contracts/policies.sql`
-    (partially committed at 9b35710), new `tests/stack/team-rls-delete-and-owner-invariant.test.ts`.
-    If uncommitted edits exist and the new test + whole stack tier are green, commit as
-    `rls: split policies so DELETE stays creator-only; owner invariant; keep_creator on workspaces (T023a)`.
-    If unfinished, re-dispatch T023a from its card; its receipt may already be in receipts.md.
-  - `wt/ui` (C:\ProjectsC\KSE\Dandori-wt-ui @ dc7f49c): fix pass **committed**; ui lane complete.
-- **Lane `wt/sync-cache`** @ c783b3e: code complete, reviewed (T038 PASS). Owed at merge: T039
-  `sync-engine` re-verify, map re-stamps `local-cache`, `db-api`; `multi-account-cache` flip.
-- **Lane `wt/ui`**: T041–T050 done, reviewed PASS; fix pass above. Owed: nothing else.
-- **Merge order:** commit T023a → `supabase db reset` + schema apply → merge `wt/sync-cache` then
-  `wt/ui` into `002-team-workspaces` → `npm test -- --run` twice (full green expected now) →
-  map flips (`supabase-schema`, `membership`, `team-rls`, `account-provisioning`, T051/T052) →
-  T053 receipts → **T057 whole-branch review** → deploy.
-- **Deploy (owner gate 10):** blocked until the above. Owner-manual first: T058 run `supabase/schema.sql`
-  in the hosted SQL editor, T059 first-admin insert; then agent: `npm run build && npx wrangler deploy`
-  (token already in env, never `wrangler login`); then owner T060 disable e-mail sign-ups.
+- **2026-09-14 close:** all three lanes merged into `002-team-workspaces` @ f6ed810 (T023a incl.
+  no-JWT exemption on the FR-010 trigger; sync + ui lanes). Pushed; **PR #1 → main** open.
+  Full suite: schema-apply 6/6, then 201/203 in the parallel run (`soft-delete` acc. 1/4 flaked,
+  3/3 alone — A-017); second full run was in progress at close — record its result in receipts.md.
+  Local DB had stale split policies from T023a's first attempt; dropped by hand (hosted unaffected).
+- **Deploy status:** NOT deployed from this machine — no `.env.local`/`VITE_*` here, so a local
+  `wrangler deploy` would ship a client without a Supabase URL. Path: owner runs T058 (hosted
+  `schema.sql`) + T059 (first admin), merges PR #1, Cloudflare's GitHub build deploys from `main`
+  with the dashboard's build vars; then T060. Alternative: owner creates `.env.local` locally and
+  runs `npm run build && npx wrangler deploy` (token already in env).
+- **Owed after merge:** map flips (`supabase-schema`→f6ed810, `membership`/`team-rls`/
+  `account-provisioning`/`multi-account-cache` UNTESTED→VALIDATED, `sync-engine` T039 re-stamp,
+  `local-cache`/`db-api` re-stamp, widen `chrome-components` paths to `src/components/`), T052,
+  T053 receipts, **T057 whole-branch review**, T062 owner walk.
 - **Known UX gap to raise at T057/T058:** owner-only controls stay hidden until the seeded owner
   row is pulled (offline right after creating a team workspace) — inherent to D-6.
 - **Spec 003 draft:** branch `spec/003-agent-edit-layer` @ 3b87c87 — 9 owner questions in plan.md.
-- **Decision debt:** A-001..A-016 all reviewed (0/5 open). Open owner gate: gate 3 deferred.
+- **Decision debt:** A-001..A-016 reviewed; A-017 open (1/5). Open owner gate: gate 3 deferred.
 - **Next session, first:** read this file, `git status` in all three checkouts, then the
   `[in-progress: …]` markers in `specs/002-team-workspaces/tasks.md`.
