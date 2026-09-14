@@ -927,3 +927,79 @@ Sign-off: Andrii Tkhorenko (single-operator).
   *removed* member is re-added. T010's acceptance-6 case adds B twice while B's row was never
   deactivated, so the conflict path takes the no-op arm. Carried forward alongside the three
   uncovered `DA404` paths already recorded above.
+
+## T014 receipt — the assignee is cleared when a member is removed (2026-09-14)
+
+Merged as `fa133de` from lane `wt/us5-assignee` (lane commit `faf8dca`). Artefact:
+`tests/stack/assignee-clear-on-removal.test.ts`, `+490/-0`, seven cases, committed **red on
+purpose**.
+
+Red run, by the coordinator on the `supabase` CLI local stack, from the lane worktree:
+
+```
+npx vitest run --project stack tests/stack/assignee-clear-on-removal.test.ts
+Test Files  1 failed (1)
+     Tests  7 failed (7)
+```
+
+Seven failed, **none skipped**, every one on the same structural gap —
+`column "kind" of relation "workspaces" does not exist`, raised by `insertTeamWorkspace` at
+`tests/stack/assignee-clear-on-removal.test.ts:120`. Nothing fails for an incidental reason.
+
+**The interesting part of this card is a correction of a correction, and it is worth recording in
+full because the same mistake is available on every stamp assertion in this taskgroup.**
+
+The card requires that removing a member clears the assignment with an `updated_at` that
+**outranks an edit already queued on the removed member's device** — i.e. that
+`clear_assignee_on_removal` stamps `greatest(updated_at, now())` and not a bare `now()`. The file's
+first shape used `OLD_STAMP = '2020-01-01…'`. That is in the past, so `greatest(past, now())` and a
+bare `now()` produce the **same value**: the assertion could not tell the two implementations
+apart, and would have certified a defect. The coordinator added a future-stamped arm
+(`FUTURE = new Date(Date.now() + 600_000)`) to discriminate.
+
+**The closer then corrected that correction.** Under a bare `now()`, the trigger's write carries
+`new.updated_at = now()`, which is **less than** `FUTURE` — so `keep_newer` returns null and
+**abandons the entire row write**. The row's `updated_at` therefore stays at `FUTURE`, and the
+stamp assertion passes anyway, for exactly the wrong reason. What actually goes red is that the
+clear never landed: `expect(futureAfter.assignee).toBeNull()` is the **sole discriminator** between
+`greatest()` and a bare `now()`, and the stamp equality is a supporting invariant that is green
+under both implementations. The file now says so at the assertion, tagged `// DISCRIMINATOR:`, so
+that a future maintainer reading a green stamp assertion beside it does not delete the assignee
+assertion as redundant. Note the general form: **a `keep_newer`-guarded table can swallow a write
+whole, which turns "the value is unchanged" from evidence of correctness into evidence of nothing.**
+
+Two more assertions were negative with no positive control, the taskgroup's third structural trap,
+and both were fixed before the commit: SC-006's `expect(count).toBe(0)` now sits beside a
+`liveMemberAssigneeCount` asserted to be `1` in the same block, and the stale-write
+`toHaveLength(0)` now sits beside a newer-stamped `setAssigneeDirect` asserted `toHaveLength(1)`
+with `assignee` null. Without those, the case would have stayed green if the measurement counted an
+empty set, or if every `tasks` write in the file were being abandoned.
+
+Advisories applied: `liveMemberAssigneeCount`'s docstring narrowed from three claimed failure modes
+to the two it actually catches (the closer showed a mis-joined `not exists` still passes at T022
+given the seeded data); `tasks_zz_assignee_member` added beside `clear_assignee_on_removal` in the
+green-progression table's "needs" cell for acceptances 3 and 4, since both are required by that
+block's final reassignment-coercion assertion; and every stale `~NNN` line pointer in the header
+table refreshed.
+
+**Green progression.** Six cases turn green at **T022**, when `clear_assignee_on_removal` and
+`tasks_zz_assignee_member` land. The **seventh** — B, the assignee, reading the assignment back
+through its own client — turns green at **T023**, because it needs the widened `tasks` read half.
+That seventh case exists because the card's clause "A sets B as a task's assignee and **both
+accounts read it back**" was discharged by no file: T011 covers a member reading A's rows but says
+nothing about the `assignee` column's value. The carve-out is recorded on both T014's and T022's
+verify lines, beside `kind-switch.test.ts` cases (a) and (e), which have the same shape.
+
+**A spec correction came out of this card, and it is the larger half of the author's flag.** The
+author found that `spec.md` US5 acceptance 6 and FR-016 both said an assignment to a non-member
+"MUST be refused" while `contracts/policies.sql:164-178` makes `assignee_must_be_member` do
+`new.assignee := null; return new;` and never raise. The author followed the contract and changed
+no spec, which was right for a `data` worker; the coordinator corrected both spec clauses to
+"accepted with the assignee coerced to empty", each carrying the citation and plan decision **D-3**
+— a raise inside a sync batch would abort the whole upsert and wedge the tasks queue. Landed in
+`843fc69`.
+
+**Not proven by this card:** no trigger behaviour is verified. The file is evidence written before
+the code and stays red until T022.
+
+Sign-off: Andrii Tkhorenko (single-operator).
