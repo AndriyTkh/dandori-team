@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { listLabels, listMembers, listNotes, listTasks, listWorkspaces } from './api'
+import { currentUserId, listLabels, listMembers, listNotes, listTasks, listWorkspaces } from './api'
 import { db } from './local'
 import type { ID, Label, Member, Note, Task, Workspace } from './types'
 
@@ -45,3 +45,7 @@ export function useMembers(workspaceId: ID | null): Member[] | undefined {
   return useLiveQuery(() => (workspaceId ? listMembers(workspaceId) : []), [workspaceId])
 }
 
+/** The signed-in device's own uid (`meta['owner']`), reactive to `claimCache`/`wipeLocal`. */
+export function useCurrentUserId(): string | null {
+  return useLiveQuery(() => currentUserId(), []) ?? null
+}

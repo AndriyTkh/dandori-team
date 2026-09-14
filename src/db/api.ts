@@ -109,6 +109,20 @@ export async function renameWorkspace(id: ID, name: string): Promise<void> {
   queue()
 }
 
+/**
+ * Kind switching is an ordinary patch, not an RPC (contracts/rpc.md): same
+ * read-modify-write-then-queue shape as `updateTask`. No-op if the row is
+ * missing or already soft-deleted.
+ */
+export async function updateWorkspace(id: ID, patch: Pick<Workspace, 'kind'>): Promise<void> {
+  await db.transaction('rw', db.workspaces, async () => {
+    const row = await db.workspaces.get(id)
+    if (!row || row.deleted) return
+    await db.workspaces.put(touch({ ...row, ...patch }))
+  })
+  queue()
+}
+
 /** Deleting a workspace soft-deletes its content too, or the orphans stay out of reach. */
 export async function deleteWorkspace(id: ID): Promise<void> {
   await db.transaction('rw', db.workspaces, db.labels, db.tasks, db.notes, async () => {
@@ -123,6 +137,18 @@ export async function deleteWorkspace(id: ID): Promise<void> {
     }
   })
   queue()
+}
+
+// --------------------------------------------------------------- current user
+
+/**
+ * The signed-in device's own uid, cached in the Dexie `meta` table under key
+ * `'owner'` by `claimCache` (`src/db/local.ts`) — the same shape as the
+ * `is-admin` cache `isAdmin()` reads (below). Null before the first sign-in
+ * claims the cache.
+ */
+export async function currentUserId(): Promise<string | null> {
+  return getMeta('owner')
 }
 
 // ------------------------------------------------------------------- members

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createTask,
   createWorkspace,
+  currentUserId,
   deleteWorkspace,
   isAdmin,
   listMembers,
@@ -10,6 +11,7 @@ import {
   removeMember,
   renameWorkspace,
   updateTask,
+  updateWorkspace,
 } from '../../src/db/api'
 import { db, wipeLocal, type Local } from '../../src/db/local'
 import type { Label, Member, Note, Task, Workspace } from '../../src/db/types'
@@ -167,11 +169,7 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
   afterEach(async () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
-    // tests/setup.ts's own afterEach clears workspaces/labels/tasks/notes/meta
-    // but predates the `members` table (D-10) and does not know about it; this
-    // file is the first local-tier suite to write to db.members, so it clears
-    // its own leftovers rather than reaching into that shared file.
-    await db.members.clear()
+    // tests/setup.ts's own afterEach clears every table, `members` included.
   })
 
   // ------------------------------------------------------------ createWorkspace
@@ -346,6 +344,56 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
         _dirty: 1,
       })
       expect(requestPushMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  // ------------------------------------------------------------ updateWorkspace
+
+  describe('updateWorkspace(id, patch)', () => {
+    it("flips kind, bumps updated_at, dirties, queues a push, and never reaches the network (T031a)", async () => {
+      await db.workspaces.add(workspaceRow({ id: 'ws-1', kind: 'personal' }))
+      vi.setSystemTime(new Date(T1))
+
+      await updateWorkspace('ws-1', { kind: 'team' })
+
+      const row = await db.workspaces.get('ws-1')
+      expect(row).toEqual({
+        ...workspaceRow({ id: 'ws-1' }),
+        kind: 'team',
+        updated_at: T1,
+        _dirty: 1,
+      })
+      expect(requestPushMock).toHaveBeenCalledTimes(1)
+      // No RPC (contracts/rpc.md): kind switching is an ordinary patch.
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('is a no-op on an unknown id', async () => {
+      await updateWorkspace('ws-missing', { kind: 'team' })
+
+      expect(await db.workspaces.count()).toBe(0)
+    })
+
+    it('is a no-op on an already soft-deleted workspace', async () => {
+      await db.workspaces.add(workspaceRow({ id: 'ws-1', deleted: true }))
+
+      await updateWorkspace('ws-1', { kind: 'team' })
+
+      expect(await db.workspaces.get('ws-1')).toEqual(workspaceRow({ id: 'ws-1', deleted: true }))
+    })
+  })
+
+  // -------------------------------------------------------------- currentUserId
+
+  describe('currentUserId()', () => {
+    it('returns null when meta has no owner cached yet', async () => {
+      expect(await currentUserId()).toBeNull()
+    })
+
+    it("returns the cached uid after db.meta.put({key: 'owner', value: 'u-1'})", async () => {
+      await db.meta.put({ key: 'owner', value: 'u-1' })
+
+      expect(await currentUserId()).toBe('u-1')
     })
   })
 
