@@ -616,3 +616,56 @@ Sign-off: Andrii Tkhorenko (single-operator).
 - **The `membership` and `team-rls` map entries were created UNTESTED ahead of their code** in
   `460da90`, so the cards that name them as substrate cite something that exists. Neither may reach
   VALIDATED without a green run and a receipt naming command, revision, date and sign-off.
+
+## T010 receipt — membership by email, two accounts (2026-09-14)
+
+Merged as `1e39042` from lane `wt/us2-members` (worker commit `871f588`). Artefact:
+`tests/stack/members-two-accounts.test.ts`, `+404/-0`, ten cases, committed **red on purpose**.
+
+Red run, by the coordinator on the `supabase` CLI local stack, from the lane worktree:
+
+```
+npx vitest run --project stack tests/stack/members-two-accounts.test.ts
+Test Files  1 failed (1)
+     Tests  10 failed (10)
+```
+
+Ten failed, **none skipped** — the structural gap is reached independently by every case rather
+than aborting a shared seed. All ten fail for the reasons the card names: `workspaces.kind` does
+not exist, `public.members` does not exist, and `add_member_by_email` / `workspace_member_emails`
+do not exist. Nothing fails for an incidental reason.
+
+**The closer returned PASS — clean**, with four advisories, all applied before the commit:
+
+1. A stale line-number pointer into `contracts/rpc.md` was dropped rather than corrected; a pointer
+   that drifts is worse than no pointer.
+2. The owner's member-list read now destructures `error` and asserts it null **before** the length
+   check. A PostgREST error returns `data === null`, and `expect(null).toHaveLength(n)` fails for
+   the wrong reason — the assertion would have been red without distinguishing "the list is wrong"
+   from "the call failed".
+3. **Coverage note, not a defect:** `add_member_by_email`'s `do update set deleted = false`
+   reactivation branch (`contracts/rpc.md` lines 38 and 42) is exercised by **no file in this
+   taskgroup.** This file's acceptance-6 case adds B twice while B's row was never deactivated, so
+   `deleted` is already false and the conflict path takes the no-op arm. Re-adding a *removed*
+   member — the branch that must flip `deleted` back — is covered nowhere. Carried forward.
+4. The four `deleteTestUser` calls moved into a `finally` wrapping the `42P01`-only catch.
+
+Finding 4 deserves its own record, because it leaked state into every other card's run before it
+was caught. `cleanupMembers()` truncates `public.members`, which does not exist before T020, so it
+raised `42P01`; the raise escaped `afterAll`, failed the suite at **file** level, and — the part
+that mattered — **skipped the four `deleteTestUser` calls underneath it**, leaking four accounts
+into the shared stack on every run. The coordinator added the narrow `42P01`-only catch
+immediately and broadcast the shape to the T011 author; the closer then asked for the `finally`,
+which makes teardown unconditional rather than merely tolerant. The settled pattern for every
+stack test in this taskgroup: **tolerate exactly `42P01` in cleanup, and put account teardown in a
+`finally` so it runs whatever the cleanup did.**
+
+**Green progression.** Cases 1-6 need T020 (the `kind` column and the `members` table) plus
+**T024** (`add_member_by_email`, `workspace_member_emails`). The removal cases additionally need
+**T023**'s `members` write half, since B's refused removal must arrive as `42501` from row level
+security rather than as zero rows matched.
+
+**Not proven by this card:** no membership behaviour is verified. The file is evidence written
+before the code and stays red until T024.
+
+Sign-off: Andrii Tkhorenko (single-operator).
