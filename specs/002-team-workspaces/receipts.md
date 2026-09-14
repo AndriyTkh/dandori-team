@@ -1394,3 +1394,137 @@ TG-2 opens next: T020 through T026 are strictly serial on `supabase/schema.sql` 
 lanewise-parallelised. The first of them, T020, is the card that turns the largest number of the
 above from red to green in one step, and is therefore the first point in this feature where a real
 verify means anything.
+
+## T026A receipt — the personal-side smoke for T022's own new triggers (2026-09-14)
+
+Merged as `e38d672` from lane `wt/personal-triggers` (lane commit `9f7cc82`). Artefact:
+`tests/stack/personal-triggers-after-t022.test.ts`, `+377/-0`, five cases across the card's three
+blocks (a)–(c), committed **red on purpose**.
+
+**This card was authored ahead of its nominal `blocked-by: T022`**, under the coordinator reordering
+recorded in `tasks.md` (`f938cbc`): for an evidence card, `blocked-by` names the card that turns the
+file **green**, not the card that permits it to be **written**. Every one of TG-1's thirteen evidence
+cards was authored the same way.
+
+Red run, by the coordinator on the `supabase` CLI local stack, from the lane worktree:
+
+```
+npx vitest run --project stack tests/stack/personal-triggers-after-t022.test.ts
+Test Files  1 failed (1)
+     Tests  5 failed (5)
+```
+
+Five failed, **none skipped** — each case reaches the gap its own block is about.
+
+**The finding worth recording is that this file is red in two different ways at once**, and the
+distinction is load-bearing enough that the header now names it:
+
+- **(b) and (c) are red structurally**, on `PGRST204 Could not find the 'kind' column of 'workspaces'
+  in the schema cache` — the fixture cannot create a `kind`-bearing workspace before T020.
+- **(a)'s three cases are red behaviourally**, on a genuine `42501 new row violates row-level
+  security policy`. Case (a) names neither `kind` nor `assignee` nor `members`, so it cannot be
+  reached by a structural miss at all. It runs against real RLS today and fails because
+  `<t>_zz_keep_creator` does not exist yet.
+
+**The mechanism behind (a)'s 42501, verified against source rather than inferred.** Upstream's child
+write half is `supabase/schema.sql:249-253`; the read half is `using (auth.uid() = user_id)` at
+`:248`. The UPDATE matches on the **old** row (`user_id = owner`), so `using` passes and the row is
+scanned — a `using` miss would give zero rows and `error === null`, not `42501`. The payload then
+sets `user_id = impostor` and `with check` fails on the new row. The message PostgREST returns,
+**"new row violates row-level security policy"**, is the `WITH CHECK` message specifically; a `USING`
+failure never produces it. At T022, `keep_creator` (BEFORE UPDATE) sets `new.user_id := old.user_id`
+before the check is applied — Postgres evaluates `WITH CHECK` against the row **after** BEFORE ROW
+triggers run — so the check passes against the owner's own id and the update lands.
+
+**The worker built a stronger case than the card asked for, and the closer accepted it.** The card
+asks that an ordinary owner update leave `user_id` unchanged, i.e. that `keep_creator` is a *no-op*
+on personal. The file instead has the owner update their own row while naming an **impostor's real
+user id** in the payload, so `keep_creator` is emphatically *not* a no-op — it rewrites the impostor's
+id back to the creator's. That discharges the card a fortiori: `keep_creator` writes
+`new.user_id := old.user_id` unconditionally (`contracts/policies.sql:212-217`), so the ordinary
+payload is the same assignment with the same value producing the same post-trigger row, and the
+"ordinary update still lands" half is separately held green by P0's `lww-conflict.test.ts` and
+`offline-round-trip.test.ts`, which do ordinary owner updates on personal tasks and are gated
+unedited by T027. The header now states that inference explicitly rather than leaving a reader to
+conclude the ordinary case was forgotten.
+
+**One blocking finding, and it was a miscitation — the failure mode this feature keeps paying for.**
+The header claimed the personal-path `with check` is "upstream's own_rows text, byte identical before
+and after T023 (`contracts/policies.sql:243-246`)". Two errors in one sentence. `:243-246` is the
+**`workspaces`** policy, while case (a) — the only case whose T023-independence is genuinely in
+question — writes `labels`, `tasks` and `notes`, whose replaced policy is `:250-263` with the write
+half at `:256-263`. And for those tables the clause is **not** byte-identical: T023 writes
+`((auth.uid() = user_id and exists (...)) or public.is_member(workspace_id))`, of which only the
+first branch (`:257-261`) is upstream's text character for character.
+
+The conclusion survived, and the corrected header states it the right way round: on a
+`kind: 'personal'` workspace `public.is_member(workspace_id)` is false, because `is_member` requires a
+live `members` row and a personal workspace seeds none — **which is case (c)'s own direct
+assertion** — so the disjunction collapses to the first branch and case (a)'s personal path is
+identical to pre-T023 **in effect**, not in text. That is a materially different claim from the one
+the header made, and it is the claim the done-when actually needs.
+
+**The done-when's T023-independence clause holds for all five cases**, checked one at a time against
+the policy text: (a) writes child rows as the owner, taking the first branch only, and never reads
+`members`; (b)'s `INSERT` evaluates `WITH CHECK` only, owner branch, personal — and
+`tasks_zz_assignee_member` (`contracts/policies.sql:164-178`) reads `members` as `security definer`,
+never through a policy; (c) reads `public.members` over raw `pg` on both halves, so `members_access`
+(T023, `:271-275`) is never in the path, and `seed_workspace_owner` (`:101-114`) is likewise
+`security definer`.
+
+**Green-at attribution, checked rather than assumed:** **T022**, with T020 as a prerequisite for (b)
+and (c)'s fixtures. `keep_creator` and its three `_zz_` triggers are created in fork block C
+(`contracts/policies.sql:212-228`), and T022's card lists `<labels|tasks|notes>_zz_keep_creator` in
+its own deliverable. T023 creates no trigger at all.
+
+**`keep_newer` cannot silently swallow case (a)'s write**, which is the standing trap for every
+update in this feature. The stamp is `seeded.updated_at + 60_000`, where `seeded.updated_at` comes
+from the insert's own `.select('updated_at')` — Postgres-written, never the host clock, so a
+container clock leading the host under Docker Desktop / WSL2 cannot cancel the write and leave
+`user_id` trivially unchanged. `keep_newer` compares strict `<`, so +60s strictly outranks, and
+`Date` parsing of PostgREST's `…+00:00` truncates by at most a microsecond, which 60s absorbs.
+Trigger firing order is safe by name: `keep_newer` < `stay_deleted` < `synced_at` < `zz_keep_creator`
+(`supabase/schema.sql:193-212`, `data-model.md:195-200`). And the in-block positive control would
+catch a swallowed update regardless — every case (a) asserts the edited field equals the new value
+**as well as** asserting `user_id`, so a refused or cancelled write cannot read as a green.
+
+**No structural code is accepted as a refusal anywhere in the file.** Every error is asserted null,
+with the SQLSTATE and message interpolated into the assertion label; there is no code allow-list, no
+`try`/`catch` swallow, and no assertion that treats any error as evidence of a guard working. The
+`PGRST204`s it produces today are failures, not passes. The file's one tolerance is the cleanup probe
+`select to_regclass('public.members')`, guarding teardown only, inside a `try`/`finally` — the probe
+form the T018 closer asked for, not a SQLSTATE-keyed catch that would tolerate the right error for
+the wrong relation.
+
+**Each negative assertion has an in-block positive control, as the done-when requires.** (b) asserts
+the task row came back with its correct title over supabase-js **and** re-reads the same row over an
+independent raw `pg` path, so a missing row cannot masquerade as a null assignee. (c) pairs the
+personal workspace's zero `members` rows with a **team** workspace created in the same case, asserted
+to have exactly one owner row (`member_id`, `level: 'owner'`, `deleted: false`) through the identical
+query shape — so the zero and the one are measured the same way, and a broken query, an unwritten
+fixture or a globally empty table cannot all read as a pass.
+
+**Duplication check: clean, and the card's "nothing else observes" premise holds.** `team-triggers.test.ts`
+(T015) covers only `keep_newer` / `stay_deleted_with_workspace` / `follow_workspace_delete` and never
+mentions `keep_creator`, `assignee` or `members`. `personal-unchanged.test.ts` (T016) covers the
+`own_rows` predicate, the `kind` default and constraint, and the delete cascade; its only child-table
+writes are inserts and a stranger's refused update, and it never updates a child row as the owner nor
+asserts `user_id`. T013's R-7 cases in `team-rls-both-halves.test.ts` assert `keep_creator` on the
+**team** side.
+
+Four advisories were applied alongside the blocking fix: the ordinary-update inference stated in the
+header; the timestamp paragraph's vacuous half deleted (the file makes zero stamp comparisons, so a
+claim about how they are compared was noise); case (b)'s "contractually intended, not a defect"
+note raised from the describe block into the header, citing `plan.md:255-266` (D-3, "coercing, not
+raising"); and truthiness guards at all three `afterAll` teardown sites, so a `createTestUser` throw
+in `beforeAll` cannot add a `TypeError` beside the real error.
+
+The impostor account is clean: `createTestUser` emails carry label + `Date.now()` + pid + sequence,
+the password is `crypto.randomUUID()` (`tests/harness/accounts.ts:39`), it never signs in, and it is
+torn down in the `finally` with the `auth.users` cascade as a backstop. No credential, key, token or
+`service_role` literal appears in the diff — FR-044, FR-033 and SC-020 are clean.
+
+**Not proven by this card:** no trigger behaviour is verified. The file is evidence written before the
+code and stays red until T022. No map entry is flipped — a red file is not a validation.
+
+Sign-off: Andrii Tkhorenko (single-operator).
