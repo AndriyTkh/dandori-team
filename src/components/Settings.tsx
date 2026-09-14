@@ -1,5 +1,18 @@
-import { useState } from 'react'
-import { deleteWorkspace, exportAll, renameWorkspace } from '../db/api'
+import { useEffect, useState } from 'react'
+import {
+  createLogin,
+  deleteLogin,
+  deleteWorkspace,
+  exportAll,
+  isAdmin,
+  listLogins,
+  memberEmails,
+  refreshIsAdmin,
+  renameWorkspace,
+  setLoginAdmin,
+  setLoginPassword,
+} from '../db/api'
+import { useMembers } from '../db/hooks'
 import { today } from '../db/dates'
 import { flushQueue } from '../sync/sync'
 import { holdGcal } from '../gcal/sync'
@@ -9,6 +22,7 @@ import { useEscape } from '../lib/useEscape'
 import { Confirm } from './Confirm'
 import { GcalSection } from './Gcal'
 import { LANG_TITLES, useT, type T } from '../i18n'
+import type { TextKey } from '../i18n/dict'
 import { LANGS, setLang, THEMES, useLang, type Theme } from '../state/ui'
 import type { Workspace } from '../db/types'
 import './Settings.css'
@@ -19,15 +33,17 @@ const THEME_TITLES = {
   dark: 'settings.themeDark',
 } as const
 
-const SECTIONS = ['theme', 'language', 'workspace', 'gcal', 'account'] as const
+const SECTIONS = ['theme', 'language', 'workspace', 'members', 'gcal', 'account', 'logins'] as const
 type Section = (typeof SECTIONS)[number]
 
 const SECTION_TITLES = {
   theme: 'settings.theme',
   language: 'settings.language',
   workspace: 'settings.workspace',
+  members: 'members.section',
   gcal: 'gcal.section',
   account: 'settings.account',
+  logins: 'logins.section',
 } as const
 
 interface Props {
@@ -45,9 +61,27 @@ export function Settings({ workspace, theme, onSetTheme, onClose }: Props) {
   const t = useT()
   useEscape(onClose)
 
+  // Instance admin is orthogonal to any workspace (D-16/D-17): the cached
+  // flag is read once at mount so the Logins tab does not flash in before the
+  // first check resolves. This is convenience only — every routine behind it
+  // re-checks on the server regardless (D-17), and `LoginsSection` below
+  // refreshes it again from the server as soon as it mounts.
+  const [admin, setAdmin] = useState(false)
+  useEffect(() => {
+    void isAdmin().then(setAdmin)
+  }, [])
+
   // With no workspace there is nothing to rename or delete, so the section is
-  // gone rather than standing there with dead controls in it.
-  const sections = SECTIONS.filter((s) => s !== 'workspace' || workspace)
+  // gone rather than standing there with dead controls in it. `members` only
+  // exists for a team workspace (FR-024 affordance 2); `logins` only for an
+  // admin (FR-024 affordance 7) — both guards are convenience, the backend
+  // enforces regardless.
+  const sections = SECTIONS.filter((s) => {
+    if (s === 'workspace') return !!workspace
+    if (s === 'members') return workspace?.kind === 'team'
+    if (s === 'logins') return admin
+    return true
+  })
   const [chosen, setChosen] = useState<Section>('theme')
   const section = sections.includes(chosen) ? chosen : sections[0]
 
@@ -79,8 +113,12 @@ export function Settings({ workspace, theme, onSetTheme, onClose }: Props) {
           {section === 'workspace' && workspace && (
             <WorkspaceSection key={workspace.id} workspace={workspace} onClose={onClose} t={t} />
           )}
+          {section === 'members' && workspace && (
+            <MembersSection key={workspace.id} workspace={workspace} t={t} />
+          )}
           {section === 'gcal' && <GcalSection workspace={workspace} t={t} />}
           {section === 'account' && <AccountSection t={t} />}
+          {section === 'logins' && <LoginsSection t={t} onAdminChange={setAdmin} />}
         </div>
       </div>
     </div>
@@ -185,6 +223,53 @@ function WorkspaceSection({
   )
 }
 
+// --------------------------------------------------------------------- members
+
+/**
+ * The member list (FR-024 affordance 2), read-only here — adding and removing
+ * are separate cards. `useMembers` is the Dexie-backed, always-synced list;
+ * emails are online-only (`memberEmails`, D-9) and not cached by this
+ * component, so a member shows by its raw id until the lookup returns, the
+ * same fallback `AssigneeField` in `TaskDialog.tsx` uses.
+ *
+ * The owner's own row is a server-side effect of `seed_workspace_owner` and
+ * reaches this device only on the *next* pull (D-6) — right after creating a
+ * team workspace the list is legitimately empty, not broken.
+ */
+function MembersSection({ workspace, t }: { workspace: Workspace; t: T }) {
+  const members = useMembers(workspace.id)
+  const [emails, setEmails] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    memberEmails(workspace.id)
+      .then((rows) => {
+        if (cancelled) return
+        setEmails(Object.fromEntries(rows.map((r) => [r.member_id, r.email])))
+      })
+      .catch(() => {
+        // Offline or the call failed: the id fallback below still lets the
+        // section render, so nothing further is done for this.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [workspace.id])
+
+  return (
+    <div className="swin__rows">
+      {(members ?? []).map((m) => (
+        <div key={m.id} className="swin__member">
+          <span className="swin__memberEmail">{emails[m.member_id] ?? m.member_id}</span>
+          <span className="swin__memberLevel">
+            {t(m.level === 'owner' ? 'members.owner' : 'members.member')}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ------------------------------------------------------------------- account
 
 function AccountSection({ t }: { t: T }) {
@@ -242,6 +327,256 @@ function AccountSection({ t }: { t: T }) {
           action={t('settings.signOut')}
           onCancel={() => setAsking(false)}
           onConfirm={() => void leaveAnyway()}
+        />
+      )}
+    </div>
+  )
+}
+
+// -------------------------------------------------------------------- logins
+
+type LoginRow = Awaited<ReturnType<typeof listLogins>>[number]
+
+/**
+ * The register from `contracts/rpc.md`. Six of the eight codes have a
+ * dedicated `logins.err*` string in `src/i18n/dict.ts`. `DA001` (not an
+ * admin — should not be reachable once the tab is gated by the admin flag,
+ * but the flag is a cache, not the control, D-17) and `DA404` (no such
+ * login — a race with another admin's own tab) have **no** dedicated key:
+ * T041's dict additions did not include one for either. That gap is reported
+ * rather than patched by inventing a string here (see this card's receipt);
+ * both fall back to the bare code, which is still distinct per code and never
+ * the generic "something went wrong" the done-when forbids.
+ */
+const LOGIN_ERR: Partial<Record<string, TextKey>> = {
+  DA010: 'logins.errBadEmail',
+  DA011: 'logins.errShortPassword',
+  DA012: 'logins.errDuplicate',
+  DA013: 'logins.errSelf',
+  DA014: 'logins.errOwnsTeamWorkspace',
+  DA015: 'logins.errLastAdmin',
+}
+
+function loginErrorText(err: unknown, t: T): string {
+  const code =
+    typeof err === 'object' && err !== null && 'code' in err
+      ? String((err as { code: unknown }).code)
+      : undefined
+  const key = code ? LOGIN_ERR[code] : undefined
+  if (key) return t(key)
+  return code ?? String(err)
+}
+
+/**
+ * The Logins section (FR-024 affordance 7, US7), admin only — filtered out of
+ * `SECTIONS` entirely by the cached flag (D-17), which is convenience, not
+ * the control: every routine below re-checks `is_admin()` on the server
+ * regardless (D-16). Every call is a thin `db-api` delegation through
+ * `src/sync/sync.ts` to an RPC (FR-026) — none of it is queued or written to
+ * Dexie, because a queued account creation would be a password sitting on
+ * the device (FR-044).
+ *
+ * Both password inputs are `type="password"`. The value lives in this
+ * component's own state for the duration of the call and nowhere else — never
+ * in Dexie, never in `console.*`, never in a URL. A newly created login's
+ * password is shown back once, from the value this form just held (not from
+ * anything the server returns — only a hash exists there), so the admin can
+ * hand it over out of band; dismissing that banner drops it from state and it
+ * is not reconstructible afterwards (FR-044).
+ */
+function LoginsSection({ t, onAdminChange }: { t: T; onAdminChange: (admin: boolean) => void }) {
+  const [logins, setLogins] = useState<LoginRow[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [minted, setMinted] = useState<{ email: string; password: string } | null>(null)
+  const [pwFor, setPwFor] = useState<string | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [removing, setRemoving] = useState<LoginRow | null>(null)
+  const [revoking, setRevoking] = useState<LoginRow | null>(null)
+
+  function load() {
+    listLogins()
+      .then(setLogins)
+      .catch((err: unknown) => setError(loginErrorText(err, t)))
+  }
+
+  useEffect(() => {
+    // The cached flag decided whether this tab was even offered; refreshing
+    // it the moment the section actually opens (D-17) corrects a device whose
+    // cache lied, rather than waiting for the next sync cycle.
+    refreshIsAdmin()
+      .then(onAdminChange)
+      .catch(() => {})
+    load()
+    // Mount-only: `onAdminChange` is `setAdmin`, stable across renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function create() {
+    setBusy(true)
+    setError(null)
+    try {
+      const row = await createLogin(email, password)
+      setMinted({ email: row.email, password })
+      setEmail('')
+      setPassword('')
+      load()
+    } catch (err) {
+      setError(loginErrorText(err, t))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function applyPassword(userId: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await setLoginPassword(userId, newPassword)
+      setNewPassword('')
+      setPwFor(null)
+    } catch (err) {
+      setError(loginErrorText(err, t))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove(userId: string) {
+    setRemoving(null)
+    setError(null)
+    try {
+      await deleteLogin(userId)
+      load()
+    } catch (err) {
+      setError(loginErrorText(err, t))
+    }
+  }
+
+  async function grantAdmin(row: LoginRow) {
+    setError(null)
+    try {
+      await setLoginAdmin(row.user_id, true)
+      load()
+    } catch (err) {
+      setError(loginErrorText(err, t))
+    }
+  }
+
+  async function revokeAdmin(userId: string) {
+    setRevoking(null)
+    setError(null)
+    try {
+      await setLoginAdmin(userId, false)
+      load()
+    } catch (err) {
+      setError(loginErrorText(err, t))
+    }
+  }
+
+  return (
+    <div className="swin__rows">
+      {error && <div className="swin__err">{error}</div>}
+
+      {minted && (
+        <div className="swin__minted">
+          <div className="swin__mintedRow">{minted.email}</div>
+          <div className="swin__mintedRow">{minted.password}</div>
+          <button className="btn btn--quiet" onClick={() => setMinted(null)}>
+            {t('common.done')}
+          </button>
+        </div>
+      )}
+
+      {(logins ?? []).map((row) => (
+        <div key={row.user_id} className="swin__login">
+          <span className="swin__loginEmail">{row.email}</span>
+          {row.is_admin && <span className="swin__loginBadge">{t('logins.admin')}</span>}
+
+          {pwFor === row.user_id ? (
+            <form
+              className="swin__loginPw"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void applyPassword(row.user_id)
+              }}
+            >
+              <input
+                className="field"
+                type="password"
+                autoFocus
+                placeholder={t('logins.passwordPlaceholder')}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <button type="submit" className="btn btn--primary" disabled={busy}>
+                {t('logins.setPassword')}
+              </button>
+            </form>
+          ) : (
+            <button className="btn btn--quiet" onClick={() => setPwFor(row.user_id)}>
+              {t('logins.setPassword')}
+            </button>
+          )}
+
+          <button
+            className="btn btn--quiet"
+            onClick={() => (row.is_admin ? setRevoking(row) : void grantAdmin(row))}
+          >
+            {t(row.is_admin ? 'logins.revokeAdmin' : 'logins.grantAdmin')}
+          </button>
+
+          <button className="btn btn--danger" onClick={() => setRemoving(row)}>
+            {t('logins.remove')}
+          </button>
+        </div>
+      ))}
+
+      <form
+        className="swin__loginCreate"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void create()
+        }}
+      >
+        <input
+          className="field"
+          placeholder={t('logins.emailPlaceholder')}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          className="field"
+          type="password"
+          placeholder={t('logins.passwordPlaceholder')}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button type="submit" className="btn btn--primary" disabled={busy}>
+          {t('logins.create')}
+        </button>
+      </form>
+
+      {removing && (
+        <Confirm
+          question={t('logins.confirmRemove', { name: removing.email })}
+          action={t('common.delete')}
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => void remove(removing.user_id)}
+        />
+      )}
+
+      {revoking && (
+        // No dedicated confirm-question string exists for revoking admin
+        // (only the button label `logins.revokeAdmin`); reused for both slots
+        // rather than inventing new i18n text — see this card's receipt.
+        <Confirm
+          question={t('logins.revokeAdmin')}
+          action={t('logins.revokeAdmin')}
+          onCancel={() => setRevoking(null)}
+          onConfirm={() => void revokeAdmin(revoking.user_id)}
         />
       )}
     </div>
