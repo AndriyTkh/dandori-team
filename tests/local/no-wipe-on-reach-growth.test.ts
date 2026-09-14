@@ -224,6 +224,7 @@ describe('claimCache does not mistake growing reach for a different account (SC-
     await db.workspaces.add({
       id: 'ws-a-own',
       name: "A's own workspace",
+      kind: 'personal',
       position: 0,
       gcal_sync: false,
       gcal: null,
@@ -248,6 +249,7 @@ describe('claimCache does not mistake growing reach for a different account (SC-
       custom_fields: [],
       gcal: null,
       gcal_placed: null,
+      assignee: null,
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
       deleted: false,
@@ -260,6 +262,7 @@ describe('claimCache does not mistake growing reach for a different account (SC-
     await db.workspaces.add({
       id: 'ws-team-newly-reached',
       name: 'Team workspace A newly reaches',
+      kind: 'team',
       position: 1,
       gcal_sync: false,
       gcal: null,
@@ -284,6 +287,7 @@ describe('claimCache does not mistake growing reach for a different account (SC-
       custom_fields: [],
       gcal: null,
       gcal_placed: null,
+      assignee: null,
       created_at: '2026-01-02T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       deleted: false,
@@ -324,6 +328,7 @@ describe('claimCache does not mistake growing reach for a different account (SC-
       {
         id: 'ws-a-own-2',
         name: "A's own workspace",
+        kind: 'personal',
         position: 0,
         gcal_sync: false,
         gcal: null,
@@ -335,6 +340,7 @@ describe('claimCache does not mistake growing reach for a different account (SC-
       {
         id: 'ws-team-newly-reached-2',
         name: 'Team workspace A newly reaches',
+        kind: 'team',
         position: 1,
         gcal_sync: false,
         gcal: null,
@@ -360,6 +366,7 @@ describe('claimCache does not mistake growing reach for a different account (SC-
       custom_fields: [],
       gcal: null,
       gcal_placed: null,
+      assignee: null,
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
       deleted: false,
