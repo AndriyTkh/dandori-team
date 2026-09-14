@@ -38,17 +38,21 @@ Board features, by contrast, stay boring on purpose.
 Every session, in this order. Stop as soon as you have what the task needs.
 
 1. **This file** — contract, phase state, roles, git rules.
-2. **`docs/validation-map.md`** — what is actually known to work. Cheapest context in the repo:
+2. **`project-profile.yaml`** — `current_stage` and that stage's `rigor` (how much evidence a
+   promotion owes) and `autonomy` (how often the owner is interrupted). Separate axes; neither
+   substitutes for the other. The SessionStart hook prints them, plus `docs/state.md` and the
+   decision-debt count. Every off-plan decision gets a row in `docs/assumptions.md` §A; every owner
+   question gets a B1..B5 class and a row in `docs/owner-approvals.md` (ADR-0008).
+3. **`docs/validation-map.md`** — what is actually known to work. Cheapest context in the repo:
    it is the only place that distinguishes "written" from "verified".
-3. **`docs/architecture-index.md`** → the cited **`ARCHITECTURE.md §N` ranges** in
+4. **`docs/architecture-index.md`** → the cited **`ARCHITECTURE.md §N` ranges** in
    `docs/ARCHITECTURE.md`. Index first, ranged read. Never the whole file.
-4. **`docs/decisions/ADR-000N-*.md`** — when a choice surprises you, or before you change one.
-5. **`specs/NNN-<feature>/`** — the feature you are implementing. Does not exist yet; a later
-   planning route creates it.
+5. **`docs/decisions/ADR-000N-*.md`** — when a choice surprises you, or before you change one.
+6. **`specs/README.md`** → **`specs/NNN-<feature>/`** — the feature you are implementing.
 
-Reference, not read-order: `docs/project-structure.md` (repo layout + map grammar),
-`docs/upstream-CLAUDE.md` (upstream's contract, for merge diffs only — **never** quote it as fork
-policy).
+Reference, not read-order: `docs/project-structure.md` (repo layout + map grammar,
+`structure-version: 5`), `docs/upstream-CLAUDE.md` (upstream's contract, for merge diffs only —
+**never** quote it as fork policy).
 
 One fact, one home. Link, don't restate.
 

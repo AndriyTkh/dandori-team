@@ -5,7 +5,8 @@ Repo: inherited from upstream `nitatsuu` (single-user personal planner). Fork wi
 workspaces, agent task-file sync, speckit ingestion — this map covers what EXISTS today only.
 
 Bootstrap rule applied: every entry starts `UNTESTED` unless a receipt below proves otherwise.
-No inherited/green history was trusted. `structure-version: 1` (see `project-compass` contract).
+No inherited/green history was trusted. Bootstrapped at `structure-version: 1`; the repo moved to
+`structure-version: 5` on 2026-09-14 (ADR-0008) — entry grammar unchanged, so no entry was re-stamped.
 
 Repo has **no `docs/`, `specs/`, `decisions/` before this audit** — non-conforming to the full
 structure contract; this file and a stub `docs/project-structure.md` are the first step, not a

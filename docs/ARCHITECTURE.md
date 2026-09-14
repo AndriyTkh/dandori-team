@@ -5,7 +5,8 @@ Reconstructed from the code and the read-only audit of upstream `nitatsuu/Dandor
 Claims about the **fork target** carry no citation on purpose — they describe what does not exist
 yet, and each is anchored to an ADR instead.
 
-Fixed skeleton §0–§6 per the structure contract (`docs/project-structure.md`). Cite ranges as
+Fixed skeleton §0–§7 per the structure contract (`docs/project-structure.md`; §7 Stages added by
+ADR-0008 at `structure-version: 5`). Cite ranges as
 `ARCHITECTURE.md §N`, resolved through `docs/architecture-index.md`. Never read this file whole.
 
 ---
@@ -551,6 +552,10 @@ nothing more.
 | `docs/decisions/ADR-0002-phase-gates.md` | P0 validation spine → P1 team transform → P2 scenarios/e2e → P3 agent layer; no phase starts on `UNTESTED` substrate |
 | `docs/decisions/ADR-0003-test-framework.md` | Vitest from P0 against the `supabase` CLI local stack; Playwright deferred to P2, cost-of-later assessed as equal |
 | `docs/decisions/ADR-0004-multi-origin-federation.md` | Each person hosts 0–1 Supabase origin; a shared workspace lives wholly on its host's origin; **data never crosses origins**; origin config becomes runtime; registry is an owner-scheduled P2/P3 item |
+| `docs/decisions/ADR-0005-schema-sql-canonical.md` | `supabase/schema.sql` is the one idempotent home of every definition; `migration-00N` carries only one-off row edits |
+| `docs/decisions/ADR-0006-account-provisioning-in-postgres.md` | Accounts are provisioned by `security definer` routines in Postgres, gated by `instance_admins`; no service-role key leaves the database |
+| `docs/decisions/ADR-0007-gcal-worker-route-adopted.md` | Upstream's Google Calendar worker route (`/api/gcal/*`, refresh token in the browser, secret only in Worker secrets) is adopted as-is |
+| `docs/decisions/ADR-0008-plumbline-stages-profile.md` | The repo adopts `structure-version: 5`: `project-profile.yaml` with three stages, decision ledger, owner gates, `§7 Stages` below; rigor and autonomy are per-stage owner rulings, never inferred |
 
 Changing this file's architecture requires a **new ADR plus a `STALE` cascade on the affected map
 entries, in the same PR** — and regenerating `docs/architecture-index.md`.
@@ -609,3 +614,35 @@ Still open, carried to the owner:
 - **Does `assignee` need to survive a member's removal from a workspace?** A nullable pointer to a
   user who is no longer a member is either a dangling label or an automatic un-assign. Cheap to
   decide now, awkward to change once rows exist.
+
+## §7 Stages
+
+Mirrors `project-profile.yaml` → `stages`, which is the source of truth; this section exists so a
+reader of the architecture sees the ceremony each stage owes without opening the profile. Values
+are the owner's ruling of 2026-09-14 (`docs/owner-approvals.md` gate 1; ADR-0008). Re-confirmed at
+every sprint plan; a stage transition is the gate event, and nothing per-item is renegotiated
+inside a stage.
+
+**Rigor** sizes the evidence a map promotion needs (`table[tier][rigor]`, tracking-validated-
+components). **Autonomy** sizes how often the owner is interrupted. They are independent axes: a
+`rushed` stage still owes every HIGH-tier component its test before the component changes (the
+`data` role rule in `CLAUDE.md`; §B U-003), and a `high`-autonomy stage still stops on every item
+in the profile's `escalate_always` — personal regression, origin crossing, an LWW lockstep split, a
+write to the default branch, a secret in a diff.
+
+| id | phase | rigor | autonomy | gate cadence | ends at |
+|---|---|---|---|---|---|
+| `demo-rush` | P1 | `rushed` | `high` (debt budget 5) | sprint | `sprint_end` = 2026-09-16 — demo functionality complete |
+| `demo-harden` | P2 | `standard` | `high` (debt budget 5) | sprint | `demo` = 2026-09-20 — main testing and user testing done |
+| `post-demo` | P3 | `standard` | `normal` (debt budget 2) | feature | `global` = open; owner dates it at the first post-demo sprint plan |
+
+Phase labels are plumbline's (`P1` scaffold, `P2` feature, `P3` harden) and coincide with the
+fork's own P0–P3 of ADR-0002, whose gates remain authoritative: `demo-rush` is spec 002, the fork's
+P1 team transform; `demo-harden` opens the fork's P2 (route scenarios, user testing) only once
+002's substrate is no longer `UNTESTED`. `post-demo` is `standard`, not `regulated`, because the
+profile contract forbids `regulated` in `mode: solo` — the owner's wish for a "more regulated"
+phase is an open gate (`docs/owner-approvals.md` gate 4), not a value silently rounded down.
+
+`mode` is `solo` throughout. The upstream teammate working `nitatsuu/Dandori` is a **merge
+source**, not a member of this project: their commits are fetched one way into the fork (ADR-0001
+§Merge contract) and they hold no sign-off here.
