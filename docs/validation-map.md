@@ -110,6 +110,7 @@ distinctions below.
   last-verified: —
   sign-off: —
   accepted-risk: "sign-out ordering uncovered in P0, P1 inherits (owner, 2026-09-12; specs/001-validation-spine/receipts.md F-5)"
+  accepted-risk: "UNTESTED supabase-auth accepted as incidental substrate for the 002 P1 harness cards T007–T019 (owner, 2026-09-14; specs/002-team-workspaces/receipts.md \"Owner decisions 2026-09-14\" #1)"
 ```
 
 **Fork-substrate note (per task):** `sync-engine` + `supabase-schema` are the components the
@@ -159,7 +160,7 @@ fork stands on directly:
   kind: adapter
   criticality: NORMAL
   status: UNTESTED
-  paths: [src/gcal/api.ts, src/gcal/client.ts, src/gcal/sync.ts, src/components/Gcal.tsx]
+  paths: [src/gcal/api.ts, src/gcal/client.ts, src/gcal/sync.ts, src/components/Gcal.tsx, worker/index.ts]
   verify: "NONE — needs writing; would require live Google OAuth + Calendar API, not touched this session"
   tests: —
   depends-on: [db-api, sync-engine]

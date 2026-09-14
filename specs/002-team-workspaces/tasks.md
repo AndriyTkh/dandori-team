@@ -93,6 +93,13 @@ problem, not a test problem. **Blocks TG-1 onward.**
   - verify: `for ($i=1; $i -le 10; $i++) { npm test -- --run --project stack tests/stack/soft-delete.test.ts }` — 10/10 green
   - done-when: 10/10 green; `git diff tests/stack/soft-delete.test.ts` shows no change to any `expect(...)`, `it(...)` title or acceptance comment; `git diff src/` is empty (SC-003 discipline; FR-030 exception named on T004)
   - blocked-by: T003
+- [ ] T004a [data] [sub-of: T004] Swap `tests/stack/offline-round-trip.test.ts`'s private `drivePushAndPullCycle` (same two-settle defect as T004's, 9 call sites) for the harness `driveSyncCycle`. Owner-approved 2026-09-14 as the second recorded FR-030 exception; no `expect(...)`, `it(...)` title or acceptance comment may change [in-progress: wt/ort-driver]
+  - Write: `tests/stack/offline-round-trip.test.ts`
+  - Read: `tests/harness/sync.ts` (post-T004 `driveSyncCycle`, `flushFirst`); `tests/stack/soft-delete.test.ts` (the T004 swap, as the pattern); `specs/001-validation-spine/receipts.md` "sync-engine receipt repaired"
+  - substrate: `sync-engine` (VALIDATED at ec12db6)
+  - verify: `npx vitest run --project stack tests/stack/offline-round-trip.test.ts` 10/10 green, then `npx vitest run --project stack` green
+  - done-when: 10/10 green; `git diff` shows no changed `expect`/`it`/acceptance text; `git diff src/` empty; recorded in 001 receipts
+  - blocked-by: T004
 - [x] T005 [coordinator] Re-run the full suite twice consecutively and re-sign the `sync-engine` receipt in `specs/001-validation-spine/receipts.md` — the existing receipt is flaky and a `VALIDATED` entry standing on it is a map-discipline defect (map flip + receipt re-sign is a coordinator duty). `data` hands `coordinator` the two consecutive local run logs plus the failing and new green CI URLs; `coordinator` records both local runs, the failing CI URL, and the new green CI URL, and updates `docs/validation-map.md`'s `sync-engine` `last-verified` to the fixed SHA
   - Write: `specs/001-validation-spine/receipts.md`, `docs/validation-map.md`
   - Read: `specs/001-validation-spine/receipts.md` "Full-suite receipt" and "CI receipt" sections; `CLAUDE.md` "Definition of done"; T003/T004 records; the two run logs and CI URLs handed off by `data`
@@ -114,6 +121,8 @@ problem, not a test problem. **Blocks TG-1 onward.**
 ---
 
 ## TG-1: Schema, helpers, triggers, policies, RPCs — and the evidence that gates them
+
+**Owner decisions 2026-09-14 (recorded in `specs/002-team-workspaces/receipts.md`):** `supabase-auth` carries an `accepted-risk:` for P1 harness work; every 002 test that seeds `members` clears `db.members` itself (`tests/setup.ts` stays unedited); offline-round-trip driver swap approved as T004a.
 
 **Purpose**: the transform itself. HIGH tier, so the P-gate applies **within** the taskgroup: each
 test file is authored before the schema card it gates, fails for a named reason, and the schema card

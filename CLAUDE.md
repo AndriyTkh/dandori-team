@@ -182,7 +182,8 @@ Owns: `src/views/`, `src/components/`, `src/styles/`, `src/i18n/` (adding keys i
 
 ### `infra` — build and deploy
 
-Owns: `vite.config.ts`, the manifest and service worker, `wrangler.jsonc`, `.github/`, `README.md`.
+Owns: `vite.config.ts`, the manifest and service worker, `wrangler.jsonc`, `worker/`, `.github/`,
+`README.md`.
 
 - Build config, PWA, deploy to Cloudflare Workers static assets, hosted Supabase.
 - CI (`.github/workflows/ci.yml`): install, typecheck, lint, build. The `test` step and the
@@ -191,7 +192,8 @@ Owns: `vite.config.ts`, the manifest and service worker, `wrangler.jsonc`, `.git
 - Secrets never enter the repository, under any circumstances. The three `VITE_` vars are inlined
   at build time; there is no client secret and no `service_role` key here. The local test stack's
   keys are fixed development values, which is why they may be committed and a hosted project's
-  never may.
+  never may. The Google client secret used by `worker/index.ts` lives only in Cloudflare Worker
+  secrets — never in the repository, never in the bundle (ADR-0007).
 - Later: moving origin config from build-time `VITE_` inlining to **runtime** (ADR-0004). One
   artifact, any origin — the thing that makes a published build usable by a self-hoster who did
   not build it.

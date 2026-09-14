@@ -199,3 +199,32 @@ Sign-off: Andrii Tkhorenko (single-operator).
   `applySchema()` in `globalSetup` (`tuple concurrently updated`, XX000) — a different failure
   class from line 91, not covered by 001's 40P01 retry. CI runs one process; recorded for a later
   harness card.
+
+## Owner decisions 2026-09-14 (TG-0 → TG-1 gate)
+1. `supabase-auth` (UNTESTED) is accepted as incidental substrate for P1 harness work (T007–T019):
+   `accepted-risk:` line added to its map entry. Option (a) over a validation dispatch first.
+2. `tests/setup.ts` stays unedited (D-13). Every 002 test that seeds `members` clears `db.members`
+   itself. No FR-030 exception.
+3. `tests/stack/offline-round-trip.test.ts`'s private two-settle driver swap is approved as the
+   second recorded FR-030 exception → subtask T004a under T004.
+
+## Upstream merge 806f5a8 (8 commits), 2026-09-14
+- Merge commit `7cb8df6` on `main`, then `main` → `002-team-workspaces` as `db23c6d` (clean).
+  Conflict only in `CLAUDE.md`: fork's kept; upstream body copied verbatim into
+  `docs/upstream-CLAUDE.md` (body `cmp`-verified byte-identical below the header).
+- Upstream diff: `src/gcal/{api,client,sync}.ts` rewritten — Google account is now a refresh token,
+  hour-long access tokens renewed via a **new Cloudflare Worker route** `worker/index.ts`
+  (`/api/gcal/*`, `run_worker_first`, `GOOGLE_CLIENT_SECRET` as a Cloudflare secret, never in
+  repo or bundle); event deletion read back unticks the task; label colour → event colour
+  (`GCAL_COLOR_OF` added to `src/db/types.ts`, `SYNCED_TABLES`/`SYNCED_COLUMNS` unchanged);
+  `dates.ts` un-exports three helpers; timeline phone CSS. `src/sync/` untouched;
+  `supabase/` untouched; Dexie schema unchanged; no test-imported signature changed.
+- Verify on `main` merge worktree (pre-T004 harness): tsc PASS, lint PASS, build PASS; suite
+  6 files / 29 tests → 1 FAIL at `soft-delete.test.ts:91` acceptance 1 — the exact T003 flake,
+  which `main` still carries (T004's fix lives on 002). Recorded as further confirmation, not as an
+  upstream regression. On `002-team-workspaces` at `db23c6d`: `npm test -- --run` → 7 files /
+  51 tests PASS.
+- Architecture fact changed by upstream: "no server component anywhere" no longer holds →
+  ADR-0007 + `ARCHITECTURE.md` §gcal/§5 update + regenerated index + `gcal-integration` paths
+  (`worker/index.ts`), same change set. `gcal-integration` stays UNTESTED.
+- Sign-off: Andrii Tkhorenko (single-operator).
