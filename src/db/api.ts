@@ -1,5 +1,5 @@
 import { db, stripLocal, type Local } from './local'
-import { requestPush } from '../sync/sync'
+import { addMemberByEmailRemote, memberEmailsRemote, requestPush, type MemberEmail } from '../sync/sync'
 import { translate } from '../i18n'
 import { taskDate } from './types'
 import type {
@@ -9,10 +9,12 @@ import type {
   ISODate,
   Label,
   LabelColor,
+  Member,
   Note,
   NoteKind,
   Task,
   Workspace,
+  WorkspaceKind,
 } from './types'
 
 /*
@@ -48,7 +50,18 @@ export async function listWorkspaces(): Promise<Workspace[]> {
   return rows.filter((w) => !w.deleted)
 }
 
-export async function createWorkspace(name: string): Promise<ID> {
+/**
+ * Defaulted to `'personal'` so every existing call site is unchanged.
+ *
+ * Writes **only** the workspace row. A team workspace's owner membership row
+ * is `workspaces_seed_owner`'s server-side effect and reaches this device on
+ * its next pull (D-6, D-11 affordance 1) — writing one locally here would
+ * collide with `members_one_per_person` and wedge the queue (R-14).
+ */
+export async function createWorkspace(
+  name: string,
+  kind: WorkspaceKind = 'personal',
+): Promise<ID> {
   const existing = await listWorkspaces()
   const ts = now()
   const row: Local<Workspace> = {
@@ -56,6 +69,7 @@ export async function createWorkspace(name: string): Promise<ID> {
     name: name.trim() || translate('common.untitled'),
     gcal_sync: false,
     gcal: null,
+    kind,
     position: (existing.at(-1)?.position ?? 0) + POS_STEP,
     created_at: ts,
     updated_at: ts,
@@ -96,6 +110,51 @@ export async function deleteWorkspace(id: ID): Promise<void> {
     }
   })
   queue()
+}
+
+// ------------------------------------------------------------------- members
+
+export async function listMembers(workspaceId: ID): Promise<Member[]> {
+  const rows = await db.members.where('workspace_id').equals(workspaceId).toArray()
+  return rows.filter((m) => !m.deleted)
+}
+
+/**
+ * An ordinary soft-delete write plus a queued push — removal is not an RPC
+ * (contracts/rpc.md "Client layering"), so it works offline exactly like
+ * `deleteTask`. `memberId` is the *person's* id (`member_id`), the same value
+ * `listMembers`/`memberEmails` hand the UI — not the row's own surrogate `id`.
+ */
+export async function removeMember(workspaceId: ID, memberId: ID): Promise<void> {
+  await db.transaction('rw', db.members, async () => {
+    const rows = await db.members.where('workspace_id').equals(workspaceId).toArray()
+    const row = rows.find((m) => m.member_id === memberId)
+    if (!row) return
+    await db.members.put(touch({ ...row, deleted: true }))
+  })
+  queue()
+}
+
+/**
+ * Online-only: an email -> uuid lookup can only happen where `auth.users`
+ * lives (FR-008), so — alone among `db-api` reads — this reaches through
+ * `src/sync/sync.ts` rather than Dexie (D-9). The per-device `member-email:`
+ * cache (Q-A Option B) lands in this one function in a later card (TG-4), not
+ * here.
+ */
+export async function memberEmails(workspaceId: ID): Promise<MemberEmail[]> {
+  return memberEmailsRemote(workspaceId)
+}
+
+/**
+ * Online-only for the same reason as `memberEmails` (D-9). The row the RPC
+ * hands back is written straight into Dexie, already-synced, so the new
+ * member appears without waiting for the next pull.
+ */
+export async function addMemberByEmail(workspaceId: ID, email: string): Promise<Member> {
+  const row = await addMemberByEmailRemote(workspaceId, email)
+  await db.members.put({ ...row, _dirty: 0 })
+  return row
 }
 
 // -------------------------------------------------------------------- labels
@@ -191,6 +250,7 @@ export async function createTask(workspaceId: ID, input: NewTask): Promise<ID> {
     custom_fields: [],
     gcal: null,
     gcal_placed: null,
+    assignee: null,
     created_at: ts,
     updated_at: ts,
     deleted: false,
@@ -220,6 +280,7 @@ export type TaskPatch = Partial<
     | 'note_id'
     | 'label_ids'
     | 'custom_fields'
+    | 'assignee'
   >
 >
 
