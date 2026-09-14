@@ -569,3 +569,295 @@ $fn$;
 
 revoke execute on function public.workspace_member_emails(uuid) from public, anon;
 grant  execute on function public.workspace_member_emails(uuid) to authenticated;
+
+-- ==========================================================================
+-- fork block D -- the instance-admin layer              (ADR-0006 §C, plan D-16)
+-- A SECOND, INDEPENDENT role layer.  It is an *instance* capability, never a workspace one:
+-- no access policy above reads instance_admins, and none ever may (FR-039, SC-007's sibling).
+-- An RLS policy that reads this table is a standing reviewer FINDING (ADR-0006 Consequences).
+-- ==========================================================================
+
+create table if not exists public.instance_admins (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  granted_by  uuid references auth.users (id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+
+alter table public.instance_admins enable row level security;
+-- and NO policy: the table is unreachable from PostgREST by anyone.  It is read only by
+-- is_admin() and written only by the provisioning routines, all security definer.  The
+-- client learns "am I an admin" from the is_admin() RPC, never by selecting this table
+-- (plan D-17).  It is not a synced table and never enters SYNCED_TABLES.
+
+create or replace function public.is_admin() returns boolean
+language sql stable security definer set search_path = public, pg_temp as $fn$
+  select exists (select 1 from public.instance_admins a where a.user_id = auth.uid())
+$fn$;
+
+revoke execute on function public.is_admin() from public, anon;
+grant  execute on function public.is_admin() to authenticated;
+
+-- The first account ever created on this origin becomes an instance admin structurally --
+-- granted by the backend, and ONLY while no admin exists (FR-037).  A trigger, not a runbook
+-- step: it holds for every path that creates an account, so an instance is never adminless
+-- and nobody has to be told to grant it.  Every account created afterwards is not an admin.
+create or replace function public.seed_first_admin() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $fn$
+begin
+  if not exists (select 1 from public.instance_admins) then
+    insert into public.instance_admins (user_id, granted_by)
+    values (new.id, null)
+    on conflict (user_id) do nothing;
+  end if;
+  return null;
+end $fn$;
+
+drop trigger if exists users_seed_first_admin on auth.users;
+create trigger users_seed_first_admin after insert on auth.users
+  for each row execute function public.seed_first_admin();
+-- Note (plan R-16): a trigger on auth.users is the common supported Supabase pattern (the
+-- same shape the platform's own "handle_new_user" recipe uses), but the auth schema's
+-- migrations are owned by GoTrue.  This trigger, and the routines of fork block E, are what
+-- R-15's canary test exists to protect.
+
+-- pgcrypto lives in the extensions schema on Supabase and is what fork block E's
+-- extensions.crypt/gen_salt come from (plan R-17).  Asserted, never created here: creating
+-- an extension needs privileges schema.sql does not assume.
+--   select 1 from pg_extension e join pg_namespace n on n.oid = e.extnamespace
+--    where e.extname = 'pgcrypto';        -- asserted by tests/stack/schema-apply.test.ts
+
+-- ==========================================================================
+-- fork block E -- the provisioning routines               (ADR-0006 §B, plan D-16)
+-- create_login / set_login_password / delete_login / set_login_admin / list_logins.
+-- Signatures, guards, error codes and the verbatim auth.users / auth.identities column set
+-- are contracted in specs/002-team-workspaces/contracts/rpc.md, which is authoritative for
+-- them.  All five are security definer, all carry
+-- `set search_path = public, auth, extensions, pg_temp`, all are revoked from public and anon
+-- and granted to authenticated, and every one of them refuses a caller for whom
+-- public.is_admin() is false (FR-038, SC-018).
+-- ==========================================================================
+
+-- create_login's pinned signature returns a table column literally named "email", the same
+-- name as its own input parameter -- plpgsql refuses that outright ("parameter name "email"
+-- used more than once", probe-verified against this repo's own local stack 2026-09-14). The
+-- pinned parameter and column names cannot change (R-3, PGRST202 on rename), so the real
+-- logic lives in this differently-named-parameter helper, unreachable from PostgREST on its
+-- own (revoked from public below), and create_login itself is a thin `language sql` shim --
+-- a SQL-language function has no such symbol table and raises nothing over the shared name.
+create or replace function public._create_login_impl(p_email text, p_password text, p_admin boolean)
+returns table (user_id uuid, email text, is_admin boolean)
+language plpgsql security definer set search_path = public, auth, extensions, pg_temp as $fn$
+declare
+  new_id     uuid;
+  norm_email text := lower(trim(p_email));
+begin
+  if not public.is_admin() then
+    raise exception using errcode = 'DA001', message = 'not an instance admin';
+  end if;
+
+  if norm_email !~ '^[^@\s]+@[^@\s]+$' then
+    raise exception using errcode = 'DA010', message = 'malformed email';
+  end if;
+
+  if length(p_password) < 8 then
+    raise exception using errcode = 'DA011', message = 'password too short';
+  end if;
+
+  -- Pre-check (contracts/rpc.md line 124 calls it exactly that): loses the race under
+  -- concurrent create_login calls for the same email, which is why the insert below is
+  -- ALSO wrapped -- SC-021 needs both (coordinator note 2026-09-14, T018 case (i)).
+  if exists (select 1 from auth.users u where lower(trim(u.email)) = norm_email) then
+    raise exception using errcode = 'DA012', message = 'identifier already in use';
+  end if;
+
+  new_id := gen_random_uuid();
+
+  begin
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+      confirmation_token, recovery_token, email_change_token_new, email_change, is_sso_user
+    ) values (
+      '00000000-0000-0000-0000-000000000000', new_id, 'authenticated', 'authenticated',
+      norm_email, extensions.crypt(p_password, extensions.gen_salt('bf')), now(),
+      '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now(),
+      '', '', '', '', false
+    );
+  exception when unique_violation then
+    -- The loser of a concurrent create_login race hits GoTrue's own
+    -- users_email_partial_key unique index here, not the pre-check above (SC-021).
+    raise exception using errcode = 'DA012', message = 'identifier already in use';
+  end;
+
+  insert into auth.identities (
+    id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+  ) values (
+    gen_random_uuid(), new_id, new_id::text,
+    jsonb_build_object('sub', new_id::text, 'email', norm_email, 'email_verified', true),
+    'email', now(), now(), now()
+  );
+
+  if p_admin then
+    insert into public.instance_admins (user_id, granted_by) values (new_id, auth.uid());
+  end if;
+
+  return query select new_id, norm_email, coalesce(p_admin, false);
+end;
+$fn$;
+
+revoke execute on function public._create_login_impl(text, text, boolean) from public;
+
+create or replace function public.create_login(email text, password text, admin boolean default false)
+returns table (user_id uuid, email text, is_admin boolean)
+language sql security definer set search_path = public, auth, extensions, pg_temp as $fn$
+  select * from public._create_login_impl(email, password, admin);
+$fn$;
+
+revoke execute on function public.create_login(text, text, boolean) from public, anon;
+grant  execute on function public.create_login(text, text, boolean) to authenticated;
+
+create or replace function public.set_login_password(user_id uuid, password text)
+returns void
+language plpgsql security definer set search_path = public, auth, extensions, pg_temp as $fn$
+declare
+  target uuid := user_id;
+begin
+  if not public.is_admin() then
+    raise exception using errcode = 'DA001', message = 'not an instance admin';
+  end if;
+
+  if length(password) < 8 then
+    raise exception using errcode = 'DA011', message = 'password too short';
+  end if;
+
+  if not exists (select 1 from auth.users u where u.id = target) then
+    raise exception using errcode = 'DA404', message = 'no such login';
+  end if;
+
+  update auth.users
+     set encrypted_password = extensions.crypt(password, extensions.gen_salt('bf')),
+         updated_at = now()
+   where id = target;
+end;
+$fn$;
+
+revoke execute on function public.set_login_password(uuid, text) from public, anon;
+grant  execute on function public.set_login_password(uuid, text) to authenticated;
+
+create or replace function public.delete_login(user_id uuid)
+returns void
+language plpgsql security definer set search_path = public, auth, extensions, pg_temp as $fn$
+declare
+  target uuid := user_id;
+begin
+  if not public.is_admin() then
+    raise exception using errcode = 'DA001', message = 'not an instance admin';
+  end if;
+
+  if not exists (select 1 from auth.users u where u.id = target) then
+    raise exception using errcode = 'DA404', message = 'no such login';
+  end if;
+
+  if target = auth.uid() then
+    raise exception using errcode = 'DA013', message = 'cannot remove your own login';
+  end if;
+
+  if exists (
+    select 1 from public.workspaces w
+     where w.user_id = target and w.kind = 'team' and not w.deleted
+  ) then
+    raise exception using errcode = 'DA014', message = 'login owns a live team workspace';
+  end if;
+
+  -- Ban, not delete: every fork- and upstream-owned data table declares
+  -- `user_id ... references auth.users (id) on delete cascade` (schema.sql workspaces:18,
+  -- labels:32, tasks:44, notes:81) -- a real delete would cascade away everything this login
+  -- ever created, including rows in team workspaces other people still use (FR-045, R-18).
+  --
+  -- DEVIATION from ADR-0006 §B / contracts/rpc.md, which both write
+  -- `banned_until = 'infinity'`: probe-verified against this repo's own local stack
+  -- (GoTrue v2.196.0, 2026-09-14) to 500 on the next sign-in attempt --
+  -- "sql: Scan error on column index 1, name \"banned_until\": unsupported Scan, storing
+  -- driver.Value type string into type *time.Time" -- GoTrue's Go client cannot scan
+  -- Postgres' infinity timestamp into a time.Time. A finite far-future timestamp (still
+  -- "banned_until is not null" for the test, still refused at sign-in) is what actually
+  -- works against the pinned GoTrue version; flagged for the coordinator, contract text
+  -- unchanged (out of this card's Write scope).
+  update auth.users
+     set banned_until       = '9999-12-31 23:59:59+00'::timestamptz,
+         encrypted_password = extensions.crypt(gen_random_uuid()::text || gen_random_uuid()::text,
+                                                extensions.gen_salt('bf')),
+         updated_at         = now()
+   where id = target;
+
+  -- Table-aliased: a bare `where user_id = target` here is ambiguous between this
+  -- function's own `user_id` parameter and the column of the same name (42702,
+  -- probe-verified 2026-09-14) -- the same collision class T024 hit, this time in a
+  -- WHERE clause rather than a query already qualifying every column.
+  delete from public.instance_admins ia where ia.user_id = target;
+
+  -- Explicit soft-delete, not left to a cascade: this is what makes
+  -- members_zz_clear_assignee fire per row, exactly as a manual removal does (FR-014).
+  update public.members
+     set deleted = true, updated_at = greatest(updated_at, now())
+   where member_id = target and not deleted;
+end;
+$fn$;
+
+revoke execute on function public.delete_login(uuid) from public, anon;
+grant  execute on function public.delete_login(uuid) to authenticated;
+
+create or replace function public.set_login_admin(user_id uuid, admin boolean)
+returns void
+language plpgsql security definer set search_path = public, auth, extensions, pg_temp as $fn$
+declare
+  target uuid := user_id;
+begin
+  if not public.is_admin() then
+    raise exception using errcode = 'DA001', message = 'not an instance admin';
+  end if;
+
+  if not exists (select 1 from auth.users u where u.id = target) then
+    raise exception using errcode = 'DA404', message = 'no such login';
+  end if;
+
+  if admin then
+    -- `on conflict (user_id)` names the pk column, not a variable, but PL/pgSQL's
+    -- ambiguity check scans the on-conflict target list too (42702, probe-verified
+    -- 2026-09-14) and finds this function's own `user_id` parameter -- an alias on the
+    -- insert target does not help there (only the constraint name does), so this names
+    -- the constraint instead of the column it covers.
+    insert into public.instance_admins (user_id, granted_by)
+    values (target, auth.uid())
+    on conflict on constraint instance_admins_pkey do nothing;
+  else
+    if exists (select 1 from public.instance_admins a where a.user_id = target)
+       and (select count(*) from public.instance_admins) <= 1 then
+      raise exception using errcode = 'DA015', message = 'cannot revoke the last admin';
+    end if;
+    delete from public.instance_admins ia where ia.user_id = target;
+  end if;
+end;
+$fn$;
+
+revoke execute on function public.set_login_admin(uuid, boolean) from public, anon;
+grant  execute on function public.set_login_admin(uuid, boolean) to authenticated;
+
+create or replace function public.list_logins()
+returns table (user_id uuid, email text, is_admin boolean, created_at timestamptz)
+language plpgsql security definer set search_path = public, auth, extensions, pg_temp as $fn$
+begin
+  if not public.is_admin() then
+    raise exception using errcode = 'DA001', message = 'not an instance admin';
+  end if;
+
+  return query
+    select u.id, u.email::text, (a.user_id is not null), u.created_at
+      from auth.users u
+      left join public.instance_admins a on a.user_id = u.id
+     order by u.created_at;
+end;
+$fn$;
+
+revoke execute on function public.list_logins() from public, anon;
+grant  execute on function public.list_logins() to authenticated;
