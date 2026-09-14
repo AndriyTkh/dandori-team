@@ -578,6 +578,7 @@ function LoginsSection({ t, onAdminChange }: { t: T; onAdminChange: (admin: bool
       load()
     } catch (err) {
       setError(loginErrorText(err, t))
+      setPassword('')
     } finally {
       setBusy(false)
     }
@@ -592,6 +593,7 @@ function LoginsSection({ t, onAdminChange }: { t: T; onAdminChange: (admin: bool
       setPwFor(null)
     } catch (err) {
       setError(loginErrorText(err, t))
+      setNewPassword('')
     } finally {
       setBusy(false)
     }
@@ -669,7 +671,13 @@ function LoginsSection({ t, onAdminChange }: { t: T; onAdminChange: (admin: bool
               </button>
             </form>
           ) : (
-            <button className="btn btn--quiet" onClick={() => setPwFor(row.user_id)}>
+            <button
+              className="btn btn--quiet"
+              onClick={() => {
+                setNewPassword('')
+                setPwFor(row.user_id)
+              }}
+            >
               {t('logins.setPassword')}
             </button>
           )}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useEscape } from '../lib/useEscape'
 import { useT } from '../i18n'
 import './Confirm.css'
@@ -50,9 +50,10 @@ export function Confirm({ question, action, onConfirm, onCancel }: Props) {
 
 /**
  * The same window, asking for a word instead of an answer: the name of a new
- * workspace, which the browser's own `prompt()` used to ask for — the one
- * browser window left in the app, standing at the one moment an empty database
- * has nothing else on screen.
+ * workspace, which the browser's own `prompt()` used to ask for. A caller that
+ * needs one more control alongside the name — the workspace kind toggle, say —
+ * passes it as `extra`, rendered between the field and the buttons, so it does
+ * not need a form of its own.
  *
  * The field is focused, Enter makes the workspace and Escape drops it. An empty
  * name is allowed through: it becomes «Без названия» and is fixed in the
@@ -61,12 +62,15 @@ export function Confirm({ question, action, onConfirm, onCancel }: Props) {
 export function AskName({
   label,
   action,
+  extra,
   onSubmit,
   onCancel,
 }: {
   label: string
   /** The word on the button that makes it. */
   action: string
+  /** Rendered between the name field and the buttons, e.g. a kind toggle. */
+  extra?: ReactNode
   onSubmit: (name: string) => void
   onCancel: () => void
 }) {
@@ -93,6 +97,8 @@ export function AskName({
             onChange={(e) => setName(e.target.value)}
           />
         </label>
+
+        {extra}
 
         <div className="ask__foot">
           <button type="button" className="btn" onClick={onCancel}>
