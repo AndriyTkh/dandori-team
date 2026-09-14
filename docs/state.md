@@ -11,6 +11,12 @@ does first. Not a log — overwrite, don't append.
   writes; `supabase/schema.sql` stays one write lane.
 - **Process branch:** `tg/plumbline-v5` — merged (fast-forward) into `002-team-workspaces` at
   `dab2b70`, 2026-09-14. Branch may be deleted.
+- **Lanes (owner gate 6):** schema on primary (T025+T026 in flight, then T027 + one review);
+  `wt/sync-cache` (T028 done; T029/T031/T032 in flight, then T033/T034/T036/T037/T038);
+  `wt/ui` (T041 done; rest after T031 merges in). Per-lane review, no per-card closers (gate 8).
+- **Spec 003 draft:** branch `spec/003-agent-edit-layer` @ 3b87c87 (worktree under `.claude/worktrees/`).
+  Planning only — 9 owner questions in its `plan.md` (auth model Q2, entry gate Q1, tier Q8 need ADRs).
+  Owner reads and rules before any tasks.md is generated.
 - **Open owner gates:** `docs/owner-approvals.md` gate 3 (deferred; fork test-first rule in force).
 - **Next session, first:** read this file, then the `[in-progress: …]` marker in
   `specs/002-team-workspaces/tasks.md`.
