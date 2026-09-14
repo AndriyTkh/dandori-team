@@ -2264,3 +2264,46 @@ FR-033, SC-020 clean.
 only `supabase-schema` moves, and it moves in place.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T022 receipt — fork block C, the fork's own triggers (2026-09-14)
+
+**Card:** T022. **Commit:** `381122b` (`supabase/schema.sql`, +148/−0, inserted between fork block B's
+grants and upstream's policy block). **Status: PASS.** Coder: dev-worker (sonnet, high). Closer:
+dev-worker (sonnet, high), read-only against the commit. Sign-off: Andrii Tkhorenko (single-operator).
+
+### Verify
+
+| # | command | exit | result |
+|---|---|---|---|
+| 1 | `npx vitest run --project stack tests/stack/team-triggers.test.ts tests/stack/assignee-clear-on-removal.test.ts tests/stack/kind-switch.test.ts tests/stack/personal-triggers-after-t022.test.ts` (before edit) | 1 | 10 passed / 14 failed — all `42P01 relation "public.members" does not exist` or missing-trigger shaped |
+| 2 | same (after edit; coder run, closer re-run agreed) | 1 | 19 passed / 5 failed — the five T023-gated cases exactly: `kind-switch` (a) (b) (e), `assignee-clear-on-removal` case 7, `team-triggers` R-6 |
+| 3 | `npx vitest run --project stack tests/stack/schema-apply.test.ts tests/stack/rls-two-accounts.test.ts tests/stack/personal-unchanged.test.ts tests/stack/team-triggers.test.ts` | 1 | 30 passed / 1 failed — the same R-6 case; `schema-apply` 6/6, `rls-two-accounts` 5/5, `personal-unchanged` all green |
+| 4 | `npx tsc -b --noEmit` | 0 | clean |
+| 5 | closer: `diff` of `contracts/policies.sql:82-228` against `supabase/schema.sql:283-429` | 0 | zero drift |
+| 6 | closer: `information_schema.triggers` on the live local stack | 0 | see ordering below |
+| 7 | closer: `supabase/schema.sql` applied twice in sequence via pg client | 0 | `RUN1 OK`, `RUN2 OK` |
+
+### Done-when, clause by clause
+
+- **FR-002** — `workspaces_seed_owner`, `after insert`, `security definer`, `on conflict (workspace_id, member_id) do nothing`; `personal-triggers-after-t022` (c) positive control: team insert seeds exactly one owner row.
+- **FR-014** — BEFORE order per table from the catalog: `labels`/`tasks`/`notes`: `keep_newer → stay_deleted → synced_at → _zz_*`; `members`: `keep_newer → synced_at`. `team-triggers` "three existing triggers fire identically" 6/6 on both kinds.
+- **FR-018** — `assignee-clear-on-removal` acceptances 3–4 green; clear lands server-side with `greatest(updated_at, now())`.
+- **FR-034–FR-036** — `workspaces_zz_kind_change` is `after update … when (new.kind is distinct from old.kind)`; `kind-switch` (c) (d) green (purge stamp, R-19 stale-flip cancellation). (a) (b) (e) are T023-gated (below).
+- **No `pin_workspace_kind`, no `workspaces_zz_kind_fixed`** — grep finds neither definition; comments only.
+- **R-4** — pure insertion; the three upstream `foreach … array['workspaces','labels','tasks','notes']` loops byte-identical.
+- **Security** — four `security definer` functions all `set search_path = public, pg_temp`; `keep_creator` is plain plpgsql by contract (no cross-table read); no `raise` anywhere in block C — `assignee_must_be_member` coerces to `null`.
+
+### Personal must not regress
+
+`members_*` triggers and the kind-change trigger never fire on a personal workspace (no `members` row is ever seeded; `when` guard). `<t>_zz_keep_creator` is a no-op under the unchanged write half (a caller can only ever write their own `user_id`). `tasks_zz_assignee_member` coerces a personal self-assignment to `null` — contractually intended (`contracts/policies.sql:101-114`) and pinned by `personal-triggers-after-t022` (b). `personal-triggers-after-t022` 5/5; `personal-unchanged` green.
+
+### Findings and deviations
+
+1. **Card text (B1, non-blocking, corrected in `tasks.md` and logged as A-002):** the card's T023-gated exception list named three cases; five are T023-gated. `kind-switch` (b) shares `roundTripWs` with (a) (`kind-switch.test.ts:141-142`) and can only observe (a)'s purge once (a) survives its T023-dependent positive control; `team-triggers` R-6 needs the widened `tasks` write half and its header (`team-triggers.test.ts:20-33`) says so. No test file was edited.
+2. **Closer F2 (cosmetic):** the dispatch cited the contract range as 82–279; block C is 82–228, and 229–279 is the contract's policy block (T023). Nothing from 229–279 landed here.
+3. **Closer F1:** map re-stamp for `supabase-schema` owed at check-off — done in this commit.
+
+### What this card turns green
+
+`personal-triggers-after-t022.test.ts` (T026A) 5/5; `team-triggers` 6/7; `assignee-clear-on-removal` 6/7; `kind-switch` (c) (d). The remaining five cases turn green at T023.
+
