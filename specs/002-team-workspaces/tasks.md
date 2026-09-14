@@ -631,6 +631,19 @@ and no agent handles a hosted key.
   walk). Disabling sign-up before the backfill leaves an origin with no admin and no in-app way to
   make one — recoverable only through the SQL editor, which is the manual step this feature exists
   to remove (D-14).
+- **Coordinator reordering, 2026-09-14 (TG-1 closed): three evidence cards written ahead of their
+  nominal `blocked-by`.** T026A (`blocked-by: T022`), T030 (`blocked-by: T028`) and T035
+  (`blocked-by: T032`) are **authored now**, in parallel lanes, and stay red until those cards land.
+  This is not a gate violation: for an evidence card, `blocked-by` names the card that turns the
+  file **green**, not the card that permits it to be **written**. Every one of TG-1's thirteen
+  evidence cards was authored this way — T009 through T019 all sit in the tree today, red, against a
+  `supabase/schema.sql` that has not been touched. Writing the test before the code it constrains is
+  the P-gate's requirement (ADR-0002), and for T035 it is stated as an obligation in the card's own
+  text, because `sync-engine` is `VALIDATED` HIGH-tier substrate. The three cards touch no shared
+  file and each creates one new file, so lane-parallelism is safe. **What is unchanged:** none of the
+  three may be checked off or greened before its `blocked-by` lands, each is committed red with its
+  green-at card named in the file header, and the strictly-serial rule on `supabase/schema.sql`
+  (T020–T026) and on `src/sync/sync.ts` (T032 → T036) is untouched.
 - **Owner gate cleared 2026-09-13: no card remains blocked on the owner.** Two follow-up decisions
   (in-app login provisioning; kind switchability) are recorded in spec.md and are **not** on this
   feature's path.
@@ -664,7 +677,7 @@ account's rows to another. It is worth merging and reviewing on its own before a
 | T017 | wt/kind-switch | data | `tests/stack/kind-switch.test.ts` | [P] — own file |
 | T018 | wt/logins | data | `tests/stack/logins-provisioning.test.ts` | own file; needs T008's helper |
 | T019 | wt/harness-seed | data | `tests/harness/seed.ts` | [P] — disjoint from T007 |
-| T026A | (new lane) | data | `tests/stack/personal-triggers-after-t022.test.ts` | own file; after T022 |
+| T026A | wt/personal-triggers | data | `tests/stack/personal-triggers-after-t022.test.ts` | own file; after T022 |
 | T026B | wt/tsconfig-tests | infra | `tsconfig.test.json`, `tsconfig.json`, `.github/workflows/ci.yml` | [P] — no file shared with any data card |
 | T020 | serial | data | `supabase/schema.sql` | **`supabase/schema.sql` is written by T020–T026; strictly serial, never parallel lanes** |
 | T021 | serial | data | `supabase/schema.sql` | after T020 |
@@ -676,7 +689,7 @@ account's rows to another. It is worth merging and reviewing on its own before a
 | T027 | serial | data | `specs/002-team-workspaces/receipts.md` | appends |
 | T028 | serial | data | `src/db/types.ts` | the constants every other TG-2 card depends on |
 | T029 | serial | data | `src/db/local.ts` | shared with T056 (Option B only) — serialize |
-| T030 | wt/cache-growth | data | `tests/local/no-wipe-on-reach-growth.test.ts` | [P] — own file, disjoint from T029 |
+| T030 | wt/nowipe | data | `tests/local/no-wipe-on-reach-growth.test.ts` | [P] — own file, disjoint from T029 |
 | T031 | serial | data | `src/db/api.ts` | shared with T033, T040 (reads) and T056 (Option B writes) — serialize |
 | T032 | serial | data | `src/sync/sync.ts` | shared with T036 — serial in that order; T038 diffs both |
 | T033 | serial | data | `src/db/api.ts` | after T031, same file — the `is-admin` cache |
