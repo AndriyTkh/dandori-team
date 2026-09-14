@@ -51,6 +51,20 @@ export const TEXT = {
   'header.newWorkspace': { ru: 'Новый воркспейс', en: 'New workspace' },
   'header.workspaceName': { ru: 'Название воркспейса', en: 'Workspace name' },
 
+  // ----------------------------------------------------------- workspace
+
+  'workspace.kindPersonal': { ru: 'Личный', en: 'Personal' },
+  'workspace.kindTeam': { ru: 'Командный', en: 'Team' },
+  'workspace.kindSwitch': { ru: 'Тип воркспейса', en: 'Workspace kind' },
+  'workspace.confirmToPersonal': {
+    ru: 'Сделать воркспейс личным? Все участники будут удалены, доступ останется только у владельца.',
+    en: 'Make this workspace personal? All members will be removed — only the owner keeps access.',
+  },
+  'workspace.confirmToTeam': {
+    ru: 'Сделать воркспейс командным? Вы сможете добавлять участников по email.',
+    en: 'Make this workspace a team workspace? You will be able to add members by email.',
+  },
+
   // ---------------------------------------------------------------- sync
 
   'sync.syncing': { ru: 'Синхронизация…', en: 'Syncing…' },
@@ -123,6 +137,9 @@ export const TEXT = {
   'task.fieldValue': { ru: 'Значение', en: 'Value' },
   'task.fieldDelete': { ru: 'Удалить поле', en: 'Delete field' },
 
+  'task.assignee': { ru: 'Исполнитель', en: 'Assignee' },
+  'task.unassigned': { ru: 'Не назначен', en: 'Unassigned' },
+
   // -------------------------------------------------------------- labels
 
   'label.plural': { ru: 'Метки', en: 'Labels' },
@@ -178,6 +195,54 @@ export const TEXT = {
 
   'settings.export': { ru: 'Экспорт в JSON', en: 'Export to JSON' },
   'settings.signOut': { ru: 'Выйти', en: 'Sign out' },
+
+  // ------------------------------------------------------------- members
+
+  'members.section': { ru: 'Участники', en: 'Members' },
+  'members.owner': { ru: 'Владелец', en: 'Owner' },
+  'members.member': { ru: 'Участник', en: 'Member' },
+  'members.add': { ru: 'Добавить участника', en: 'Add a member' },
+  'members.emailPlaceholder': { ru: 'Email участника', en: 'Member email' },
+  'members.noAccountHere': {
+    ru: 'Аккаунта с таким email здесь нет',
+    en: 'No account here with that email',
+  },
+  'members.remove': { ru: 'Удалить', en: 'Remove' },
+  'members.confirmRemove': {
+    ru: 'Удалить участника «{name}» из воркспейса?',
+    en: 'Remove “{name}” from the workspace?',
+  },
+
+  // -------------------------------------------------------------- logins
+
+  'logins.section': { ru: 'Логины', en: 'Logins' },
+  'logins.create': { ru: 'Создать логин', en: 'Create a login' },
+  'logins.emailPlaceholder': { ru: 'Email логина', en: 'Login email' },
+  'logins.passwordPlaceholder': { ru: 'Пароль', en: 'Password' },
+  'logins.setPassword': { ru: 'Задать пароль', en: 'Set password' },
+  'logins.remove': { ru: 'Удалить', en: 'Remove' },
+  'logins.confirmRemove': {
+    ru: 'Удалить логин «{name}»? Аккаунт и доступ ко всем воркспейсам будут потеряны.',
+    en: 'Remove the login “{name}”? The account and all its workspace access will be lost.',
+  },
+  'logins.admin': { ru: 'Админ', en: 'Admin' },
+  'logins.grantAdmin': { ru: 'Сделать админом', en: 'Grant admin' },
+  'logins.revokeAdmin': { ru: 'Забрать права админа', en: 'Revoke admin' },
+  'logins.errBadEmail': { ru: 'Некорректный email', en: 'Invalid email' },
+  'logins.errShortPassword': {
+    ru: 'Пароль должен быть не короче 8 символов',
+    en: 'Password must be at least 8 characters',
+  },
+  'logins.errDuplicate': { ru: 'Этот email уже занят', en: 'That email is already in use' },
+  'logins.errOwnsTeamWorkspace': {
+    ru: 'Этот логин всё ещё владеет командным воркспейсом',
+    en: 'This login still owns a team workspace',
+  },
+  'logins.errLastAdmin': {
+    ru: 'Нельзя забрать права у последнего админа',
+    en: 'Cannot revoke the last admin',
+  },
+  'logins.errSelf': { ru: 'Это ваш собственный логин', en: 'That is your own login' },
 
   // ----------------------------------------------------- google calendar
 
