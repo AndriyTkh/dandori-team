@@ -7,7 +7,8 @@
 // `persistSession: false`, lets a test hold two independent sessions (A, B)
 // at once and observe RLS where it actually lives — at the API layer.
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
-import { ANON_KEY, API_URL, SERVICE_ROLE_KEY } from './stack'
+import { Client } from 'pg'
+import { ANON_KEY, API_URL, DB_URL, SERVICE_ROLE_KEY } from './stack'
 
 let uniqueSeq = 0
 
@@ -100,4 +101,46 @@ export function asUser(testUser: TestUser): Promise<SupabaseClient> {
     memoizedClients.set(testUser, cached)
   }
   return cached
+}
+
+/**
+ * TEST-ONLY. Never shipped, never imported by `src/` — there is no
+ * client-callable grant-admin routine anywhere in this project (plan.md D-13,
+ * Complexity Tracking row 4), and a reviewer treats an import of this
+ * function outside `tests/` as a finding.
+ *
+ * The harness provisions users through `auth.admin.createUser` (`createTestUser`
+ * above), so `public.instance_admins`' own `users_seed_first_admin` trigger
+ * (contracts/policies.sql fork block D) grants admin to whichever account a
+ * given file happens to create first — nondeterministic inside a suite, and
+ * on a database that already has rows, granted to nobody at all. Rather than
+ * lean on that trigger, `adminClient` makes a test user admin directly: it
+ * inserts `(user_id)` into `public.instance_admins` over the harness's own
+ * direct `pg` connection (`DB_URL`, the same connection style as
+ * `applySchema` in `./schema`) — never through PostgREST, never through an
+ * RPC, since no such client-callable path exists (FR-039). The insert is
+ * `on conflict do nothing` against the table's primary key so calling this
+ * more than once for the same user within a suite is harmless, and the `pg`
+ * connection is opened and closed around the single insert so a suite does
+ * not leak connections.
+ *
+ * The trigger itself is asserted separately, on its own, against an empty
+ * `instance_admins` table, by T018 — this helper does not exercise it and is
+ * not a substitute for that assertion.
+ *
+ * Returns the same memoized client `asUser(testUser)` would hand back, now
+ * admin-flagged at the database, not a second independent sign-in.
+ */
+export async function adminClient(testUser: TestUser): Promise<SupabaseClient> {
+  const pg = new Client({ connectionString: DB_URL })
+  await pg.connect()
+  try {
+    await pg.query(
+      'insert into public.instance_admins (user_id) values ($1) on conflict (user_id) do nothing',
+      [testUser.user.id],
+    )
+  } finally {
+    await pg.end()
+  }
+  return asUser(testUser)
 }
