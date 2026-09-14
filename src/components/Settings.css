@@ -139,9 +139,12 @@
   accent-color: var(--accent);
 }
 
-/* One member per row: who, then what level they hold. */
+/* One member per row: who, what level they hold, then a remove control if
+   the viewer is the owner and the row is not the owner's own (FR-010). Wraps
+   like `.swin__login` so the remove button has room beside a long email. */
 .swin__member {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
@@ -164,6 +167,19 @@
   flex: 0 0 auto;
   color: var(--text-dim);
   font-size: var(--fz-sm);
+}
+
+/* The email field + submit pair that adds a member by email (affordance 3),
+   same shape as `.swin__loginCreate` below. */
+.swin__memberAdd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  width: 100%;
+}
+
+.swin__memberAdd .field {
+  flex: 1 1 160px;
 }
 
 /* A login row: email, an admin badge if it has one, then its controls. */

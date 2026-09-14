@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  addMemberByEmail,
   createLogin,
   deleteLogin,
   deleteWorkspace,
@@ -8,11 +9,13 @@ import {
   listLogins,
   memberEmails,
   refreshIsAdmin,
+  removeMember,
   renameWorkspace,
   setLoginAdmin,
   setLoginPassword,
+  updateWorkspace,
 } from '../db/api'
-import { useMembers } from '../db/hooks'
+import { useCurrentUserId, useMembers } from '../db/hooks'
 import { today } from '../db/dates'
 import { flushQueue } from '../sync/sync'
 import { holdGcal } from '../gcal/sync'
@@ -24,7 +27,7 @@ import { GcalSection } from './Gcal'
 import { LANG_TITLES, useT, type T } from '../i18n'
 import type { TextKey } from '../i18n/dict'
 import { LANGS, setLang, THEMES, useLang, type Theme } from '../state/ui'
-import type { Workspace } from '../db/types'
+import type { ID, Member, Workspace } from '../db/types'
 import './Settings.css'
 
 const THEME_TITLES = {
@@ -192,7 +195,20 @@ function WorkspaceSection({
     void renameWorkspace(workspace.id, v),
   )
 
+  // Owner guard (R-11, reused by T043's kind switch): a personal workspace
+  // has no owner row at all (D-6) — the viewer is the only person who can
+  // see it, so the guard is trivially true. A team workspace's owner row
+  // only exists once `useMembers` has resolved; while it (or `uid`) is
+  // still loading, `.some` finds nothing and the guard stays false — the
+  // safe direction, since hiding an owner-only control never flashes it.
+  const uid = useCurrentUserId()
+  const members = useMembers(workspace.kind === 'team' ? workspace.id : null)
+  const isOwner =
+    workspace.kind === 'personal' ||
+    (members ?? []).some((m) => m.level === 'owner' && m.member_id === uid)
+
   const [asking, setAsking] = useState(false)
+  const [switchingTo, setSwitchingTo] = useState<Workspace['kind'] | null>(null)
 
   async function remove() {
     setAsking(false)
@@ -200,16 +216,53 @@ function WorkspaceSection({
     onClose()
   }
 
+  async function switchKind() {
+    if (!switchingTo) return
+    const kind = switchingTo
+    setSwitchingTo(null)
+    // Only `kind` is written — the membership purge/seed is the server-side
+    // trigger's job (D-6′), not this component's (T043 done-when).
+    await updateWorkspace(workspace.id, { kind })
+  }
+
   return (
     <div className="swin__rows">
-      <label className="swin__field">
-        <span className="swin__label">{t('settings.rename')}</span>
-        <input className="field" value={name} onChange={(e) => setName(e.target.value)} />
-      </label>
+      {isOwner && (
+        <label className="swin__field">
+          <span className="swin__label">{t('settings.rename')}</span>
+          <input className="field" value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+      )}
 
-      <button className="btn btn--danger" onClick={() => setAsking(true)}>
-        {t('settings.remove')}
-      </button>
+      {isOwner && (
+        <div className="swin__field">
+          <span className="swin__label">{t('workspace.kindSwitch')}</span>
+          <label className="swin__opt">
+            <input
+              type="radio"
+              name="kind"
+              checked={workspace.kind === 'personal'}
+              onChange={() => setSwitchingTo('personal')}
+            />
+            {t('workspace.kindPersonal')}
+          </label>
+          <label className="swin__opt">
+            <input
+              type="radio"
+              name="kind"
+              checked={workspace.kind === 'team'}
+              onChange={() => setSwitchingTo('team')}
+            />
+            {t('workspace.kindTeam')}
+          </label>
+        </div>
+      )}
+
+      {isOwner && (
+        <button className="btn btn--danger" onClick={() => setAsking(true)}>
+          {t('settings.remove')}
+        </button>
+      )}
 
       {asking && (
         <Confirm
@@ -219,6 +272,17 @@ function WorkspaceSection({
           onConfirm={() => void remove()}
         />
       )}
+
+      {switchingTo && switchingTo !== workspace.kind && (
+        <Confirm
+          question={t(
+            switchingTo === 'personal' ? 'workspace.confirmToPersonal' : 'workspace.confirmToTeam',
+          )}
+          action={t(switchingTo === 'personal' ? 'workspace.kindPersonal' : 'workspace.kindTeam')}
+          onCancel={() => setSwitchingTo(null)}
+          onConfirm={() => void switchKind()}
+        />
+      )}
     </div>
   )
 }
@@ -226,19 +290,50 @@ function WorkspaceSection({
 // --------------------------------------------------------------------- members
 
 /**
- * The member list (FR-024 affordance 2), read-only here — adding and removing
- * are separate cards. `useMembers` is the Dexie-backed, always-synced list;
- * emails are online-only (`memberEmails`, D-9) and not cached by this
- * component, so a member shows by its raw id until the lookup returns, the
- * same fallback `AssigneeField` in `TaskDialog.tsx` uses.
+ * The register from `contracts/rpc.md` for `add_member_by_email`. `DA404`
+ * (no account on this origin) has the dedicated string D-11 names,
+ * `members.noAccountHere`. `DA001` (not the owner) should be unreachable —
+ * the affordance is hidden for a non-owner — so it falls back to the bare
+ * code, same discipline as `LOGIN_ERR` below for its own unmapped codes.
+ */
+const MEMBER_ERR: Partial<Record<string, TextKey>> = {
+  DA404: 'members.noAccountHere',
+}
+
+function memberErrorText(err: unknown, t: T): string {
+  const code =
+    typeof err === 'object' && err !== null && 'code' in err
+      ? String((err as { code: unknown }).code)
+      : undefined
+  const key = code ? MEMBER_ERR[code] : undefined
+  if (key) return t(key)
+  return code ?? String(err)
+}
+
+/**
+ * The member list (FR-024 affordance 2) plus add-by-email (affordance 3) and
+ * remove (affordance 4), both owner only. `useMembers` is the Dexie-backed,
+ * always-synced list; emails are online-only (`memberEmails`, D-9) and not
+ * cached by this component, so a member shows by its raw id until the lookup
+ * returns, the same fallback `AssigneeField` in `TaskDialog.tsx` uses.
  *
  * The owner's own row is a server-side effect of `seed_workspace_owner` and
  * reaches this device only on the *next* pull (D-6) — right after creating a
- * team workspace the list is legitimately empty, not broken.
+ * team workspace the list is legitimately empty, not broken. Until that row
+ * arrives (or while `uid` is still resolving) `isOwner` is false, so add/
+ * remove stay hidden rather than flash on — the same guard `WorkspaceSection`
+ * uses for R-11 and the kind switch.
  */
 function MembersSection({ workspace, t }: { workspace: Workspace; t: T }) {
   const members = useMembers(workspace.id)
+  const uid = useCurrentUserId()
+  const isOwner = (members ?? []).some((m) => m.level === 'owner' && m.member_id === uid)
+
   const [emails, setEmails] = useState<Record<string, string>>({})
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<Member | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -256,16 +351,76 @@ function MembersSection({ workspace, t }: { workspace: Workspace; t: T }) {
     }
   }, [workspace.id])
 
+  async function add() {
+    setBusy(true)
+    setError(null)
+    try {
+      // The email a submitted row round-trips to Dexie already-synced
+      // (`addMemberByEmail`), so the new row appears without a pull.
+      await addMemberByEmail(workspace.id, email)
+      setEmail('')
+    } catch (err) {
+      setError(memberErrorText(err, t))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove(memberId: ID) {
+    setRemoving(null)
+    await removeMember(workspace.id, memberId)
+  }
+
   return (
     <div className="swin__rows">
+      {error && <div className="swin__err">{error}</div>}
+
       {(members ?? []).map((m) => (
         <div key={m.id} className="swin__member">
           <span className="swin__memberEmail">{emails[m.member_id] ?? m.member_id}</span>
           <span className="swin__memberLevel">
             {t(m.level === 'owner' ? 'members.owner' : 'members.member')}
           </span>
+          {/* The owner's own row carries no remove control — in P1 the owner
+              cannot be removed and cannot leave (FR-010). */}
+          {isOwner && m.level !== 'owner' && (
+            <button className="btn btn--danger" onClick={() => setRemoving(m)}>
+              {t('members.remove')}
+            </button>
+          )}
         </div>
       ))}
+
+      {isOwner && (
+        <form
+          className="swin__memberAdd"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void add()
+          }}
+        >
+          <input
+            className="field"
+            placeholder={t('members.emailPlaceholder')}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <button type="submit" className="btn btn--primary" disabled={busy}>
+            {t('members.add')}
+          </button>
+        </form>
+      )}
+
+      {removing && (
+        <Confirm
+          question={t('members.confirmRemove', {
+            name: emails[removing.member_id] ?? removing.member_id,
+          })}
+          action={t('common.delete')}
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => void remove(removing.member_id)}
+        />
+      )}
     </div>
   )
 }
@@ -338,23 +493,21 @@ function AccountSection({ t }: { t: T }) {
 type LoginRow = Awaited<ReturnType<typeof listLogins>>[number]
 
 /**
- * The register from `contracts/rpc.md`. Six of the eight codes have a
- * dedicated `logins.err*` string in `src/i18n/dict.ts`. `DA001` (not an
- * admin — should not be reachable once the tab is gated by the admin flag,
- * but the flag is a cache, not the control, D-17) and `DA404` (no such
- * login — a race with another admin's own tab) have **no** dedicated key:
- * T041's dict additions did not include one for either. That gap is reported
- * rather than patched by inventing a string here (see this card's receipt);
- * both fall back to the bare code, which is still distinct per code and never
- * the generic "something went wrong" the done-when forbids.
+ * The register from `contracts/rpc.md`. All eight codes now have a dedicated
+ * `logins.err*` string in `src/i18n/dict.ts` (A-016 closed the two that T041
+ * left out): `DA001` (not an admin — should not be reachable once the tab is
+ * gated by the admin flag, but the flag is a cache, not the control, D-17)
+ * and `DA404` (no such login — a race with another admin's own tab).
  */
 const LOGIN_ERR: Partial<Record<string, TextKey>> = {
+  DA001: 'logins.errNotAdmin',
   DA010: 'logins.errBadEmail',
   DA011: 'logins.errShortPassword',
   DA012: 'logins.errDuplicate',
   DA013: 'logins.errSelf',
   DA014: 'logins.errOwnsTeamWorkspace',
   DA015: 'logins.errLastAdmin',
+  DA404: 'logins.errNotFound',
 }
 
 function loginErrorText(err: unknown, t: T): string {
@@ -569,11 +722,8 @@ function LoginsSection({ t, onAdminChange }: { t: T; onAdminChange: (admin: bool
       )}
 
       {revoking && (
-        // No dedicated confirm-question string exists for revoking admin
-        // (only the button label `logins.revokeAdmin`); reused for both slots
-        // rather than inventing new i18n text — see this card's receipt.
         <Confirm
-          question={t('logins.revokeAdmin')}
+          question={t('logins.confirmRevokeAdmin', { name: revoking.email })}
           action={t('logins.revokeAdmin')}
           onCancel={() => setRevoking(null)}
           onConfirm={() => void revokeAdmin(revoking.user_id)}

@@ -243,6 +243,15 @@ export const TEXT = {
     en: 'Cannot revoke the last admin',
   },
   'logins.errSelf': { ru: 'Это ваш собственный логин', en: 'That is your own login' },
+  'logins.errNotAdmin': {
+    ru: 'Недостаточно прав администратора',
+    en: 'Not an instance admin',
+  },
+  'logins.errNotFound': { ru: 'Такой логин не найден', en: 'No such login' },
+  'logins.confirmRevokeAdmin': {
+    ru: 'Забрать права админа у «{name}»?',
+    en: 'Revoke admin rights from “{name}”?',
+  },
 
   // ----------------------------------------------------- google calendar
 
