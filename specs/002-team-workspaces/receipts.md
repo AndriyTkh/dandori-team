@@ -1185,3 +1185,105 @@ green. The **test** step remains red by design and stays red until T023 and T026
 coordinator note above on the suspended gate.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T012 receipt — the executed inversion demonstration (2026-09-14)
+
+Merged as `3ac4a69` from lane `wt/us3-rls` (lane commit `5af7116`). Artefact: eight new cases in
+`tests/stack/team-rls-both-halves.test.ts`, `+564/-7`, taking the file from 19 cases to **27**.
+
+**The executed path was taken. There is no deviation to record, and P0's fallback was not used.**
+That is the headline: P0's equivalent card (T021, `specs/001-validation-spine/receipts.md`) had to
+fall back to a hand-trace because the session's tool-safety layer refused a live DDL swap. Plan
+decision D-13 anticipated exactly this and removed the objection by making the swap **never leave a
+transaction**; this session ran it directly, confirming D-13's reasoning in practice rather than on
+paper.
+
+Verify, run by the coordinator on the `supabase` CLI local stack, from the lane worktree:
+
+```
+npx vitest run --project stack tests/stack/team-rls-both-halves.test.ts
+Error: team-rls-both-halves seed failed — pre-T020 structural gap (see file header):
+  code=42703 message=column "kind" of relation "workspaces" does not exist
+Test Files  1 failed (1)
+     Tests  27 skipped (27)
+```
+
+A single-cause abort carrying the SQLSTATE and the Postgres message verbatim — the shape T011's
+receipt records as the fix, not the defect.
+
+**The second half of the card's verify, which is the one that matters here**, was run immediately
+after: a `pg_policies` dump over `workspaces`, `labels`, `tasks` and `notes` — `schemaname`,
+`tablename`, `policyname`, `permissive`, `roles`, `cmd`, `qual`, `with_check`, ordered by table,
+policy and command — taken **before** and **after** the run and diffed.
+
+```
+PG_POLICIES IDENTICAL
+```
+
+Nothing was committed. This check is not ceremony: the demonstration's mechanism is
+`drop policy own_rows on public.<t>` followed by `create policy` with one half negated, and a leak
+would leave row-level security **disarmed** for every later file in the run — the worst possible
+failure in this repo. The rollback is in a `finally`, so a thrown assertion cannot skip it, and the
+diff above is the evidence that it holds.
+
+### The eight demonstrations
+
+Four on `tasks` and four on `workspaces`: read half and write half, each on a personal and on a team
+workspace. Each opens its own `pg` client and one transaction, reads the **live** predicate out of
+`pg_policies`, records the baseline outcome, reinstalls `own_rows` with one half negated, asserts
+the outcome flips, and rolls back. Every case asserts the **flip** — `expect(mutated).not.toBe(baseline)`
+— rather than merely asserting the mutated outcome, which would prove nothing about the real
+policy; and every zero or refusal has an in-block positive control from a sibling caller in the same
+demonstration.
+
+Three design choices, all recorded in the block's header comment so they read as decisions rather
+than oversights:
+
+1. **The predicate is introspected from `pg_policies`, never retyped from `contracts/policies.sql`.**
+   So the demonstration inverts whatever is actually deployed when it runs — upstream's ownership
+   clause today, T023's membership predicate later — instead of a hardcoded guess at what T023 will
+   land verbatim. A retyped predicate would drift from the deployed one and quietly demonstrate the
+   wrong thing.
+2. **Negation, not equalization, and uniformly.** Equalizing the `tasks` read half to its write half
+   is a **no-op on a personal workspace**: `is_member` is always false there, and the ownership
+   `exists(...)` clause is tautologically true whenever the read half already admits the caller. An
+   "equalize" demonstration on personal would have flipped nothing while appearing to test
+   something — the precise failure this card exists to rule out. Negation flips deterministically in
+   all eight.
+3. **`tasks` and `workspaces`, not `labels` and `notes`.** FR-013 (`spec.md:608-613`) is the
+   authoritative half of the pair and names no table at all; SC-005 (`spec.md:878-880`) says
+   "either half of **either table's** access rule". `tasks` alone discharges FR-013 and the card's
+   own text, but one table is not "either table", so the coordinator sent the card back to add
+   `workspaces` — whose read half is the one that widens with `public.is_member(id)` at T023, and
+   is therefore where a dead membership branch would hide. `labels` and `notes` carry the same
+   predicate shape as `tasks`; two more copies would cover nothing and make the block harder to
+   read.
+
+**One asymmetry is deliberate and is labelled as such**, because it looks like a mistake. The two
+`workspaces` write-half cases flip a different number of callers on the two kinds: the owner alone
+on personal, the owner **and** the member on team. `workspaces` carries no related-row `exists()`
+clause, so on a personal workspace a stranger is excluded by `USING` alone and can never reach
+`WITH CHECK` no matter how it is mutated. Without the note, a later reviewer would read the personal
+case as an incomplete copy of the team one and "fix" it.
+
+That same asymmetry forced a new helper. `tryUpdateAsClaim` is distinct from the existing
+INSERT-only `tryWriteAsClaim` because an UPDATE's "refused" is two different outcomes that must not
+be conflated: **matched nothing** (`USING` failed — `rowCount: 0`, no exception) versus **matched
+but rejected** (`WITH CHECK` failed — a real `42501`). The exception-or-nothing shape of the INSERT
+helper cannot tell them apart, and this demonstration depends on the distinction.
+
+**Green progression.** All eight join the file's existing red population: they need T020, T021 and
+T023, like the rest of the file.
+
+**A fixture-ordering finding, recorded and deliberately not acted on.** Even a personal-only
+demonstration cannot run green before T020, and not for any reason intrinsic to the technique: the
+file's single top-level `beforeAll` seeds the **team** workspace insert first, so the `42703` aborts
+the hook before `aPersonalWorkspaceId` is ever created. The personal-workspace logic itself needs
+only `pg_policies` introspection and an ordinary task row. The worker was instructed not to
+restructure `beforeAll`, and did not. Recorded here because it means this file's evidence is
+available only after T020 in its entirety — there is no earlier partial green to be had from it.
+
+**Not proven by this card:** no policy behaviour is verified. The file is evidence written before
+the code and stays red until T023.
+
+Sign-off: Andrii Tkhorenko (single-operator).
