@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createWorkspace } from '../db/api'
-import type { ID, Label, Workspace } from '../db/types'
+import type { ID, Label, Workspace, WorkspaceKind } from '../db/types'
 import { useT, type T } from '../i18n'
+import { useEscape } from '../lib/useEscape'
 import { TABS, type Tab } from '../state/ui'
-import { AskName } from './Confirm'
 import { LabelFilter } from './LabelFilter'
 import { SyncBadge } from './SyncBadge'
 import './Header.css'
@@ -90,9 +90,13 @@ function WorkspaceMenu({
   const ref = useOutsideClick<HTMLDivElement>(close)
 
   const [naming, setNaming] = useState(false)
+  const [name, setName] = useState('')
+  const [kind, setKind] = useState<WorkspaceKind>('personal')
 
   function add() {
     setOpen(false)
+    setName('')
+    setKind('personal')
     setNaming(true)
   }
 
@@ -125,16 +129,94 @@ function WorkspaceMenu({
       )}
 
       {naming && (
-        <AskName
-          label={t('header.workspaceName')}
-          action={t('common.create')}
+        <WorkspaceNameForm
+          t={t}
+          name={name}
+          kind={kind}
+          onNameChange={setName}
+          onKindChange={setKind}
           onCancel={() => setNaming(false)}
-          onSubmit={(name) => {
+          onSubmit={() => {
             setNaming(false)
-            void createWorkspace(name).then(onSelect)
+            void createWorkspace(name, kind).then(onSelect)
           }}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * `Confirm`'s `AskName`, plus the one thing this call site needs that no other
+ * one does: a personal/team choice (D-11 affordance 1). `AskName` stays generic
+ * for the three other places that only ask for a name — this owns its own copy
+ * of the same markup and classes rather than reaching into `Confirm.tsx`, which
+ * is outside this file's scope.
+ */
+function WorkspaceNameForm({
+  t,
+  name,
+  kind,
+  onNameChange,
+  onKindChange,
+  onCancel,
+  onSubmit,
+}: {
+  t: T
+  name: string
+  kind: WorkspaceKind
+  onNameChange: (name: string) => void
+  onKindChange: (kind: WorkspaceKind) => void
+  onCancel: () => void
+  onSubmit: () => void
+}) {
+  useEscape(onCancel, true)
+
+  return (
+    <div className="ask__scrim" onMouseDown={onCancel}>
+      <form
+        className="ask"
+        onMouseDown={(e) => e.stopPropagation()}
+        onSubmit={(e) => {
+          e.preventDefault()
+          onSubmit()
+        }}
+      >
+        <label className="ask__field">
+          <span className="ask__question">{t('header.workspaceName')}</span>
+          <input
+            className="field"
+            value={name}
+            autoFocus
+            onChange={(e) => onNameChange(e.target.value)}
+          />
+        </label>
+
+        {/* The one new element (T042): personal stays the default (US1
+            acceptance 2) until this is touched. Same segmented shape as the
+            view tabs above, not a new pattern. */}
+        <div className="header__kind">
+          {(['personal', 'team'] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              className={`header__kind-opt${k === kind ? ' header__kind-opt--on' : ''}`}
+              onClick={() => onKindChange(k)}
+            >
+              {t(k === 'personal' ? 'workspace.kindPersonal' : 'workspace.kindTeam')}
+            </button>
+          ))}
+        </div>
+
+        <div className="ask__foot">
+          <button type="button" className="btn" onClick={onCancel}>
+            {t('common.cancel')}
+          </button>
+          <button type="submit" className="btn btn--primary">
+            {t('common.create')}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

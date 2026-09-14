@@ -118,6 +118,42 @@
   color: var(--text-dim);
 }
 
+/*
+ * The kind toggle in the new-workspace form (T042). Same segmented shape and
+ * tokens as `.header__tabs`/`.header__tab` above — a fourth place using it,
+ * not a new pattern.
+ */
+.header__kind {
+  display: flex;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sunken);
+}
+
+.header__kind-opt {
+  flex: 1;
+  height: var(--seg-h);
+  padding: 0 var(--seg-px);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: var(--fz-sm);
+  transition:
+    background-color var(--t),
+    color var(--t);
+}
+
+.header__kind-opt:hover {
+  color: var(--text);
+}
+
+.header__kind-opt--on {
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-card);
+  color: var(--text);
+  font-weight: 500;
+}
+
 /* Dropdown menus */
 
 .menu {
