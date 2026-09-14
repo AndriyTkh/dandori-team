@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createWorkspace } from '../db/api'
-import type { ID, Label, Workspace } from '../db/types'
+import type { ID, Label, Workspace, WorkspaceKind } from '../db/types'
 import { useT, type T } from '../i18n'
 import { TABS, type Tab } from '../state/ui'
 import { AskName } from './Confirm'
@@ -90,9 +90,11 @@ function WorkspaceMenu({
   const ref = useOutsideClick<HTMLDivElement>(close)
 
   const [naming, setNaming] = useState(false)
+  const [kind, setKind] = useState<WorkspaceKind>('personal')
 
   function add() {
     setOpen(false)
+    setKind('personal')
     setNaming(true)
   }
 
@@ -129,10 +131,27 @@ function WorkspaceMenu({
           label={t('header.workspaceName')}
           action={t('common.create')}
           onCancel={() => setNaming(false)}
-          onSubmit={(name) => {
+          onSubmit={(value) => {
             setNaming(false)
-            void createWorkspace(name).then(onSelect)
+            void createWorkspace(value, kind).then(onSelect)
           }}
+          extra={
+            // The one new element (T042): personal stays the default (US1
+            // acceptance 2) until this is touched. Same segmented shape as
+            // the view tabs above, not a new pattern.
+            <div className="header__kind">
+              {(['personal', 'team'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`header__kind-opt${k === kind ? ' header__kind-opt--on' : ''}`}
+                  onClick={() => setKind(k)}
+                >
+                  {t(k === 'personal' ? 'workspace.kindPersonal' : 'workspace.kindTeam')}
+                </button>
+              ))}
+            </div>
+          }
         />
       )}
     </div>

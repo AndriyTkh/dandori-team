@@ -8,11 +8,12 @@ import {
   createNote,
   deleteLabel,
   deleteTask,
+  memberEmails,
   setTaskGcal,
   updateLabel,
   updateTask,
 } from '../db/api'
-import { useNotes, useTask } from '../db/hooks'
+import { useMembers, useNotes, useTask } from '../db/hooks'
 import { reconcile } from '../gcal/sync'
 import { GcalEventDialog } from './Gcal'
 import { useT, type T } from '../i18n'
@@ -248,6 +249,14 @@ function Body({
         t={t}
       />
 
+      <AssigneeField
+        task={task}
+        workspaceId={workspaceId}
+        workspace={workspace}
+        patch={patch}
+        t={t}
+      />
+
       <NoteLink task={task} workspaceId={workspaceId} onOpenNote={onOpenNote} t={t} />
 
       <LabelPicker
@@ -407,6 +416,74 @@ function GcalRow({
         />
       )}
     </>
+  )
+}
+
+// ------------------------------------------------------------------ assignee
+
+/**
+ * Who the task is for, in a team workspace only — a personal workspace has no
+ * members to assign it to, so the field draws nothing there, the same
+ * conditional shape `GcalRow` uses above. Options are that workspace's live
+ * members (`useMembers`, Dexie-backed) plus «Не назначен»; the write goes
+ * through the same `patch` every other field on this card uses.
+ *
+ * Display names are online-only (`memberEmails`, D-9) and are not cached
+ * locally by this card — offline, or before the lookup returns, a member
+ * shows by its raw id rather than reaching into a cache this layer does not
+ * own.
+ */
+function AssigneeField({
+  task,
+  workspaceId,
+  workspace,
+  patch,
+  t,
+}: {
+  task: Task
+  workspaceId: ID
+  workspace: Workspace | null
+  patch: (p: Parameters<typeof updateTask>[1]) => void
+  t: T
+}) {
+  const isTeam = workspace?.kind === 'team'
+  const members = useMembers(isTeam ? workspaceId : null)
+  const [emails, setEmails] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!isTeam) return
+    let cancelled = false
+    memberEmails(workspaceId)
+      .then((rows) => {
+        if (cancelled) return
+        setEmails(Object.fromEntries(rows.map((r) => [r.member_id, r.email])))
+      })
+      .catch(() => {
+        // Offline or the call failed: the id fallback below still lets the
+        // field work, so nothing is shown for this.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isTeam, workspaceId])
+
+  if (!isTeam) return null
+
+  return (
+    <Field label={t('task.assignee')}>
+      <select
+        className="field"
+        value={task.assignee ?? ''}
+        onChange={(e) => patch({ assignee: e.target.value || null })}
+      >
+        <option value="">{t('task.unassigned')}</option>
+        {(members ?? []).map((m) => (
+          <option key={m.member_id} value={m.member_id}>
+            {emails[m.member_id] ?? m.member_id}
+          </option>
+        ))}
+      </select>
+    </Field>
   )
 }
 

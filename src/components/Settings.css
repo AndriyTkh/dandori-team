@@ -139,6 +139,121 @@
   accent-color: var(--accent);
 }
 
+/* One member per row: who, what level they hold, then a remove control if
+   the viewer is the owner and the row is not the owner's own (FR-010). Wraps
+   like `.swin__login` so the remove button has room beside a long email. */
+.swin__member {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  width: 100%;
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.swin__member:last-child {
+  border-bottom: none;
+}
+
+.swin__memberEmail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fz-md);
+}
+
+.swin__memberLevel {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: var(--fz-sm);
+}
+
+/* The email field + submit pair that adds a member by email (affordance 3),
+   same shape as `.swin__loginCreate` below. */
+.swin__memberAdd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  width: 100%;
+}
+
+.swin__memberAdd .field {
+  flex: 1 1 160px;
+}
+
+/* A login row: email, an admin badge if it has one, then its controls. */
+.swin__login {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.swin__login:last-child {
+  border-bottom: none;
+}
+
+.swin__loginEmail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fz-md);
+}
+
+.swin__loginBadge {
+  flex: 0 0 auto;
+  padding: 1px var(--sp-3);
+  border-radius: var(--radius-pill);
+  background: var(--bg-sunken);
+  color: var(--text-dim);
+  font-size: var(--fz-xs);
+}
+
+.swin__loginPw {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+/* The email + password pair that mints a login. */
+.swin__loginCreate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  width: 100%;
+}
+
+.swin__loginCreate .field {
+  flex: 1 1 160px;
+}
+
+/* The one-time hand-off: shown once after `create_login`/a password reset,
+   dismissed by the admin once it has been copied out (FR-044). */
+.swin__minted {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.swin__mintedRow {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fz-sm);
+}
+
+.swin__err {
+  color: var(--danger);
+  font-size: var(--fz-sm);
+}
+
 /* On the desk a control's own edge starts on the column's edge, where the
    labels and the fields do; the browser's margin set the radios 5px in. */
 @media (min-width: 721px) {
