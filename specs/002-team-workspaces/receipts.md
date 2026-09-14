@@ -2429,3 +2429,24 @@ named five by one: `Header.css` (T042 kind-toggle styling) changed and `TaskDial
 not rationalised away. Seven affordances covered: 1 Header.tsx (T042), 2/3/4/6/7 Settings.tsx
 (T044/T045/T046/T043/T048), 5 TaskDialog.tsx (T047); R-11 guard T049 in Settings.tsx. No vitest
 claim for FR-025.
+
+## UI lane review — wt/ui @ a999e34 vs 7cb8df6 (2026-09-14)
+
+Reviewer (dev-main). **PASS** — 0 blocking, 2 should-fix, 4 notes. tsc 0, lint 0, vite build 0,
+local tier 46/46; stack NOT RUN in-lane (A-003). `dict.ts` diff additions only (no reworded string,
+both languages on every key; extras exactly A-004/A-016). Zero `supabase` imports under
+`src/components`/`src/views`; every data call an `api.ts`/`hooks.ts` export (FR-026). Personal:
+identical five Settings sections, `useMembers(null)` and `memberEmails` gated on team, `refreshIsAdmin`
+only inside the admin-only section; only the two spec-allowed visible changes. FR-044: `type="password"`,
+state-only, no console/Dexie/URL, minted credential shown once; all eight register codes keyed on
+`error.code`. Kind switch confirms both directions, writes `{kind}` only. No render loop in the
+admin refresh. Spec control: nothing beyond seven affordances + R-11.
+Findings: (1) should-fix `newPassword` not cleared when switching the set-password form between
+logins or on failure; (2) should-fix A-012 due — `WorkspaceNameForm` duplicates `AskName` (zero
+importers): add `extra?: ReactNode` to `AskName`, delete the copy; (3) note `Header.css` outside
+T050's named set, content is only the toggle — accepted; (4) note owner-only controls hidden from
+the real owner until the seeded owner row is pulled (offline right after creating a team workspace)
+— inherent to D-6, flag at T057/T058; (5) note kind-switch Confirm action label reuses
+`kindPersonal`/`kindTeam` — acceptable; (6) note `Header.css`/`Settings.css` are in no map entry's
+`paths` — widen `chrome-components` to `src/components/` at the next map edit (T052).
+Fixes (1) and (2) dispatched as the lane's fix pass.
