@@ -95,8 +95,8 @@ distinctions below.
   tests: [tests/stack/schema-apply.test.ts, tests/stack/rls-two-accounts.test.ts]
   depends-on: []
   scenarios: [s-conflict-lww, s-workspace-delete-cascade]
-  last-verified: 0ab42f2 2026-09-14
-  sign-off: Andrii Tkhorenko (single-operator) — specs/002-team-workspaces/receipts.md "T020 receipt — fork block A" (re-verified after fork block A; specs/001-validation-spine/receipts.md remains the original P0 receipt)
+  last-verified: 67a56d8 2026-09-14
+  sign-off: Andrii Tkhorenko (single-operator) — specs/002-team-workspaces/receipts.md "T021 receipt — fork block B" (re-verified after fork blocks A and B; specs/001-validation-spine/receipts.md remains the original P0 receipt)
 
 - id: account-provisioning
   kind: backend

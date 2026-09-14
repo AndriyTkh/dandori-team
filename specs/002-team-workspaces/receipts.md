@@ -2071,3 +2071,196 @@ and an RLS enable. `membership` and `team-rls` stay `UNTESTED`; `account-provisi
 not re-classified.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T021 receipt — fork block B, the two helpers the whole team model rests on (2026-09-14)
+
+Committed as `67a56d8`, serial on `002-team-workspaces`, no lane. `supabase/schema.sql:254-281`,
+`+29/-0`. Byte-identical to `contracts/policies.sql:53-80` — `diff -u` over the two ranges returns
+nothing, including the alignment padding on `is_owner(uuid) ` in the revoke/grant lines and the `$fn$`
+tags.
+
+**These two functions are the most load-bearing pair in the fork.** Every team RLS predicate at T023
+calls them, block C's triggers call them, T024's RPCs call them. A defect here is a silent
+authorization hole, not a test failure — no test in the tree today would catch most of the ways they
+could be subtly wrong, because nothing calls them until T023. That is why this card's review was
+spent almost entirely on properties rather than on behaviour.
+
+### Verify
+
+```
+npx vitest run --project stack tests/stack/schema-apply.test.ts tests/stack/team-schema-guards.test.ts
+ ✓  stack  tests/stack/schema-apply.test.ts (6 tests) 363ms
+ ✓ R-17: pgcrypto is installed in the extensions schema
+ × R-2: every added function is security definer with a fixed search_path
+   → missing functions: seed_workspace_owner, on_workspace_kind_change, assignee_must_be_member,
+     clear_assignee_on_removal, add_member_by_email, workspace_member_emails, is_admin,
+     seed_first_admin, create_login, set_login_password, delete_login, set_login_admin, list_logins
+ × R-1, R-16, R-3 ×8
+ Test Files  1 failed | 1 passed (2)
+      Tests  11 failed | 7 passed (18)
+```
+
+**R-2's missing list went from fifteen names to thirteen: `is_member` and `is_owner` dropped out.**
+That is the whole of this card's observable effect, and it is the right measurement — it proves not
+only that the functions exist but that the guard's catalogue query **accepts their spelling**, which
+is the failure mode a receipt saying "the SQL is correct" would miss.
+
+The `supabase-schema` map entry's own verify, which names a different pair than the card does:
+
+```
+npx vitest run --project stack tests/stack/personal-unchanged.test.ts tests/stack/rls-two-accounts.test.ts
+ Test Files  2 passed (2)
+      Tests  18 passed (18)
+```
+
+P0's `rls-two-accounts.test.ts` green and unedited (FR-030), `personal-unchanged` still 13/13. The
+entry is re-stamped to `67a56d8 2026-09-14`, still `VALIDATED`, because the tests it names were
+actually run.
+
+### The card's verify line was wrong, and is corrected rather than satisfied
+
+T021 said "R-1 and R-2 assertions green". **Neither goes green here, and neither can.** R-2's first
+expectation is that **all fifteen** `DEFINER_FUNCTIONS` exist, so it clears only at T026; R-1 requires
+the `members_access` policy and clears at T023. The test file's own header
+(`tests/stack/team-schema-guards.test.ts:18`) already said "T021 … R-2 at 2/15", and the T009
+correction at `tasks.md:152` already said the same — the card was simply out of step with both. It now
+carries the correction, including the instruction not to "fix" the test to make it pass. The card's
+`Read:` cite is corrected too: block B is `contracts/policies.sql:53-80`, not 48–75; **lines 48–52 are
+the tail of block A and already landed at T020** (`supabase/schema.sql:133,135-136`), so a worker
+following the cite literally would have written a duplicate. Same slip class as T020's "14–46".
+
+### The security properties, each checked rather than assumed
+
+- **`stable` is right, not merely acceptable.** The body reads a table and a per-request GUC.
+  `volatile` would forbid per-statement caching that matters when a predicate is evaluated once per
+  row; **`immutable` would be a genuine defect**, because Postgres may constant-fold an immutable
+  call and a folded `is_member` is a cached authorization decision.
+- **Neither is `leakproof`, and that absence is load-bearing.** A leakproof definer function reading a
+  table can be pushed below a security barrier and used to probe hidden rows. The contract is right
+  not to add it; a later card must not "optimise" it in.
+- **Neither is `strict`, and that is also deliberate.** `strict` would make `is_member(null)` return
+  NULL instead of `false`. As written, `m.workspace_id = null` is NULL for every row, zero rows
+  qualify, and `exists()` — which is never NULL by definition — returns `false`. Traced through the
+  policy anyway, because a NULL inside an `or` is the subtle case: in
+  `using (auth.uid() = user_id or public.is_member(id))`, NULL-or-false is NULL (no grant, safe) and
+  NULL-or-true is true (already granted, so no widening). So even a NULL could not open a hole here —
+  but `exists` closes it upstream and the property should stay closed there.
+- **Schema qualification.** `public.members` and `auth.uid()` are both qualified, so resolution does
+  not depend on the `search_path` pin at all — the pin is defence in depth, not the primary control.
+  `pg_temp` is listed **last**, which is the correct ordering: first, a caller's temp table named
+  `members` would shadow. Operators resolve from `pg_catalog`, implicitly searched first and not
+  displaceable by a `search_path` that does not name it.
+- **Can a caller get `true` for a workspace they are not in?** No. The only route to `true` is an
+  existing `members` row with `member_id = auth.uid()` and `not deleted`. The single caller-controlled
+  input, `ws uuid`, selects *which* row is looked for; it cannot substitute *whose*.
+
+### `auth.uid()` under `security definer` — the one place this model could quietly invert
+
+`security definer` switches the **role** (`current_user`, the privilege context). It does **not**
+touch session or transaction GUCs. `auth.uid()` reads `request.jwt.claims`, which PostgREST sets with
+`set_config(..., is_local => true)` per request *before* the function is entered, and the definer
+switch on entry leaves that untouched. So the body sees the **calling** user's subject, which is the
+entire premise of the fork's access model.
+
+Recorded because the alternative is worth naming: if `auth.uid()` returned the definer, both helpers
+would answer for `postgres`, which has no `members` row at all, every predicate would be `false`, and
+the result would be a total lockout — loud rather than silent, but total. The mechanism that prevents
+it is role-versus-GUC, a property of Postgres itself, not of any Supabase implementation choice.
+
+### R-1's recursion argument holds, but the mechanism is narrower than the block's own comment says
+
+The comment at `:256-258` credits `security definer` with preventing the recursion. Precisely, the
+escape is **two-step**: `security definer` routes execution to the function's owner, and RLS is not
+enforced against a table's owner **unless `force row level security` is set**. `security definer` is
+the switch that reaches the exemption; it is not itself the exemption.
+
+That distinction is not pedantry, because it names a live seam: **`force row level security` appears
+nowhere in `supabase/` today, and if a later card ever adds it to `members`, these helpers start
+recursing again.** The only thing that would catch it is R-1's canary at
+`tests/stack/team-schema-guards.test.ts:121`. Nothing else in the tree guards that seam.
+
+Checked whether anything else would have prevented the recursion anyway, which would have made D-5's
+claim weaker than it reads — nothing does. A `bypassrls` role does not help, because the caller under
+test is `authenticated`, which has neither `bypassrls` nor ownership; `service_role` bypassing RLS is
+irrelevant since the predicate is never evaluated for it; and the policy shape offers no `user_id`
+shortcut to short-circuit on, being a bare self-reference. `tests/harness/schema.ts` applies the file
+as `postgres` (`tests/harness/stack.ts:9`), the same role that created `members` in block A, so
+owner-equals-definer holds on the local stack; on hosted Supabase the SQL editor runs as `postgres`,
+which owns `public`. Consistent in both environments.
+
+The comment is contract-authored and byte-identical to `contracts/policies.sql`, so it is **not**
+edited here — fidelity to the contract outranks a sharper comment. If it is ever tightened, it is
+tightened in the contract.
+
+### The grants: both required, effects disjoint, order **not** material
+
+The card's phrasing implies the `revoke`-then-`grant` order carries meaning. It does not, and the
+receipt says so rather than repeating the implication:
+
+- `revoke execute … from public` removes the **implicit default** `EXECUTE` Postgres grants to
+  `PUBLIC` on every new function. This is the one that matters — without it, `is_member` is a
+  PostgREST `/rpc/is_member` endpoint reachable with the anon key.
+- `revoke execute … from anon` removes any **explicit** grant to `anon`. There is none by default, so
+  today it is a no-op — but it is not pointless, because `schema.sql` is re-run to upgrade a database
+  (ADR-0005) and `revoke from public` would **not** strip an explicit `anon` grant left by an earlier
+  revision. PUBLIC and `anon` are separate grantees.
+- Reversing to grant-then-revoke would produce an identical `proacl`: `revoke from public` does not
+  cascade into `authenticated`'s explicit grant.
+- **`authenticated` alone is enough.** The owner keeps `EXECUTE` implicitly (a `revoke from public`
+  never touches the owner), so `postgres` can still call them, which is what the harness and the
+  contract's RPCs need; `authenticator` reaches them via `set role authenticated`. `service_role` is
+  deliberately not granted and does not need to be — these are only ever called from RLS predicates,
+  and predicates are not evaluated for a `bypassrls` role. Confirmed by grep: nothing in the tree
+  calls either helper through `.rpc()`; every other reference is a comment or the `DEFINER_FUNCTIONS`
+  catalogue list.
+
+### R-5, and what its absence would cost
+
+`not m.deleted` is present in both (`:267`, `:275`). Recorded because the failure mode is invisible:
+drop it from `is_member` and **removal stops meaning anything** — a removed member keeps read and
+write on `workspaces`/`labels`/`tasks`/`notes` and keeps seeing the roster. Drop it from `is_owner`
+only and a removed *owner* retains invite, remove and delete. The files that would catch each are
+`team-rls-both-halves.test.ts` (T011's post-removal block, both halves), `kind-switch.test.ts` case
+(a) for the team→personal purge, `assignee-clear-on-removal.test.ts` from the other side, and T017
+case (e) / T010's `42501` case for the owner variant. **Every one of those greens at T023 or later —
+so nothing in the tree catches this defect at T021.** That is the honest state of the evidence.
+
+### Placement and idempotency
+
+Block B sits after `workspaces_cascade_delete` (`:250-252`, upstream's last trigger) and before the
+policy block's `do $$` at `:292`, satisfying the contract's "before the policy block" and preceding
+**every** consumer — T023's policies, block C's triggers (which land in the gap at `:282`), T024's
+RPCs. Nothing between `:252` and `:254` reads them, so the position changes no semantics either side.
+
+One ordering constraint is real rather than cosmetic: **block B cannot move above block A.** A
+`language sql` body is parsed and validated at `create` time, unlike `plpgsql`, so `public.members`
+must already exist.
+
+`create or replace function` is idempotent **for the same signature and return type** — and not
+otherwise. A changed return type errors; a changed *parameter name* errors
+(`cannot change name of input parameter`); and a changed argument type or arity silently creates an
+**overload** rather than replacing, leaving a stale function whose `EXECUTE` is still granted to
+`PUBLIC`, because `:278-281` name `(uuid)` explicitly and would not reach the orphan. None can fire
+today — first version, no prior `is_member` in history. **If any later card changes either signature,
+it must carry a targeted `drop function if exists public.is_member(<old sig>);` in the same change
+set**, or the re-run leaves an anon-executable orphan. That is a security consequence, not a tidiness
+one, and it is written here because the card that would cause it does not exist yet.
+
+### What this card turns green: nothing
+
+No `it` in the suite flips at T021, and the ledger is stated plainly rather than dressed up: R-2 moves
+0/15 → 2/15 and clears at T026; R-1 clears at T023; R-3's eight cases clear across T024 (2), T025 (1)
+and T026 (5); R-16 at T025; R-17 was green before this card and is independent of it.
+`assignee-clear-on-removal.test.ts:17` and `team-triggers.test.ts:29` each say in their own headers
+that T021 moves nothing for them, and it did not.
+
+**Personal must not regress:** the diff creates no table, alters no column, replaces no policy and
+defines no trigger — nothing a `kind: personal` workspace can observe. `is_member` is not *called* by
+anything yet; it becomes reachable at T023, and even then a personal workspace has no `members` rows,
+so the branch is constant-`false`. No credential, key, token or `service_role` literal — FR-044,
+FR-033, SC-020 clean.
+
+**Not proven by this card:** no behaviour whatsoever. `membership` and `team-rls` stay `UNTESTED`;
+only `supabase-schema` moves, and it moves in place.
+
+Sign-off: Andrii Tkhorenko (single-operator).
