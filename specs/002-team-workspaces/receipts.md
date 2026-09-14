@@ -2307,3 +2307,36 @@ dev-worker (sonnet, high), read-only against the commit. Sign-off: Andrii Tkhore
 
 `personal-triggers-after-t022.test.ts` (T026A) 5/5; `team-triggers` 6/7; `assignee-clear-on-removal` 6/7; `kind-switch` (c) (d). The remaining five cases turn green at T023.
 
+
+## T027 receipt — P0-unedited gate for the schema lane (2026-09-14)
+
+HEAD `4662e5d` (schema at `c5fda53`). Baseline `4991c33` (post-T004).
+
+**1. P0 diff (must be empty):** `git diff --stat 4991c33 -- tests/stack/{lww-conflict,offline-round-trip,rls-two-accounts,schema-apply,soft-delete}.test.ts tests/local/claim-cache.test.ts` → **empty**. PASS, SC-003 demonstrated.
+**Harness diff:** `tests/harness/{accounts,seed}.ts` changed (+210/-1). Inspected in full: only new imports (`Client` from `pg`, `DB_URL`, `flushQueue`) and new exports (`createTestUsers`, `asUser`, `adminClient` in accounts.ts; `SeededTeamWorkspace`, `seedTeamWorkspace` in seed.ts) appended. No existing export's signature or body changed.
+
+**2/3. `npm test -- --run`, twice consecutively:**
+| run | files | tests | failed | duration |
+|---|---|---|---|---|
+| 1 (15:19–15:21) | 16 passed / 2 failed (18) | 163 passed / 2 failed (165) | see below | 80.80s |
+| 2 (15:23–15:25) | 16 passed / 2 failed (18) | 163 passed / 2 failed (165) | identical | 84.70s |
+
+Same two failures both runs (not interleaving — reproduced verbatim twice):
+- `tests/stack/push-refusal-fallback.test.ts` — "red (D-18): an innocent row queued behind a refused row…" — `innocentTaskAfter?._dirty` expected `0`, got `1`. Red-by-design until T036 (`wt/push-refusal` lane), not yet merged to this branch.
+- `tests/local/no-wipe-on-reach-growth.test.ts` — "…turns green at T029…" — `db.tables.some(members)` expected `true`, got `false`. Red-by-design until T029's `local.ts` v3 store (`wt/sync-cache` lane), not yet merged to this branch.
+
+Neither file is a P0 file; neither is touched by this lane's diff.
+
+**4. Typecheck/lint/build:** `npx tsc -b --noEmit` → exit 0, no errors (test fixtures already typed for `kind`/`assignee`, T028a's fix is present on this branch — the anticipated gate-9 failure class did not occur). `npm run lint` (oxlint) → exit 0. `npm run build` (tsc -b && vite build) → exit 0, PWA precache generated.
+
+**5. Map-owed:**
+| entry | status | last-verified | owed |
+|---|---|---|---|
+| supabase-schema | VALIDATED | `381122b` 2026-09-14 | `paths` (`schema.sql`) changed materially at `c5fda53` (+412/-15, fork blocks D+E) after last-verified with no map update since — re-run `verify` + re-stamp SHA (T052) |
+| membership | UNTESTED | — | T020-T024 landed; named verify (`members-two-accounts.test.ts` 10/10, `kind-switch.test.ts` 5/5) green this run — owes UNTESTED→VALIDATED flip (T052) |
+| team-rls | UNTESTED | — | T023 landed; named verify (`team-rls-both-halves.test.ts` 30/30, `rls-two-accounts.test.ts`, `personal-unchanged.test.ts` 13/13) green this run — owes UNTESTED→VALIDATED flip (T052) |
+| account-provisioning | UNTESTED | — | T025, T026 landed; named verify (`logins-provisioning.test.ts` 20/20, `team-schema-guards.test.ts` 12/12) green this run — owes UNTESTED→VALIDATED flip (T052) |
+
+**Status: FAIL.** Step 1 (P0-unedited) and step 4 (typecheck/lint/build) pass clean. The card's own `verify` — "`npm test -- --run` fully green twice consecutively" — is not met: 2 files/2 tests red, identically, on both runs. Both are pre-existing, committed-red-by-design tests waiting on other in-flight lanes (T029/`wt/sync-cache`, T036/`wt/push-refusal`) that have not merged into `002-team-workspaces`; this lane's own diff does not touch either failing file. **B1 (planning gap):** the card does not say whether "fully green" means the literal whole repo or the subset already integrated into this branch — owner ruling needed before this gate can close.
+
+sign-off: Andrii Tkhorenko (single-operator)
