@@ -45,7 +45,12 @@ export function useMembers(workspaceId: ID | null): Member[] | undefined {
   return useLiveQuery(() => (workspaceId ? listMembers(workspaceId) : []), [workspaceId])
 }
 
-/** The signed-in device's own uid (`meta['owner']`), reactive to `claimCache`/`wipeLocal`. */
-export function useCurrentUserId(): string | null {
-  return useLiveQuery(() => currentUserId(), []) ?? null
+/**
+ * The signed-in device's own uid (`meta['owner']`), reactive to
+ * `claimCache`/`wipeLocal`. Three states, like the single-row hooks above:
+ * `undefined` while `useLiveQuery` has not answered yet, `null` once it has
+ * and there is no signed-in owner, a uid once there is.
+ */
+export function useCurrentUserId(): string | null | undefined {
+  return useLiveQuery(() => currentUserId(), [])
 }

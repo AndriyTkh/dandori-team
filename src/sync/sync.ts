@@ -249,14 +249,30 @@ async function push(): Promise<void> {
               if (mine !== session) return
               if (rowError) {
                 if (rowError.code !== '42501') throw rowError
-                // Refused, not merely stale: this account was never going to
-                // get a corrected copy of it from a pull — it never held the
-                // server row to begin with — so it is dropped outright here
-                // rather than left dirty forever or carried into the
-                // refused-id merge below, which exists for the *other* kind
-                // of refusal (the server silently keeping its own newer row).
-                await db[table].delete(batch[i].id)
-                droppedByRefusal.add(batch[i].id)
+                /*
+                 * A `42501` alone doesn't say which kind of refusal this is.
+                 * If the row can still be read, this account held it and an
+                 * `UPDATE` was refused (a member renaming a workspace only the
+                 * owner may rename) — that is the *other* kind of refusal,
+                 * where the server is silently keeping its own row, and it
+                 * belongs in the refused-id merge below, not here: leaving it
+                 * off `droppedByRefusal` (and out of `singles`) is enough to
+                 * carry it there. Only when the row can no longer be read at
+                 * all — this account was never going to get a corrected copy
+                 * of it from a pull, because it never held the server row to
+                 * begin with — is it dropped outright, exactly as before.
+                 */
+                const { data: probeRow, error: probeError } = await supabase
+                  .from(table)
+                  .select('id')
+                  .eq('id', batch[i].id)
+                  .maybeSingle()
+                if (mine !== session) return
+                if (probeError) throw probeError
+                if (!probeRow) {
+                  await db[table].delete(batch[i].id)
+                  droppedByRefusal.add(batch[i].id)
+                }
                 continue
               }
               singles.push(...((rowData ?? []) as { id: string }[]))
@@ -392,6 +408,16 @@ async function runPull(): Promise<void> {
      */
     for (const table of SYNCED_TABLES) {
       if (!(await pullTable(table))) return
+    }
+    // T033: refreshed on every successful cycle, not only at boot. A failure
+    // here (offline mid-cycle, a transient RPC error) leaves the cached value
+    // exactly as it was — display-only, so stale-until-next-cycle is fine,
+    // and it must never turn a pull that otherwise succeeded into a reported
+    // failure.
+    try {
+      await refreshIsAdminCache()
+    } catch {
+      // swallowed on purpose — see above.
     }
     settle()
   } catch (err) {
@@ -594,6 +620,19 @@ export async function isAdminRemote(): Promise<boolean> {
   const { data, error } = await supabase.rpc('is_admin')
   if (error) throw error
   return data as boolean
+}
+
+/**
+ * The one write path for the `is-admin` cache (D-17): fetches instance-admin
+ * truth and writes it to `meta` in the shape `isAdmin()` in `src/db/api.ts`
+ * reads back — a plain `'true'`/`'false'` string. Shared by the boot-time
+ * `refreshIsAdmin()` there, which lets a failure throw, and this file's own
+ * pull cycle (`runPull`, above), which does not: two callers, one write.
+ */
+export async function refreshIsAdminCache(): Promise<boolean> {
+  const admin = await isAdminRemote()
+  await setMeta('is-admin', String(admin))
+  return admin
 }
 
 /** Mints a login on this origin. Admin-only: `DA001`/`DA010`/`DA011`/`DA012`. */
