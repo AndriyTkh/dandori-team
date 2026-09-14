@@ -251,6 +251,35 @@ drop trigger if exists workspaces_cascade_delete on public.workspaces;
 create trigger workspaces_cascade_delete after update on public.workspaces
   for each row execute function public.follow_workspace_delete();
 
+-- ==========================================================================
+-- fork block B -- membership helpers                               (plan D-5)
+-- security definer is NOT optional: members_access is a policy ON members whose predicate
+-- must query members.  Inline EXISTS re-enters RLS on the same table ->
+--   "infinite recursion detected in policy for relation members".
+-- set search_path is a security control: without it a caller-controlled search_path can
+-- substitute the table this function reads.
+-- ==========================================================================
+
+create or replace function public.is_member(ws uuid) returns boolean
+language sql stable security definer set search_path = public, pg_temp as $fn$
+  select exists (
+    select 1 from public.members m
+     where m.workspace_id = ws and m.member_id = auth.uid() and not m.deleted)
+$fn$;
+
+create or replace function public.is_owner(ws uuid) returns boolean
+language sql stable security definer set search_path = public, pg_temp as $fn$
+  select exists (
+    select 1 from public.members m
+     where m.workspace_id = ws and m.member_id = auth.uid()
+       and m.level = 'owner' and not m.deleted)
+$fn$;
+
+revoke execute on function public.is_member(uuid) from public, anon;
+revoke execute on function public.is_owner(uuid)  from public, anon;
+grant  execute on function public.is_member(uuid) to authenticated;
+grant  execute on function public.is_owner(uuid)  to authenticated;
+
 -- Access to your own rows only. The app talks with the anon key,
 -- so all data protection rests on these policies.
 --
