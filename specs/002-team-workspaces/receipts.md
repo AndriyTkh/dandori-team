@@ -266,3 +266,45 @@ failure orphans the already-created users in the local stack; this matches the f
 sign-in error, so it surfaces as a clear failure rather than a silent one.
 
 Verdict: PASS, mergeable. Sign-off: Andrii Tkhorenko (single-operator).
+
+## Coordinator correction — T016 cited the withdrawn plan D-6 (2026-09-14)
+
+**What was wrong.** Card T016 required `tests/stack/personal-unchanged.test.ts` to assert that
+"updating `kind` on an existing row is silently pinned back (D-6)", and its done-when demanded
+`kind` immutability "proven as *coerced*". Its Read list named `pin_workspace_kind` as a thing to
+read in fork block A. None of that exists, and asserting it would have made the test demand
+behaviour the feature must not have.
+
+**The authoritative sources, which agree with each other.** `contracts/policies.sql` lines 117–122
+state it directly: "There is no pin trigger: pin_workspace_kind and workspaces_zz_kind_fixed of the
+superseded plan D-6 do NOT exist. Kind is an ordinary column under keep_newer and under the
+unchanged workspaces write half, which is already owner-only." `plan.md` line 173 records D-6's
+`kind` pin as superseded, line 459 marks the silent-pin decision withdrawn, and **D-6′** (line 482)
+replaces it: `kind` is mutable by the owner, and one `after update` trigger,
+`on_workspace_kind_change`, draws the consequences.
+
+**Why it mattered rather than being a stale comment.** T016 and T017 would have contradicted each
+other on the same column. T017 is built on D-6′ and asserts that an owner's flip *works* and that a
+stale flip is cancelled by `keep_newer` before the AFTER trigger can fire. T016 as written asserted
+that a flip is silently reverted. Both cannot be green. The contradiction would have surfaced at
+T020–T023 as an unexplainable red in whichever file ran second.
+
+**Resolution, decided by the coordinator on the contracts' authority, not invented.** T016 keeps
+the two correct `kind` cases — a third value is refused by `workspaces_kind_check` (FR-001, US1
+acceptance 4), and the `personal` default holds for a new row and for a row that predates the
+column (FR-003). The withdrawn pin-back case is replaced by the ownership boundary that belongs in
+a personal-unchanged smoke test: a **non-owner** flipping `kind` on a workspace they do not own is
+refused `42501` by the unchanged `workspaces` write half, because `kind` carries no special
+privilege path (FR-034). The owner's successful switch and both directions' consequences stay
+wholly in T017. The T016 card text, its Read list and its done-when were rewritten in `tasks.md`
+to say this, with the correction marked inline.
+
+**Caught how.** The T016 worker was dispatched with the stale clause emphasised as the heart of the
+card, and was corrected mid-flight before it wrote the assertion. The trigger for the check was the
+T019 report, which set `kind` by a direct update and prompted a read of what actually happens to
+such an update.
+
+**Owner-visible.** This is a coordinator resolution of a contradiction inside already-approved
+planning artifacts, not a new decision. It changes no requirement: FR-034 and D-6′ were already
+owner-approved. It is recorded here so the divergence between the T016 card text and the contracts
+is not mistaken later for a silent scope change. Sign-off: Andrii Tkhorenko (single-operator).
