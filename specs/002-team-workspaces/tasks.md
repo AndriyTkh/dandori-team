@@ -315,7 +315,7 @@ stay true. **The LWW rule does not change in this feature** — T038 asserts tha
   - substrate: `local-cache`, `env-boot`
   - verify: `npx tsc -b --noEmit` reports no error in either file; `npx vitest run --project local tests/local/no-wipe-on-reach-growth.test.ts` green; `git diff -U0` shows only added object keys
   - blocked-by: T028
-- [ ] T028b [sub-of: T028] [data] [in-progress: coder-T028b@wt/sync-cache] Owner gate 9 (2026-09-14): type-only fixture edits to the two P0 files — `tests/local/claim-cache.test.ts` (3 sites) and `tests/stack/lww-conflict.test.ts` (1 site) — adding `kind: 'personal'` / `assignee: null`; zero assertion changes
+- [x] T028b [sub-of: T028] [done: on wt/sync-cache] [data] Owner gate 9 (2026-09-14): type-only fixture edits to the two P0 files — `tests/local/claim-cache.test.ts` (3 sites) and `tests/stack/lww-conflict.test.ts` (1 site) — adding `kind: 'personal'` / `assignee: null`; zero assertion changes
   - Write: `tests/local/claim-cache.test.ts`, `tests/stack/lww-conflict.test.ts`
   - substrate: `local-cache`, `sync-engine`
   - verify: `npx tsc -b --noEmit` clean for both files; `npx vitest run --project local tests/local/claim-cache.test.ts` 5/5; `git diff -U0` on both shows added keys only (the T027-style gate)
