@@ -1287,3 +1287,110 @@ available only after T020 in its entirety — there is no earlier partial green 
 the code and stays red until T023.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T013 receipt — `user_id` keeps meaning who created the row (2026-09-14)
+
+Merged as `131fe13` from lane `wt/us3-rls` (lane commit `2f56f16`). Artefact: three new cases in
+`tests/stack/team-rls-both-halves.test.ts`, `+87/-10`, taking the file from 27 cases to **30**.
+This closes taskgroup TG-1.
+
+Verify, run by the coordinator on the `supabase` CLI local stack, from the lane worktree:
+
+```
+npx vitest run --project stack tests/stack/team-rls-both-halves.test.ts
+Test Files  1 failed (1)
+     Tests  30 skipped (30)
+```
+
+The same single-cause `beforeAll` abort the file has carried since T011 —
+`code=42703 message=column "kind" of relation "workspaces" does not exist`.
+
+**This card's done-when is unusual and worth stating precisely: not "an assertion about `user_id`
+exists" but "an assertion that goes red if `<t>_zz_keep_creator` is dropped".** R-7 is a risk whose
+failure mode has **no visible symptom**. Drop the trigger and the edit still lands, sync still
+succeeds, the board still renders; the only damage is that `user_id` silently stops meaning "who
+created this row" and starts meaning "who touched it last". Nothing anywhere complains. A case that
+merely reads `user_id` back and finds A's id can be green for three separate incidental reasons —
+the write was refused, the write was cancelled by `keep_newer`, or the payload never carried a
+different `user_id` in the first place.
+
+**The hand-trace, which is this card's real product.** `src/sync/sync.ts:216` stamps `user_id` to
+the **pushing client's own id** on every push, member or not — so the client genuinely sends B's id,
+and that is precisely why the trigger has to exist. B's edit in these cases mirrors that payload
+exactly: `{ [editField]: …, user_id: userB.user.id, updated_at: <newer stamp> }`.
+
+- **With the trigger:** `keep_creator()` is a BEFORE UPDATE trigger, and Postgres evaluates
+  `WITH CHECK` against the row **after** BEFORE ROW triggers have run. It resets
+  `new.user_id := old.user_id` (A) before the check is ever applied.
+- **Without it:** nothing resets the field, so `new.user_id` stays **B**, exactly as sent. The write
+  still succeeds, because `public.is_member(workspace_id)` alone satisfies `WITH CHECK` for B
+  regardless of what `user_id` holds. The PostgREST response is identical in both worlds.
+- **What goes red:** only the direct-`pg` read-back, `expect(rows[0].user_id).toBe(userA.user.id)`,
+  which now sees B's id. Identically on all three tables — `keep_creator` and the predicate shape
+  are the same across `labels`, `tasks` and `notes` (`contracts/policies.sql:212-228`).
+
+The response being identical in both worlds is exactly why the assertion is taken **server-side over
+the harness's direct `pg` connection**, not through PostgREST.
+
+**Both traps this taskgroup keeps hitting are closed in the same three cases.** Each asserts the
+edited field holds B's new value **and** that `user_id` is still A's. Without the first half, a T023
+regression that refused B's writes outright would leave an untouched row and a trivially green
+assertion — the negative-assertion-without-a-positive-control trap, in the one place where it would
+have been hardest to notice. And the edit's stamp is derived from the row's own `updated_at` plus
+sixty seconds, read back first, never from the host clock: a host-stamped write under a container
+clock that leads the host — routine on Docker Desktop / WSL2 — would be silently cancelled by
+`keep_newer` with a 204 and `error === null`, leaving `user_id` unchanged and the case green for the
+worst possible reason.
+
+**An unplanned discrimination, worth recording because it closes something the file's own header
+admitted was open.** Because B's payload self-assigns `user_id = B` and the trigger then resets it
+to A, `auth.uid()` (B) and the post-trigger `user_id` (A) **genuinely diverge** — a row shape the
+file's insert-only cases can never produce, since an insert always has `new.user_id` equal to the
+inserter's own id. That divergence also discriminates a **wrongly conjoined** membership branch in
+T023's write half (`and` where `contracts/policies.sql` has `or`), which T011's receipt recorded as
+undetected by that card and assigned here. The file's header is updated to say so. T011's receipt
+predicted this would be T013's to catch; it is, and now it is.
+
+**Green progression.** All three need **T022 and T023 together**. T022 alone leaves B's write
+refused outright, since the membership branch of the write half does not exist yet; T023 alone
+leaves the trigger absent, so `user_id` drifts to B and the case fails on its own assertion. Neither
+card can green them by itself, and that is the correct dependency — the trigger and the widened
+predicate are two halves of one behaviour.
+
+**Declined, with the reason recorded:** no `workspaces` counterpart. `keep_creator` is defined on
+`labels`, `tasks` and `notes` only (`contracts/policies.sql:212-228`), and `workspaces.user_id` is
+the workspace **owner**, not a per-row creator — a different concept that no trigger touches. A
+fourth case would assert something outside both the card's and the trigger's scope.
+
+**Not proven by this card:** no trigger behaviour is verified. The file is evidence written before
+the code and stays red until T023.
+
+Sign-off: Andrii Tkhorenko (single-operator).
+
+## Coordinator note — TG-1 closed (2026-09-14)
+
+Every card in taskgroup TG-1 has landed: T007, T008, T009, T010, T011, T012, T013, T014, T015,
+T016, T017, T018, T019, plus T026B. The evidence spine for this feature now exists in full and is
+**entirely red**, by design, with every file's green-at card named in its own header and in its
+receipt above.
+
+The files, and the card each becomes green at:
+
+| file | cases | green at |
+|---|---|---|
+| `tests/stack/team-schema-guards.test.ts` | T009 | T020–T026 |
+| `tests/stack/members-two-accounts.test.ts` | 10 | T024 (T023 for the removal cases) |
+| `tests/stack/team-rls-both-halves.test.ts` | 30 | T023 (T013's three also need T022) |
+| `tests/stack/team-triggers.test.ts` | 7 | T020, except R-6 at T023 |
+| `tests/stack/personal-unchanged.test.ts` | 13 | T020 — and T023 must keep all thirteen green |
+| `tests/stack/assignee-clear-on-removal.test.ts` | 7 | T022, except the seventh at T023 |
+| `tests/stack/kind-switch.test.ts` | T017 | T022, except (a) and (e) at T023 |
+| `tests/stack/logins-provisioning.test.ts` | 20 | T026, except (j) at T025 |
+
+Two cards remain outside that table and are **not** yet written: **T026A**, the personal-side smoke
+for T022's new triggers, and **T027**, the P0-unedited gate.
+
+TG-2 opens next: T020 through T026 are strictly serial on `supabase/schema.sql` and must not be
+lanewise-parallelised. The first of them, T020, is the card that turns the largest number of the
+above from red to green in one step, and is therefore the first point in this feature where a real
+verify means anything.

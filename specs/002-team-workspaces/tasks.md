@@ -172,7 +172,7 @@ parallel.
   - verify: `npm test -- --run --project stack tests/stack/team-rls-both-halves.test.ts` green, and — checked immediately after — `psql`-level confirmation that `pg_policies` for the four tables is byte-identical to before the run (nothing committed)
   - done-when: SC-005 is satisfied by an executed demonstration, or by the named fallback recorded as a deviation; never by silence
   - blocked-by: T011
-- [ ] T013 [data] Add the **R-7 assertion** to `tests/stack/team-rls-both-halves.test.ts`: B (a member, not the creator) edits a task A created in the team workspace; assert server-side that `tasks.user_id` is still **A's** id after the push — `user_id` keeps meaning "who created the row" and must not drift to "who touched it last" (FR-011). Repeat for `labels` and `notes`
+- [x] T013 [data] Add the **R-7 assertion** to `tests/stack/team-rls-both-halves.test.ts`: B (a member, not the creator) edits a task A created in the team workspace; assert server-side that `tasks.user_id` is still **A's** id after the push — `user_id` keeps meaning "who created the row" and must not drift to "who touched it last" (FR-011). Repeat for `labels` and `notes` [done: 131fe13]
   - Write: `tests/stack/team-rls-both-halves.test.ts`
   - Read: spec.md FR-011; plan.md D-4 "A fourth new trigger, `<t>_zz_keep_creator`", R-7; `src/sync/sync.ts:216` (the push path that stamps `user_id`); contracts/policies.sql (`keep_creator`)
   - substrate: `team-rls` (new, UNTESTED), `sync-engine` (VALIDATED)
