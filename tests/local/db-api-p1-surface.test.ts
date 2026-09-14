@@ -3,12 +3,16 @@ import {
   createTask,
   createWorkspace,
   deleteWorkspace,
+  isAdmin,
+  listMembers,
   listWorkspaces,
+  refreshIsAdmin,
+  removeMember,
   renameWorkspace,
   updateTask,
 } from '../../src/db/api'
-import { db, type Local } from '../../src/db/local'
-import type { Label, Note, Task, Workspace } from '../../src/db/types'
+import { db, wipeLocal, type Local } from '../../src/db/local'
+import type { Label, Member, Note, Task, Workspace } from '../../src/db/types'
 import { translate } from '../../src/i18n'
 
 /*
@@ -28,15 +32,28 @@ import { translate } from '../../src/i18n'
  * (ARCHITECTURE.md §3 "The three timestamps"); `Date` alone is faked so the
  * bump is asserted against an exact value, while fake-indexeddb keeps its real
  * scheduling.
+ *
+ * T040 extends this file with the rest of the P1 `db-api` surface T001 could
+ * not yet pin (`src/db/api.ts` post-T031/T033): `createWorkspace(name, 'team')`,
+ * `listMembers`, `removeMember`, `updateTask`'s `assignee` field (plan.md D-6,
+ * D-11), and the `is-admin` meta cache (`isAdmin`/`refreshIsAdmin`, D-17, T033)
+ * behind a mock of `isAdminRemote` at the same `src/sync/sync.ts` module
+ * boundary `requestPush` is already isolated at, above. **Not** pinned here:
+ * `memberEmails` and `addMemberByEmail` are online-only — both reach through
+ * that same boundary for an email<->uuid lookup that can only happen where
+ * `auth.users` lives (D-9, FR-024 affordance 4, FR-026) — so they cannot be
+ * exercised in this Docker-free tier; TG-1's stack tests cover them instead.
  */
 
 vi.mock('../../src/sync/sync', () => ({
   requestPush: vi.fn(),
+  isAdminRemote: vi.fn(),
 }))
 
-import { requestPush } from '../../src/sync/sync'
+import { isAdminRemote, requestPush } from '../../src/sync/sync'
 
 const requestPushMock = vi.mocked(requestPush)
+const isAdminRemoteMock = vi.mocked(isAdminRemote)
 
 const T0 = '2026-03-01T10:00:00.000Z'
 const T1 = '2026-03-01T10:05:00.000Z'
@@ -51,6 +68,7 @@ function workspaceRow(over: Partial<Local<Workspace>> = {}): Local<Workspace> {
     position: 1000,
     gcal_sync: false,
     gcal: null,
+    kind: 'personal',
     created_at: OLD,
     updated_at: OLD,
     deleted: false,
@@ -76,6 +94,7 @@ function taskRow(over: Partial<Local<Task>> = {}): Local<Task> {
     custom_fields: [{ name: 'k', value: 'v' }],
     gcal: null,
     gcal_placed: null,
+    assignee: null,
     created_at: OLD,
     updated_at: OLD,
     deleted: false,
@@ -116,9 +135,24 @@ function noteRow(over: Partial<Local<Note>> = {}): Local<Note> {
   }
 }
 
+function memberRow(over: Partial<Local<Member>> = {}): Local<Member> {
+  return {
+    id: 'member-seed',
+    workspace_id: 'ws-seed',
+    member_id: 'user-seed',
+    level: 'member',
+    created_at: OLD,
+    updated_at: OLD,
+    deleted: false,
+    _dirty: 0,
+    ...over,
+  }
+}
+
 describe('db-api P1 surface (T001, Docker-free tier)', () => {
   beforeEach(() => {
     requestPushMock.mockClear()
+    isAdminRemoteMock.mockReset()
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(T0))
     // Same hard line as claim-cache.test.ts: this tier makes no network call.
@@ -130,14 +164,19 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
     )
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
+    // tests/setup.ts's own afterEach clears workspaces/labels/tasks/notes/meta
+    // but predates the `members` table (D-10) and does not know about it; this
+    // file is the first local-tier suite to write to db.members, so it clears
+    // its own leftovers rather than reaching into that shared file.
+    await db.members.clear()
   })
 
   // ------------------------------------------------------------ createWorkspace
 
-  describe('createWorkspace(name)', () => {
+  describe('createWorkspace(name, kind)', () => {
     it('writes a full, dirty row stamped with the device clock and queues a push', async () => {
       const id = await createWorkspace('  Alpha  ')
 
@@ -148,12 +187,25 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
         name: 'Alpha', // trimmed
         gcal_sync: false,
         gcal: null,
+        kind: 'personal', // T031: defaulted kind param, identical to before it otherwise
         position: 1000, // first row: (0) + POS_STEP
         created_at: T0,
         updated_at: T0, // created_at === updated_at at birth
         deleted: false,
         _dirty: 1,
       })
+      expect(requestPushMock).toHaveBeenCalledTimes(1)
+    })
+
+    it("writes kind: 'team' when asked, and only the workspace row — no local members row (D-6)", async () => {
+      const id = await createWorkspace('Squad', 'team')
+
+      const row = await db.workspaces.get(id)
+      expect(row).toMatchObject({ kind: 'team' })
+      // The owner's own membership row is `seed_workspace_owner`'s server-side
+      // effect and reaches this device on its next pull; writing one locally
+      // here would collide with `members_one_per_person` and wedge the queue.
+      expect(await db.members.count()).toBe(0)
       expect(requestPushMock).toHaveBeenCalledTimes(1)
     })
 
@@ -297,6 +349,98 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
     })
   })
 
+  // ------------------------------------------------------------------- members
+
+  describe('listMembers(workspaceId)', () => {
+    it('reads from Dexie: filters to the given workspace and excludes soft-deleted rows', async () => {
+      await db.members.bulkAdd([
+        memberRow({ id: 'm-1', workspace_id: 'ws-1', member_id: 'user-1', level: 'owner' }),
+        memberRow({ id: 'm-2', workspace_id: 'ws-1', member_id: 'user-2', deleted: true }),
+        memberRow({ id: 'm-3', workspace_id: 'ws-2', member_id: 'user-3', level: 'owner' }),
+      ])
+
+      const rows = await listMembers('ws-1')
+
+      expect(rows.map((m) => m.member_id)).toEqual(['user-1'])
+      expect(requestPushMock).not.toHaveBeenCalled()
+    })
+
+    it('returns [] for a workspace with no member rows cached', async () => {
+      expect(await listMembers('ws-empty')).toEqual([])
+    })
+  })
+
+  describe('removeMember(workspaceId, memberId)', () => {
+    it('soft-deletes the row matched by member_id, bumps updated_at, and queues a push with no network call', async () => {
+      await db.members.add(memberRow({ id: 'm-1', workspace_id: 'ws-1', member_id: 'user-1' }))
+      vi.setSystemTime(new Date(T1))
+
+      await removeMember('ws-1', 'user-1')
+
+      const row = await db.members.get('m-1')
+      expect(row).toMatchObject({ deleted: true, updated_at: T1, _dirty: 1 })
+      expect(requestPushMock).toHaveBeenCalledTimes(1)
+      // Same discipline as the fetch stub above: had this reached the network,
+      // the stub would have thrown instead of letting the call return quietly.
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('matches by the person id (member_id), not the row\'s own surrogate id', async () => {
+      await db.members.add(memberRow({ id: 'row-surrogate', workspace_id: 'ws-1', member_id: 'user-1' }))
+
+      await removeMember('ws-1', 'row-surrogate')
+
+      // 'row-surrogate' is not anyone's member_id here, so nothing matches.
+      expect((await db.members.get('row-surrogate'))?.deleted).toBe(false)
+    })
+
+    it('is a no-op when memberId does not match a row in that workspace, but still queues a push', async () => {
+      await db.members.add(memberRow({ id: 'm-1', workspace_id: 'ws-2', member_id: 'user-1' }))
+
+      await removeMember('ws-1', 'user-1')
+
+      expect((await db.members.get('m-1'))?.deleted).toBe(false)
+      expect(requestPushMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  // ---------------------------------------------------------------- instance admin
+
+  describe('isAdmin() / refreshIsAdmin() — the is-admin meta cache (T033, D-17)', () => {
+    it('isAdmin() reads false when nothing has been cached yet', async () => {
+      expect(await isAdmin()).toBe(false)
+      expect(isAdminRemoteMock).not.toHaveBeenCalled()
+    })
+
+    it('refreshIsAdmin() calls isAdminRemote(), writes the result to meta, and isAdmin() then reads it back', async () => {
+      isAdminRemoteMock.mockResolvedValueOnce(true)
+
+      const result = await refreshIsAdmin()
+
+      expect(result).toBe(true)
+      expect(isAdminRemoteMock).toHaveBeenCalledTimes(1)
+      expect(await isAdmin()).toBe(true)
+    })
+
+    it('refreshIsAdmin() overwrites a stale cached value with a fresh false', async () => {
+      await db.meta.put({ key: 'is-admin', value: 'true' })
+      isAdminRemoteMock.mockResolvedValueOnce(false)
+
+      await refreshIsAdmin()
+
+      expect(await isAdmin()).toBe(false)
+    })
+
+    it('wipeLocal() clears the cache back to absent, and isAdmin() reads false again', async () => {
+      await db.meta.put({ key: 'is-admin', value: 'true' })
+
+      await wipeLocal()
+
+      expect(await db.meta.get('is-admin')).toBeUndefined()
+      expect(await isAdmin()).toBe(false)
+    })
+  })
+
   // ----------------------------------------------------------------- updateTask
 
   describe('updateTask(id, patch)', () => {
@@ -334,6 +478,16 @@ describe('db-api P1 surface (T001, Docker-free tier)', () => {
       const row = await db.tasks.get('task-1')
       expect(row?.label_ids).toEqual(['label-y'])
       expect(row?.custom_fields).toEqual([])
+    })
+
+    it('round-trips assignee through TaskPatch: set it, then clear it back to null', async () => {
+      await db.tasks.add(taskRow({ id: 'task-1' }))
+
+      await updateTask('task-1', { assignee: 'user-1' })
+      expect((await db.tasks.get('task-1'))?.assignee).toBe('user-1')
+
+      await updateTask('task-1', { assignee: null })
+      expect((await db.tasks.get('task-1'))?.assignee).toBeNull()
     })
 
     it('keeps position when the task stays in its day column', async () => {
