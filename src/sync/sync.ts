@@ -1,6 +1,7 @@
 import { supabase } from '../auth/supabase'
 import { claimCache, db, getMeta, pendingCount, setMeta, type Local } from '../db/local'
 import { SYNCED_COLUMNS, SYNCED_TABLES, type SyncedTable } from '../db/types'
+import type { Member, MemberLevel } from '../db/types'
 
 /*
  * Sync with Supabase.
@@ -504,4 +505,91 @@ export function startSync(): SyncHandle {
       document.removeEventListener('visibilitychange', onVisible)
     },
   }
+}
+
+// ------------------------------------------------------ remote RPCs (online-only)
+
+/*
+ * Eight thin wrappers over `security definer` RPCs (contracts/rpc.md, D-9,
+ * D-16). None of these touch Dexie or the queue — they are never queued: a
+ * queued account creation would be a password sitting in Dexie (FR-044), so
+ * every one fails loudly offline instead of waiting for a connection.
+ * `error.code` passes through unchanged so a caller branches on
+ * `DA001`/`DA404`/`DA010`..`DA015` without inspecting the message text.
+ */
+
+/** A co-member's email, resolved from `auth.users` at call time — never mirrored (D-9). */
+export interface MemberEmail {
+  member_id: string
+  email: string
+  level: MemberLevel
+}
+
+/** What `create_login` hands back: the login it just minted. */
+export interface CreatedLogin {
+  user_id: string
+  email: string
+  is_admin: boolean
+}
+
+/** One row of the instance-admin login list. */
+export interface LoginRow extends CreatedLogin {
+  created_at: string
+}
+
+/** Adds `email` to team workspace `ws` as a member. Owner-only: `DA001`/`DA404`. */
+export async function addMemberByEmailRemote(ws: string, email: string): Promise<Member> {
+  const { data, error } = await supabase.rpc('add_member_by_email', { ws, email })
+  if (error) throw error
+  return data as Member
+}
+
+/** The people in team workspace `ws`, for display — never authoritative (D-9). */
+export async function memberEmailsRemote(ws: string): Promise<MemberEmail[]> {
+  const { data, error } = await supabase.rpc('workspace_member_emails', { ws })
+  if (error) throw error
+  return (data ?? []) as MemberEmail[]
+}
+
+/** Whether the signed-in session holds instance admin. Never raises. */
+export async function isAdminRemote(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_admin')
+  if (error) throw error
+  return data as boolean
+}
+
+/** Mints a login on this origin. Admin-only: `DA001`/`DA010`/`DA011`/`DA012`. */
+export async function createLoginRemote(
+  email: string,
+  password: string,
+  admin: boolean,
+): Promise<CreatedLogin[]> {
+  const { data, error } = await supabase.rpc('create_login', { email, password, admin })
+  if (error) throw error
+  return (data ?? []) as CreatedLogin[]
+}
+
+/** Replaces a login's password. Admin-only: `DA001`/`DA011`/`DA404`. */
+export async function setLoginPasswordRemote(userId: string, password: string): Promise<void> {
+  const { error } = await supabase.rpc('set_login_password', { user_id: userId, password })
+  if (error) throw error
+}
+
+/** Bans a login and clears its memberships. Admin-only: `DA001`/`DA404`/`DA013`/`DA014`. */
+export async function deleteLoginRemote(userId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_login', { user_id: userId })
+  if (error) throw error
+}
+
+/** Grants or revokes instance admin. Admin-only: `DA001`/`DA404`/`DA015`. */
+export async function setLoginAdminRemote(userId: string, admin: boolean): Promise<void> {
+  const { error } = await supabase.rpc('set_login_admin', { user_id: userId, admin })
+  if (error) throw error
+}
+
+/** The Logins section's list. Admin-only — raises `DA001` rather than an empty list. */
+export async function listLoginsRemote(): Promise<LoginRow[]> {
+  const { data, error } = await supabase.rpc('list_logins')
+  if (error) throw error
+  return (data ?? []) as LoginRow[]
 }
