@@ -445,22 +445,56 @@ begin
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists own_rows on public.%I', t);
   end loop;
+end $$;
 
-  execute
-    'create policy own_rows on public.workspaces
-       for all
-       using (auth.uid() = user_id)
-       with check (auth.uid() = user_id)';
+-- ==========================================================================
+-- policy block -- REPLACED, both halves of each policy, separately    (plan D-4)
+-- The write half's first branch is upstream's clause character for character: for a personal
+-- workspace is_member() is false, so both halves evaluate exactly as today and the P0 RLS
+-- tests pass unedited.  Reads stay looser than writes on the child tables, as today.
+-- ==========================================================================
+
+do $blk$
+declare t text;
+begin
+  -- workspaces: READ widens to membership; WRITE deliberately does not.
+  -- A member may not rename or delete the workspace (FR-005).
+  execute 'drop policy if exists own_rows on public.workspaces';
+  execute 'create policy own_rows on public.workspaces
+             for all
+             using      (auth.uid() = user_id or public.is_member(id))
+             with check (auth.uid() = user_id)';
 
   foreach t in array array['labels', 'tasks', 'notes'] loop
-    execute format(
-      'create policy own_rows on public.%I
-         for all
-         using (auth.uid() = user_id)
-         with check (
-           auth.uid() = user_id
-           and exists (
-             select 1 from public.workspaces w
-              where w.id = workspace_id and w.user_id = auth.uid()))', t);
+    execute format('drop policy if exists own_rows on public.%I', t);
+    execute format('create policy own_rows on public.%I
+      for all
+      using (
+        auth.uid() = user_id
+        or public.is_member(workspace_id)
+      )
+      with check (
+        (
+          auth.uid() = user_id
+          and exists (select 1 from public.workspaces w
+                       where w.id = workspace_id and w.user_id = auth.uid())
+        )
+        or public.is_member(workspace_id)
+      )', t);
+    -- NOTE: the membership branch is NOT conjoined with auth.uid() = user_id.  Conjoining it
+    -- would stop a member editing a row another member created, which is the whole point of
+    -- a team workspace.
   end loop;
-end $$;
+
+  -- members: fork-only table, fork-only policy name.  own_rows keeps meaning exactly what
+  -- upstream means by it.
+  execute 'drop policy if exists members_access on public.members';
+  execute 'create policy members_access on public.members
+             for all
+             using      (public.is_member(workspace_id))
+             with check (public.is_owner(workspace_id) and auth.uid() = user_id)';
+  -- read: any member sees the workspace''s membership rows (FR-007, FR-015)
+  -- write: owners only, recording themselves as the row''s creator.  The creator''s own first
+  --        owner row comes from workspaces_seed_owner, which is security definer and so does
+  --        not have to satisfy this predicate -- that is what closes the chicken-and-egg hole.
+end $blk$;
