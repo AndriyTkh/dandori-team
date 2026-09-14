@@ -225,10 +225,46 @@ async function push(): Promise<void> {
             .from(table)
             .upsert(payload, { onConflict: 'id' })
             .select('id')
-          if (error) throw error
           if (mine !== session) return
 
-          const landed = new Set((data ?? []).map((row) => (row as { id: string }).id))
+          // D-18: a `42501` (RLS `with check` refusal) rejects the whole
+          // batch, so without this the row behind the refused one — owed
+          // nothing, guilty of nothing — would be held hostage forever by a
+          // batch resent unchanged every cycle. Retried one row at a time,
+          // same payload construction, same `onConflict`, same `.select('id')`,
+          // so a row landing alone is bookkept exactly like a batch-landed
+          // one below. Any other error keeps today's behaviour: thrown here,
+          // caught by this table's `catch`, the whole cycle fails and is
+          // retried whole next time — this file never learns the batch had a
+          // problem at all in that case.
+          let landedRows = data
+          const droppedByRefusal = new Set<string>()
+          if (error) {
+            const singles: { id: string }[] = []
+            for (let i = 0; i < batch.length; i++) {
+              const { data: rowData, error: rowError } = await supabase
+                .from(table)
+                .upsert([payload[i]], { onConflict: 'id' })
+                .select('id')
+              if (mine !== session) return
+              if (rowError) {
+                if (rowError.code !== '42501') throw rowError
+                // Refused, not merely stale: this account was never going to
+                // get a corrected copy of it from a pull — it never held the
+                // server row to begin with — so it is dropped outright here
+                // rather than left dirty forever or carried into the
+                // refused-id merge below, which exists for the *other* kind
+                // of refusal (the server silently keeping its own newer row).
+                await db[table].delete(batch[i].id)
+                droppedByRefusal.add(batch[i].id)
+                continue
+              }
+              singles.push(...((rowData ?? []) as { id: string }[]))
+            }
+            landedRows = singles
+          }
+
+          const landed = new Set((landedRows ?? []).map((row) => (row as { id: string }).id))
 
           /*
            * A row that changed while the push was in flight stays dirty. The
@@ -255,7 +291,9 @@ async function push(): Promise<void> {
            * it here ends the conflict where it was lost, and the device stops
            * offering an edit that can never land.
            */
-          const refused = batch.filter((row) => !landed.has(row.id)).map((row) => row.id)
+          const refused = batch
+            .filter((row) => !landed.has(row.id) && !droppedByRefusal.has(row.id))
+            .map((row) => row.id)
           // The ids travel in the query string, so they go a hundred at a time.
           for (const ids of chunks(refused, 100)) {
             const { data: kept, error: keptError } = await supabase
