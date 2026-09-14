@@ -3,10 +3,16 @@
   "name": "dandori",
   "compatibility_date": "2026-09-04",
 
-  // The app is entirely static: there is no worker script, the built dist is served.
+  // The app is the built dist and nothing else, bar one step Google will not let
+  // a browser take on its own — see worker/index.ts.
+  "main": "worker/index.ts",
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     // One page for every address: routing lives in the browser.
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Which would swallow the one address that is not a page of the app, since
+    // a path with no file behind it is answered with index.html.
+    "run_worker_first": ["/api/*"]
   }
 }

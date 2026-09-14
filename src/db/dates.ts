@@ -10,7 +10,7 @@ import type { ISODate } from './types'
  * in `src/i18n/dates.ts`.
  */
 
-export function toISODate(d: Date): ISODate {
+function toISODate(d: Date): ISODate {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
@@ -42,7 +42,7 @@ export function addMonths(s: ISODate, n: number): ISODate {
   return toISODate(d)
 }
 
-export function daysInMonth(year: number, month: number): number {
+function daysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate()
 }
 
@@ -70,7 +70,7 @@ export function startOfMonth(s: ISODate): ISODate {
   return `${s.slice(0, 7)}-01`
 }
 
-export function endOfMonth(s: ISODate): ISODate {
+function endOfMonth(s: ISODate): ISODate {
   const d = fromISODate(s)
   return toISODate(new Date(d.getFullYear(), d.getMonth() + 1, 0))
 }

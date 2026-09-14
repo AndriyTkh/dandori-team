@@ -41,7 +41,7 @@ export function textOf(lang: Lang, key: TextKey, vars?: Vars): string {
   return fill(TEXT[key][lang], vars)
 }
 
-export function countOf(lang: Lang, key: PluralKey, n: number): string {
+function countOf(lang: Lang, key: PluralKey, n: number): string {
   // Widened on purpose: the literal type of the entry only lists the forms that
   // language happens to use, and the rule may name any of the six.
   const forms: Forms = PLURALS[key][lang]
