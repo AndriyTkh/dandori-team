@@ -410,8 +410,11 @@ create trigger members_zz_clear_assignee_del after delete on public.members
 -- user_id keeps meaning "who created this row" in a team workspace too.  Without this the
 -- push path (sync.ts stamps user_id on every payload row) would rewrite it to whoever edited
 -- last.  No-op on a personal row -- same value assigned.
+-- set search_path (T023a finding 8): every other definer/plain function this feature adds
+-- carries one; this was the one omission, closed for consistency even though the function
+-- reads nothing beyond its own NEW/OLD rows.
 create or replace function public.keep_creator() returns trigger
-language plpgsql as $fn$
+language plpgsql set search_path = public, pg_temp as $fn$
 begin
   new.user_id := old.user_id;
   return new;
@@ -420,13 +423,87 @@ end $fn$;
 do $blk$
 declare t text;
 begin
-  foreach t in array array['labels', 'tasks', 'notes'] loop
+  -- 'workspaces' joins the loop here (T023a finding 3): without it, `PATCH workspaces
+  -- {user_id: <self>}` let a member overwrite the creator field and pass WITH CHECK
+  -- (`auth.uid() = user_id`) trivially, because the value they just set is their own --
+  -- a creator hijack.  Same mechanism labels/tasks/notes already had from T022; sorts as
+  -- workspaces_zz_keep_creator, after workspaces_keep_newer/_synced_at (name order).
+  foreach t in array array['workspaces', 'labels', 'tasks', 'notes'] loop
     execute format('drop trigger if exists %I on public.%I', t || '_zz_keep_creator', t);
     execute format('create trigger %I before update on public.%I
                     for each row execute function public.keep_creator()',
                    t || '_zz_keep_creator', t);
   end loop;
 end $blk$;
+
+-- FR-010 (T023a finding 4): nothing above stops the sole owner of a team workspace soft-
+-- deleting or demoting their own membership, or promoting/transferring another member to
+-- `level = 'owner'` -- P1 has no ownership transfer at all.  A trigger, not a policy: the rule
+-- has to see BOTH the row being written and the current owner-of-record (workspaces.user_id),
+-- and members_access/members_update's predicates only ever see the row + auth.uid().
+-- Exempted while the invariant would otherwise be meaningless or would fight a legitimate
+-- structural purge: workspace gone (FK cascade already removed it), workspace `deleted`
+-- (irrelevant once the whole workspace is gone), or `kind <> 'team'` (a kind-switch purge,
+-- `on_workspace_kind_change`, runs AFTER the workspace row's own `kind` is already 'personal',
+-- so this trigger reads the post-switch value and steps aside for its purge -- verified by
+-- tests/stack/team-rls-delete-and-owner-invariant.test.ts (e1)).
+create or replace function public.members_owner_invariant() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $fn$
+declare
+  ws record;
+begin
+  -- A real Postgres superuser (the local stack's harness connects as `postgres` directly, and a
+  -- self-hoster's own admin SQL does the same) already has unconditional power over every row
+  -- and every trigger in the database -- `ALTER TABLE ... DISABLE TRIGGER`,
+  -- `session_replication_role = replica`, or simply `DROP TRIGGER` would get there anyway, so
+  -- refusing it here would not be a real boundary, only friction on admin housekeeping (test
+  -- fixture teardown included). RLS-facing roles (`authenticated`, `anon`, `service_role`) are
+  -- never superusers, so this cannot be used to route around the invariant from the app.
+  if current_setting('is_superuser') = 'on' then
+    if tg_op = 'DELETE' then
+      return old;
+    end if;
+    return new;
+  end if;
+
+  select id, user_id, deleted, kind into ws
+    from public.workspaces
+   where id = coalesce(new.workspace_id, old.workspace_id);
+
+  if ws.id is null or ws.deleted or ws.kind <> 'team' then
+    if tg_op = 'DELETE' then
+      return old;
+    end if;
+    return new;
+  end if;
+
+  if tg_op in ('INSERT', 'UPDATE') and new.level = 'owner' and new.member_id <> ws.user_id then
+    raise exception using errcode = 'DA016',
+      message = 'only the workspace creator may hold level=owner -- no promote or transfer in P1';
+  end if;
+
+  if tg_op = 'UPDATE' and old.level = 'owner' then
+    if new.deleted and not old.deleted then
+      raise exception using errcode = 'DA016', message = 'the owner cannot remove their own membership';
+    end if;
+    if new.level <> 'owner' then
+      raise exception using errcode = 'DA016', message = 'the owner cannot demote themselves';
+    end if;
+  end if;
+
+  if tg_op = 'DELETE' and old.level = 'owner' then
+    raise exception using errcode = 'DA016', message = 'the owner row cannot be hard-deleted directly';
+  end if;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  return new;
+end $fn$;
+
+drop trigger if exists members_zz_owner_invariant on public.members;
+create trigger members_zz_owner_invariant before insert or update or delete on public.members
+  for each row execute function public.members_owner_invariant();
 
 -- Access to your own rows only. The app talks with the anon key,
 -- so all data protection rests on these policies.
@@ -497,6 +574,49 @@ begin
   -- write: owners only, recording themselves as the row''s creator.  The creator''s own first
   --        owner row comes from workspaces_seed_owner, which is security definer and so does
   --        not have to satisfy this predicate -- that is what closes the chicken-and-egg hole.
+end $blk$;
+
+-- ==========================================================================
+-- T023a findings 1 and 2 -- DELETE narrowed with RESTRICTIVE policies, `own_rows`/
+-- `members_access` left byte-identical to c5fda53 above.
+--
+-- `for all` applies its one `using` clause to SELECT, UPDATE **and DELETE** alike -- there is
+-- no way to give DELETE a narrower `using` than SELECT/UPDATE share within a single `for all`
+-- policy. At c5fda53 the widened `using` (added for team reads) therefore also widened DELETE:
+-- any member could hard-DELETE the team workspace (cascading away its labels/tasks/notes/
+-- members, finding 1) or any `members` row including the owner's (finding 2).
+--
+-- Renaming `own_rows`/`members_access` into four single-command policies apiece was the first
+-- approach tried here; it was reverted because two already-passing tests key off those exact
+-- names via `pg_policies` (`team-rls-both-halves.test.ts`'s `fetchPolicyHalves`,
+-- `schema-apply.test.ts`'s "creates the own_rows policy on all four tables") and this card's
+-- own instruction is to fix the schema, not the tests, when a name (not a behaviour) is what
+-- collides. `AS RESTRICTIVE` is the mechanism Postgres gives for exactly this: a restrictive
+-- policy's `using` clause is AND-ed onto the applicable permissive ones for the SAME command
+-- rather than OR-ed, so a `for delete` restrictive policy narrows what `own_rows`/
+-- `members_access` already permit for DELETE specifically, without touching either policy's
+-- own row in `pg_policies` (name, `qual`, `with_check` all stay exactly as introspected today).
+-- No committed test issues a member hard-DELETE of any of these tables (the app itself never
+-- does -- src/db/api.ts, src/sync/sync.ts only ever soft-delete), so narrowing DELETE here
+-- closes a hole without touching any asserted product behaviour.
+-- ==========================================================================
+
+do $blk$
+declare t text;
+begin
+  foreach t in array array['workspaces', 'labels', 'tasks', 'notes'] loop
+    execute format('drop policy if exists %I_zz_delete_creator_only on public.%I', t, t);
+    execute format('create policy %I_zz_delete_creator_only on public.%I
+      as restrictive
+      for delete
+      using (auth.uid() = user_id)', t, t);
+  end loop;
+
+  execute 'drop policy if exists members_zz_delete_owner_only on public.members';
+  execute 'create policy members_zz_delete_owner_only on public.members
+             as restrictive
+             for delete
+             using (public.is_owner(workspace_id))';
 end $blk$;
 
 -- ==========================================================================
@@ -628,13 +748,19 @@ create trigger users_seed_first_admin after insert on auth.users
 
 -- ==========================================================================
 -- fork block E -- the provisioning routines               (ADR-0006 §B, plan D-16)
--- create_login / set_login_password / delete_login / set_login_admin / list_logins.
--- Signatures, guards, error codes and the verbatim auth.users / auth.identities column set
--- are contracted in specs/002-team-workspaces/contracts/rpc.md, which is authoritative for
--- them.  All five are security definer, all carry
--- `set search_path = public, auth, extensions, pg_temp`, all are revoked from public and anon
--- and granted to authenticated, and every one of them refuses a caller for whom
--- public.is_admin() is false (FR-038, SC-018).
+-- create_login / set_login_password / delete_login / set_login_admin / list_logins -- five
+-- public routines, plus a sixth, `_create_login_impl`, the impl-split helper `create_login`
+-- delegates to (see its own comment above for why the split exists at all: `create_login`'s
+-- pinned signature and PostgREST's plpgsql column-name collision force it). Signatures, guards,
+-- error codes and the verbatim auth.users / auth.identities column set are contracted in
+-- specs/002-team-workspaces/contracts/rpc.md, which is authoritative for the five public ones.
+-- All six are security definer, all carry `set search_path = public, auth, extensions, pg_temp`,
+-- and every one of them refuses a caller for whom public.is_admin() is false (FR-038, SC-018).
+-- The five public routines are revoked from public and anon and granted to authenticated;
+-- `_create_login_impl` is revoked from all three (public, anon, authenticated, T023a finding
+-- 5) -- it has no caller of its own and is reached only through `create_login`, itself
+-- `security definer`, whose privilege as the executing role is unaffected by this function's
+-- own grants.
 -- ==========================================================================
 
 -- create_login's pinned signature returns a table column literally named "email", the same
@@ -705,7 +831,12 @@ begin
 end;
 $fn$;
 
-revoke execute on function public._create_login_impl(text, text, boolean) from public;
+-- T023a finding 5: `from public` alone left `anon`/`authenticated` still holding EXECUTE --
+-- Supabase's own default privileges grant it to those two roles directly, not only through
+-- `public`, so revoking `public` does not touch them. The `is_admin()` guard inside the body
+-- still held (an anon caller got DA001, never DA015+), but the function was reachable at all,
+-- which is itself the finding: an unrevoked, undocumented public endpoint.
+revoke execute on function public._create_login_impl(text, text, boolean) from public, anon, authenticated;
 
 create or replace function public.create_login(email text, password text, admin boolean default false)
 returns table (user_id uuid, email text, is_admin boolean)

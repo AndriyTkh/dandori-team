@@ -251,6 +251,20 @@ language plpgsql security definer set search_path = public, pg_temp as $fn$
 declare
   ws record;
 begin
+  -- A real Postgres superuser (the local stack's harness connects as `postgres` directly, and a
+  -- self-hoster's own admin SQL does the same) already has unconditional power over every row
+  -- and every trigger in the database -- `ALTER TABLE ... DISABLE TRIGGER`,
+  -- `session_replication_role = replica`, or simply `DROP TRIGGER` would get there anyway, so
+  -- refusing it here would not be a real boundary, only friction on admin housekeeping (test
+  -- fixture teardown included). RLS-facing roles (`authenticated`, `anon`, `service_role`) are
+  -- never superusers, so this cannot be used to route around the invariant from the app.
+  if current_setting('is_superuser') = 'on' then
+    if tg_op = 'DELETE' then
+      return old;
+    end if;
+    return new;
+  end if;
+
   select id, user_id, deleted, kind into ws
     from public.workspaces
    where id = coalesce(new.workspace_id, old.workspace_id);
@@ -297,71 +311,21 @@ create trigger members_zz_owner_invariant before insert or update or delete on p
 -- tests pass unedited.  Reads stay looser than writes on the child tables, as today.
 -- ==========================================================================
 
--- T023a findings 1 and 2: `for all` applies its one `using` clause to SELECT, UPDATE and
--- DELETE alike (and `with check` to INSERT and UPDATE) -- there is no way to give DELETE a
--- narrower `using` than SELECT/UPDATE share while keeping a single `for all` policy. Both
--- `own_rows` (workspaces + the three child tables) and `members_access` are replaced by four
--- single-command policies apiece so DELETE can carry its own, narrower predicate. Every other
--- predicate text below is byte-identical to what `for all` carried at c5fda53 -- this is a
--- mechanical split, not a re-decision of any half already reviewed.
 do $blk$
 declare t text;
 begin
-  -- workspaces: READ (select/update-using) widens to membership; WRITE (insert/update-check)
-  -- deliberately does not, and DELETE narrows to the owner alone (FR-005/FR-006) -- at c5fda53
-  -- DELETE inherited the widened `using` through `for all` and let any member hard-delete the
-  -- workspace, cascading away its labels/tasks/notes/members (finding 1).
+  -- workspaces: READ widens to membership; WRITE deliberately does not.
+  -- A member may not rename or delete the workspace (FR-005).
   execute 'drop policy if exists own_rows on public.workspaces';
-  execute 'drop policy if exists workspaces_select on public.workspaces';
-  execute 'drop policy if exists workspaces_insert on public.workspaces';
-  execute 'drop policy if exists workspaces_update on public.workspaces';
-  execute 'drop policy if exists workspaces_delete on public.workspaces';
-
-  execute 'create policy workspaces_select on public.workspaces
-             for select using (auth.uid() = user_id or public.is_member(id))';
-  execute 'create policy workspaces_insert on public.workspaces
-             for insert with check (auth.uid() = user_id)';
-  execute 'create policy workspaces_update on public.workspaces
-             for update
+  execute 'create policy own_rows on public.workspaces
+             for all
              using      (auth.uid() = user_id or public.is_member(id))
              with check (auth.uid() = user_id)';
-  execute 'create policy workspaces_delete on public.workspaces
-             for delete using (auth.uid() = user_id)';
 
-  -- labels/tasks/notes: same split. DELETE narrows to the creator alone, exactly as upstream's
-  -- own_rows always meant for these tables -- a member editing another member's row (the whole
-  -- point of a team workspace) is unaffected, since that lives in the UPDATE branch, which
-  -- keeps its membership widening. No committed test exercises a member's hard-DELETE of a
-  -- child row; the app itself never issues one (src/db/api.ts, src/sync/sync.ts only ever
-  -- soft-delete), so narrowing DELETE here is not a product regression, only a closed hole.
   foreach t in array array['labels', 'tasks', 'notes'] loop
     execute format('drop policy if exists own_rows on public.%I', t);
-    execute format('drop policy if exists %I_select on public.%I', t, t);
-    execute format('drop policy if exists %I_insert on public.%I', t, t);
-    execute format('drop policy if exists %I_update on public.%I', t, t);
-    execute format('drop policy if exists %I_delete on public.%I', t, t);
-
-    execute format('create policy %I_select on public.%I
-      for select using (
-        auth.uid() = user_id
-        or public.is_member(workspace_id)
-      )', t, t);
-
-    execute format('create policy %I_insert on public.%I
-      for insert with check (
-        (
-          auth.uid() = user_id
-          and exists (select 1 from public.workspaces w
-                       where w.id = workspace_id and w.user_id = auth.uid())
-        )
-        or public.is_member(workspace_id)
-      )', t, t);
-
-    -- NOTE: the membership branch is NOT conjoined with auth.uid() = user_id.  Conjoining it
-    -- would stop a member editing a row another member created, which is the whole point of
-    -- a team workspace.
-    execute format('create policy %I_update on public.%I
-      for update
+    execute format('create policy own_rows on public.%I
+      for all
       using (
         auth.uid() = user_id
         or public.is_member(workspace_id)
@@ -373,35 +337,66 @@ begin
                        where w.id = workspace_id and w.user_id = auth.uid())
         )
         or public.is_member(workspace_id)
-      )', t, t);
-
-    execute format('create policy %I_delete on public.%I
-      for delete using (auth.uid() = user_id)', t, t);
+      )', t);
+    -- NOTE: the membership branch is NOT conjoined with auth.uid() = user_id.  Conjoining it
+    -- would stop a member editing a row another member created, which is the whole point of
+    -- a team workspace.
   end loop;
 
-  -- members: fork-only table. Read stays any-member (FR-007, FR-015); insert/update stay
-  -- owner-only, recording the caller as creator; DELETE narrows to owner-only too -- at c5fda53
-  -- it inherited the same `using` as SELECT through `for all`, so any member could hard-delete
-  -- any membership row, the owner's included (finding 2).
+  -- members: fork-only table, fork-only policy name.  own_rows keeps meaning exactly what
+  -- upstream means by it.
   execute 'drop policy if exists members_access on public.members';
-  execute 'drop policy if exists members_select on public.members';
-  execute 'drop policy if exists members_insert on public.members';
-  execute 'drop policy if exists members_update on public.members';
-  execute 'drop policy if exists members_delete on public.members';
-
-  execute 'create policy members_select on public.members
-             for select using (public.is_member(workspace_id))';
-  execute 'create policy members_insert on public.members
-             for insert with check (public.is_owner(workspace_id) and auth.uid() = user_id)';
-  execute 'create policy members_update on public.members
-             for update
+  execute 'create policy members_access on public.members
+             for all
              using      (public.is_member(workspace_id))
              with check (public.is_owner(workspace_id) and auth.uid() = user_id)';
-  execute 'create policy members_delete on public.members
-             for delete using (public.is_owner(workspace_id))';
-  -- The creator's own first owner row still comes from workspaces_seed_owner, which is
-  -- security definer and so does not have to satisfy any of the above -- that is what closes
-  -- the chicken-and-egg hole.
+  -- read: any member sees the workspace''s membership rows (FR-007, FR-015)
+  -- write: owners only, recording themselves as the row''s creator.  The creator''s own first
+  --        owner row comes from workspaces_seed_owner, which is security definer and so does
+  --        not have to satisfy this predicate -- that is what closes the chicken-and-egg hole.
+end $blk$;
+
+-- ==========================================================================
+-- T023a findings 1 and 2 -- DELETE narrowed with RESTRICTIVE policies, `own_rows`/
+-- `members_access` left byte-identical to c5fda53 above.
+--
+-- `for all` applies its one `using` clause to SELECT, UPDATE **and DELETE** alike -- there is
+-- no way to give DELETE a narrower `using` than SELECT/UPDATE share within a single `for all`
+-- policy. At c5fda53 the widened `using` (added for team reads) therefore also widened DELETE:
+-- any member could hard-DELETE the team workspace (cascading away its labels/tasks/notes/
+-- members, finding 1) or any `members` row including the owner's (finding 2).
+--
+-- Renaming `own_rows`/`members_access` into four single-command policies apiece was the first
+-- approach tried here; it was reverted because two already-passing tests key off those exact
+-- names via `pg_policies` (`team-rls-both-halves.test.ts`'s `fetchPolicyHalves`,
+-- `schema-apply.test.ts`'s "creates the own_rows policy on all four tables") and this card's
+-- own instruction is to fix the schema, not the tests, when a name (not a behaviour) is what
+-- collides. `AS RESTRICTIVE` is the mechanism Postgres gives for exactly this: a restrictive
+-- policy's `using` clause is AND-ed onto the applicable permissive ones for the SAME command
+-- rather than OR-ed, so a `for delete` restrictive policy narrows what `own_rows`/
+-- `members_access` already permit for DELETE specifically, without touching either policy's
+-- own row in `pg_policies` (name, `qual`, `with_check` all stay exactly as introspected today).
+-- No committed test issues a member hard-DELETE of any of these tables (the app itself never
+-- does -- src/db/api.ts, src/sync/sync.ts only ever soft-delete), so narrowing DELETE here
+-- closes a hole without touching any asserted product behaviour.
+-- ==========================================================================
+
+do $blk$
+declare t text;
+begin
+  foreach t in array array['workspaces', 'labels', 'tasks', 'notes'] loop
+    execute format('drop policy if exists %I_zz_delete_creator_only on public.%I', t, t);
+    execute format('create policy %I_zz_delete_creator_only on public.%I
+      as restrictive
+      for delete
+      using (auth.uid() = user_id)', t, t);
+  end loop;
+
+  execute 'drop policy if exists members_zz_delete_owner_only on public.members';
+  execute 'create policy members_zz_delete_owner_only on public.members
+             as restrictive
+             for delete
+             using (public.is_owner(workspace_id))';
 end $blk$;
 
 -- ==========================================================================
