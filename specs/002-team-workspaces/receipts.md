@@ -308,3 +308,67 @@ such an update.
 planning artifacts, not a new decision. It changes no requirement: FR-034 and D-6′ were already
 owner-approved. It is recorded here so the divergence between the T016 card text and the contracts
 is not mistaken later for a silent scope change. Sign-off: Andrii Tkhorenko (single-operator).
+
+## T008 receipt — test-only `adminClient(testUser)` (2026-09-14)
+
+Merge commit `1584e31` (lane `wt/harness-accounts`, worker commit `fa85fcd`).
+
+**What landed.** Two lines of import (`pg`'s `Client`, and `DB_URL` added to the existing `./stack`
+import) plus one appended exported function. `adminClient(testUser)` opens a direct `pg` connection
+on `DB_URL`, runs a single parameterized `insert into public.instance_admins (user_id) values ($1)
+on conflict (user_id) do nothing`, closes the connection in a `finally`, and returns `asUser(testUser)`
+— the same memoized authenticated client T007 introduced, now admin-flagged. Never through
+PostgREST, never through an RPC, because no client-callable grant-admin path exists anywhere in
+this project and none may (FR-039).
+
+**Why it exists.** The harness provisions users through `auth.admin.createUser`, so "the first
+account created is the admin" lands nondeterministically inside a suite and is worse than useless
+on a database that already has rows. The `users_seed_first_admin` trigger itself is still asserted
+separately, against an empty `instance_admins`, by T018 — this helper is not a substitute for that
+assertion and its doc comment says so.
+
+**Verification.**
+
+- Full stack suite in the lane: `Test Files 5 passed (5) / Tests 24 passed (24)`. That is the
+  P0-no-regression half of the card's verify, and it passed.
+- `npm run lint` (oxlint) exit 0. `npx tsc -b --noEmit` exit 0. Both re-run by the closer, not
+  taken on the author's word.
+- `grep -rn "adminClient" src/` returns nothing; repo-wide the name appears only at the two lines of
+  `tests/harness/accounts.ts`.
+- Additive-only (D-13) confirmed by diffing against `git show a694465:tests/harness/accounts.ts`:
+  every pre-existing export is byte-identical.
+- The closer confirmed the conflict target is valid — `contracts/policies.sql` line 290 declares
+  `user_id uuid primary key` — and that the insert is not blocked by the table's RLS-with-no-policy
+  rule, because the harness connects as `postgres` with `rolbypassrls = true`.
+- `granted_by` is deliberately left null: the column is nullable, no constraint or routine reads it,
+  and `list_logins()` never surfaces it. Fabricating a grantor would assert a provenance that did
+  not happen.
+
+**Outstanding re-verify obligation, against T026 — this is not a waiver.** The card's verify also
+asks that `adminClient(a)` then `is_admin()` returns `true`, and `false` from a non-admin. That is
+not executable today: `select to_regclass('public.instance_admins')` returns null on the live local
+stack, because the table and `is_admin()` land at T025 and T026. The behavioural half is therefore
+**carried by T018** (`tests/stack/logins-provisioning.test.ts`), which is `blocked-by: T008` and is
+the only consumer of the helper: its admin-side clauses all require a caller for whom `is_admin()`
+is true, so a broken helper fails T018 loudly and by name at T026, whose own verify line already
+runs that file. `adminClient` is **not** described here as behaviourally verified, and
+`account-provisioning` moves no closer to green on the strength of this card.
+
+To make that discharge literal rather than inferred, the coordinator added clause **(j)** to T018's
+card: `is_admin()` is called directly and asserted `true` from `adminClient(a)` and `false` from an
+ordinary `asUser(b)` (T008 closer finding 1).
+
+**Map discipline.** The closer found that `account-provisioning`, cited as substrate by T008 and
+T018, had no entry in `docs/validation-map.md` at all, though ADR-0006's Consequences commit to a
+new HIGH-criticality entry covering the routines, the first-account trigger and the admin guards.
+The coordinator created it as `UNTESTED` in this change set, with its own `accepted-risk` line
+recording that it was created ahead of its code so the cards cite a substrate that exists. It
+reaches no other status without a receipt naming command, revision, date and the sign-off.
+
+**Other checks.** Personal-must-not-regress: not applicable, test-harness file, nothing under
+`src/`, `supabase/` or `worker/`. Spec control: one function, one import line, nothing beyond the
+card. Origin-invariant: no origin column, table or cross-origin reference. FR-044: no password, key,
+token or credential literal in the added code.
+
+Verdict: PASS, mergeable, two advisory findings both actioned above. Sign-off: Andrii Tkhorenko
+(single-operator).

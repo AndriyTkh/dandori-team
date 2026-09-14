@@ -98,6 +98,19 @@ distinctions below.
   last-verified: 5448a0d 2026-09-13
   sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
 
+- id: account-provisioning
+  kind: backend
+  criticality: HIGH
+  status: UNTESTED
+  paths: [supabase/schema.sql]
+  verify: "NONE — needs writing; becomes `npx vitest run --project stack tests/stack/logins-provisioning.test.ts tests/stack/team-schema-guards.test.ts` once T018 and T026 land"
+  tests: —
+  depends-on: [supabase-schema, supabase-auth]
+  scenarios: []
+  last-verified: —
+  sign-off: —
+  accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T008 and T018 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers the provisioning routines, the first-account trigger on auth.users and the admin guards. Nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
+
 - id: supabase-auth
   kind: adapter
   criticality: HIGH
