@@ -220,7 +220,7 @@ untouched (FR-014), so every new BEFORE trigger is named `…_zz_…` and theref
 - **No `profiles`-like mirror of the admin flag either.** `instance_admins` is not synced, not in
   `SYNCED_TABLES`, and not in Dexie as a table; the per-device `is-admin` meta key is a cached answer
   to `is_admin()`, not a copy of the table (D-17).
-- **No hard delete of an account.** `delete_login` **bans** — `banned_until = 'infinity'` plus a
+- **No hard delete of an account.** `delete_login` **bans** — `banned_until = '9999-12-31 23:59:59+00'` (finite, A-009) plus a
   scrambled password hash — because every data table declares
   `user_id ... references auth.users (id) on delete cascade` (`supabase/schema.sql` workspaces:18,
   labels:32, tasks:44, notes:81). A real `delete from auth.users` would cascade away that login's

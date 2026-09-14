@@ -1016,7 +1016,7 @@ ADR-0006 says `delete from auth.users`. The schema forbids it: `workspaces` (lin
 **on delete cascade**`. Deleting the account row would therefore delete every task, label and note
 that login ever created — including rows living in a team workspace other people are still using —
 which is precisely what the spec's "their rows remain, the creator id is kept" and SC-016 forbid. So
-the routine sets `banned_until = 'infinity'`, scrambles `encrypted_password` to an unusable value,
+the routine sets `banned_until = '9999-12-31 23:59:59+00'` (finite, A-009), scrambles `encrypted_password` to an unusable value,
 drops any `instance_admins` row, and **soft-deletes that login's `members` rows** with
 `updated_at = greatest(updated_at, now())` so `members_zz_clear_assignee` clears their assignees
 exactly as a manual removal does. Sign-in is refused by GoTrue; the data and the authorship stay.
