@@ -171,6 +171,13 @@ an acknowledged weakness at the same time.
   workspaces still has one cache, and today's wholesale wipe is keyed to a single owner. Write it
   so that ADR-0004's per-origin caching is a **widening of the same key**, not a later rewrite:
   the eventual key is `(origin, account)`, and P1 implements the `account` half of it.
+
+  **Amendment, 2026-09-14 (owner-approved 2026-09-13):** the bullet above does not hold. Per
+  `specs/002-team-workspaces/plan.md` D-10, P1's cache change is **additive, not a rework**:
+  `claimCache`/`wipeLocal` keep their signatures, `meta` key and semantics unchanged; Dexie moves
+  2 → 3 by adding a `members` store and backfilling `kind`/`assignee` defaults, with no store
+  changed or dropped. D-10 stands. The `multi-account-cache` map entry
+  (`docs/validation-map.md`) records the confirmed-unchanged deliverable this produced.
 - Team RLS predicates cost a membership lookup per row check. Not measured; not a v1 concern at
   self-hosted scale, but named here so a later slowdown has a suspect.
 

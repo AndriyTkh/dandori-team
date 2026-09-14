@@ -161,7 +161,7 @@ distinctions below.
   scenarios: [s-auth-session-recovery, s-account-switch-wipe]
   last-verified: —
   sign-off: —
-  accepted-risk: "sign-out ordering uncovered in P0, P1 inherits (owner, 2026-09-12; specs/001-validation-spine/receipts.md F-5)"
+  accepted-risk: "sign-out ordering uncovered; browser-bound. Owner: Andrii Tkhorenko, 2026-09-13, expires end of P2 (Playwright arrives, ADR-0003)"
   accepted-risk: "UNTESTED supabase-auth accepted as incidental substrate for the 002 P1 harness cards T007–T019 (owner, 2026-09-14; specs/002-team-workspaces/receipts.md \"Owner decisions 2026-09-14\" #1)"
 ```
 
