@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import { SYNCED_TABLES, type Label, type Note, type Task, type Workspace } from './types'
+import { SYNCED_TABLES, type Label, type Member, type Note, type Task, type Workspace } from './types'
 
 /*
  * The local database is the source of truth for the UI.
@@ -22,6 +22,7 @@ export class DandoriDB extends Dexie {
   labels!: EntityTable<Local<Label>, 'id'>
   tasks!: EntityTable<Local<Task>, 'id'>
   notes!: EntityTable<Local<Note>, 'id'>
+  members!: EntityTable<Local<Member>, 'id'>
   meta!: EntityTable<Meta, 'key'>
 
   constructor() {
@@ -60,6 +61,32 @@ export class DandoriDB extends Dexie {
           t.gcal_placed ??= null
         })
     })
+
+    /*
+     * `members` arrives with team workspaces (D-10). Only a store is added —
+     * no existing store's key or index changes, so Dexie rebuilds nothing
+     * here. The backfill mirrors the v2 calendar one above: `kind` and
+     * `assignee` are new fields on rows that predate them, filled in so a row
+     * read back is never `undefined` where the type promises a value.
+     */
+    this.version(3)
+      .stores({
+        members: 'id, workspace_id, _dirty',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('workspaces')
+          .toCollection()
+          .modify((w: Partial<Workspace>) => {
+            w.kind ??= 'personal'
+          })
+        await tx
+          .table('tasks')
+          .toCollection()
+          .modify((t: Partial<Task>) => {
+            t.assignee ??= null
+          })
+      })
   }
 }
 
@@ -102,24 +129,39 @@ export async function pendingCount(): Promise<number> {
 export async function claimCache(userId: string): Promise<void> {
   // One transaction: the sign-in and the first push both claim, and a check
   // and a wipe from the two of them interleaved would each see the other's
-  // half-done work.
-  await db.transaction('rw', db.workspaces, db.labels, db.tasks, db.notes, db.meta, async () => {
-    const owner = await getMeta('owner')
-    if (owner === userId) return
-    if (owner) await wipeLocal()
-    await setMeta('owner', userId)
-  })
+  // half-done work. `members` is listed alongside the original four tables
+  // (D-10: additive only) so that `wipeLocal`, called below, can join this
+  // same transaction instead of opening a second, incompatible one — Dexie
+  // requires a nested transaction's tables to be a subset of the one it
+  // joins, and awaiting a foreign transaction from inside this one would
+  // commit it early. Signature, the `owner` meta key, its value (the bare
+  // user id) and the check-wipe-set sequence are exactly as before.
+  await db.transaction(
+    'rw',
+    [db.workspaces, db.labels, db.tasks, db.notes, db.members, db.meta],
+    async () => {
+      const owner = await getMeta('owner')
+      if (owner === userId) return
+      if (owner) await wipeLocal()
+      await setMeta('owner', userId)
+    },
+  )
 }
 
 /** Wipes all local data — used on sign-out. */
 export async function wipeLocal(): Promise<void> {
-  await db.transaction('rw', db.workspaces, db.labels, db.tasks, db.notes, db.meta, async () => {
-    await Promise.all([
-      db.workspaces.clear(),
-      db.labels.clear(),
-      db.tasks.clear(),
-      db.notes.clear(),
-      db.meta.clear(),
-    ])
-  })
+  await db.transaction(
+    'rw',
+    [db.workspaces, db.labels, db.tasks, db.notes, db.members, db.meta],
+    async () => {
+      await Promise.all([
+        db.workspaces.clear(),
+        db.labels.clear(),
+        db.tasks.clear(),
+        db.notes.clear(),
+        db.members.clear(),
+        db.meta.clear(),
+      ])
+    },
+  )
 }

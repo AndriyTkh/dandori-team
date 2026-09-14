@@ -5,7 +5,8 @@ Reconstructed from the code and the read-only audit of upstream `nitatsuu/Dandor
 Claims about the **fork target** carry no citation on purpose — they describe what does not exist
 yet, and each is anchored to an ADR instead.
 
-Fixed skeleton §0–§6 per the structure contract (`docs/project-structure.md`). Cite ranges as
+Fixed skeleton §0–§7 per the structure contract (`docs/project-structure.md`; §7 Stages added by
+ADR-0008 at `structure-version: 5`). Cite ranges as
 `ARCHITECTURE.md §N`, resolved through `docs/architecture-index.md`. Never read this file whole.
 
 ---
@@ -110,7 +111,7 @@ annoys. LOW = a failure is cosmetic.
 | `sync-engine` | adapter | **HIGH** | Push/pull loop, per-table cursors, LWW merge, session guard, sync status | `local-cache`, `supabase-auth`, `supabase-schema` |
 | `supabase-schema` | adapter | **HIGH** | Postgres tables, RLS policies, triggers, migrations | — |
 | `supabase-auth` | adapter | **HIGH** | Supabase client, session bootstrap and offline fast path, sign-in/out ordering | — |
-| `gcal-integration` | adapter | NORMAL | One-way reconciliation of tasks into Google Calendar | `db-api`, `sync-engine` |
+| `gcal-integration` | adapter | NORMAL | One-way reconciliation of tasks into Google Calendar, plus deletion read-back; the worker route that holds the Google client secret | `db-api`, `sync-engine` |
 | `views-core` | ui | NORMAL | Board, Timeline, Notes | `db-api` |
 | `task-dialog` | ui | NORMAL | The task card as a modal | `db-api` |
 | `chrome-components` | ui | LOW | Header, tab bar, sign-in, settings, sync badge, filters, banner | `supabase-auth`, `sync-engine` |
@@ -142,7 +143,8 @@ views / components ──► db-api ──► local-cache (Dexie)
                                       ▲
                                       │
                           sync-engine ─┴─► Supabase (Postgres + RLS)
-gcal-integration ──► Google Calendar API (browser-direct, no server)
+gcal-integration ──► Google Calendar API (browser-direct)
+                 └─► worker/index.ts (/api/gcal/*, token exchange only) ──► Google OAuth
 ```
 
 Two rules hold the layering up, both upstream's:
@@ -422,21 +424,35 @@ Grouped: workspaces (`listWorkspaces`, `createWorkspace`, `renameWorkspace`, `de
 Fork note: this is where a workspace `kind` becomes visible to the UI, and where team-only
 operations will live. It is also the narrowest place to enforce "personal behaves as before".
 
-### Google Calendar — one-way, browser-direct, no server
+### Google Calendar — one-way but for deletion, browser-direct but for the token (ADR-0007)
 
-There is no server component anywhere in this project (`src/gcal/client.ts:1-13`); the browser
-calls `googleapis.com/calendar/v3` directly (`src/gcal/api.ts:14`) using a Google Identity
-Services token client loaded on demand (`src/gcal/client.ts:15, 131-157`).
+Calendar traffic is still browser-direct: the page calls `googleapis.com/calendar/v3` itself
+(`src/gcal/api.ts:15`). **One step is not**: Google hands a refresh token only to a client that can
+keep a secret, so the code-for-tokens and refresh-for-an-hour exchanges are asked of this site's own
+Cloudflare Worker (`src/gcal/client.ts:1-15, 20-21`; `worker/index.ts:1-15, 24-25`). The worker
+answers only `/api/gcal/token` and `/api/gcal/revoke`, only to POSTs from its own origin, 404s
+anything else under `/api/`, and otherwise serves `ASSETS` (`worker/index.ts:79-88`;
+`wrangler.jsonc` — `main`, `run_worker_first`). It stores nothing and holds no Supabase or workspace
+identity (ADR-0007 §3). The refresh token is the account and lives in the browser's `localStorage`
+(`src/gcal/client.ts:69-96, 259`); the access token lives in the tab only
+(`src/gcal/client.ts:270-276, 293-307`).
 
-Design is reconciliation-on-tick, not write-hooks (`src/gcal/sync.ts:1-14`): every 60 s
-(`src/gcal/sync.ts:22, 274`) a pass walks all tasks and sends the difference between what each task
-*wants* and a stored signature of what was last sent (`src/gcal/sync.ts:64-78`, stored in Dexie
-`meta` under `gcal:<taskId>`, per-device, unsynced). The event id is the task uuid with dashes
-stripped (`src/gcal/api.ts:97-99`), so no event id is ever stored and two devices converge on one
-event. Quota refusals back off 5 minutes (`src/gcal/sync.ts:23, 244`). `placed()` writes
-`_dirty: 1` **without touching `updated_at`** so bookkeeping cannot win a conflict
-(`src/gcal/sync.ts:106-115`) — this is exactly the case `keep_newer()`'s equal-stamp acceptance
+Design is reconciliation-on-tick, not write-hooks (`src/gcal/sync.ts:1-13`): every 60 s
+(`src/gcal/sync.ts:32, 434`) a pass walks all tasks and sends the difference between what each task
+*wants* and a stored signature of what was last sent (`src/gcal/sync.ts:100-117`, stored in Dexie
+`meta` under `gcal:` (`src/gcal/sync.ts:36`), per-device, unsynced). A label's colour chooses the
+event's colour (`src/gcal/sync.ts:153`, `GCAL_COLOR_OF` in `src/db/types.ts`). The event id is the
+task uuid with dashes stripped (`src/gcal/api.ts:97-99`), so no event id is ever stored and two
+devices converge on one event. Quota refusals back off 5 minutes (`src/gcal/sync.ts:34, 381`).
+`placed()` writes `_dirty: 1` **without touching `updated_at`** so bookkeeping cannot win a conflict
+(`src/gcal/sync.ts:161-177`) — this is exactly the case `keep_newer()`'s equal-stamp acceptance
 exists for.
+
+**One bit travels the other way.** Each calendar with events is asked once a pass what was deleted
+in it since the last question (`src/gcal/sync.ts:288-289, 335`; `src/gcal/api.ts:186`), and a
+deleted event unticks its task — read and acted on *before* the same pass writes anything, so a task
+whose event is gone leaves the sync before it can be rewritten (`src/gcal/sync.ts:369-376`). Nothing
+else in Google's answer is looked at.
 
 ### App shell
 
@@ -475,10 +491,13 @@ Schema is applied **by hand**: Supabase dashboard → SQL Editor → paste `supa
 Three env vars, all `VITE_`-prefixed and therefore **inlined at build time**, so changing one
 requires a redeploy (`README.md:42-69`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (both
 required — the client throws without them, `src/auth/supabase.ts:6-10`), and
-`VITE_GOOGLE_CLIENT_ID` (optional; absent means Google Calendar reports `unconfigured`). There is
-no client secret anywhere and no `service_role` key in the repo (`.env.example:9-10`,
-`supabase/README.md:12-13`) — the anon key plus the four `own_rows` policies is the entire
-authorization story.
+`VITE_GOOGLE_CLIENT_ID` (optional; absent means Google Calendar reports `unconfigured`). **No client
+secret is in the repository or in the bundle, and no `service_role` key is in the repo**
+(`.env.example`, `supabase/README.md:12-13`) — the anon key plus the four `own_rows` policies is the
+entire authorization story. The one secret the deploy has, `GOOGLE_CLIENT_SECRET`, is a **Cloudflare
+Worker secret**, set by hand beside `GOOGLE_CLIENT_ID` and used only by `worker/index.ts`
+(`README.md:77-83`); `worker/` is owned by the `infra` role, and ADR-0001's "no credential in the
+repository" rule binds it unchanged (ADR-0007 §2).
 
 **Fork target: origin config becomes runtime, not build-time** (ADR-0004, consequence (a)). Today
 the artifact is welded to one Supabase project, so every self-hoster must build their own bundle
@@ -533,6 +552,10 @@ nothing more.
 | `docs/decisions/ADR-0002-phase-gates.md` | P0 validation spine → P1 team transform → P2 scenarios/e2e → P3 agent layer; no phase starts on `UNTESTED` substrate |
 | `docs/decisions/ADR-0003-test-framework.md` | Vitest from P0 against the `supabase` CLI local stack; Playwright deferred to P2, cost-of-later assessed as equal |
 | `docs/decisions/ADR-0004-multi-origin-federation.md` | Each person hosts 0–1 Supabase origin; a shared workspace lives wholly on its host's origin; **data never crosses origins**; origin config becomes runtime; registry is an owner-scheduled P2/P3 item |
+| `docs/decisions/ADR-0005-schema-sql-canonical.md` | `supabase/schema.sql` is the one idempotent home of every definition; `migration-00N` carries only one-off row edits |
+| `docs/decisions/ADR-0006-account-provisioning-in-postgres.md` | Accounts are provisioned by `security definer` routines in Postgres, gated by `instance_admins`; no service-role key leaves the database |
+| `docs/decisions/ADR-0007-gcal-worker-route-adopted.md` | Upstream's Google Calendar worker route (`/api/gcal/*`, refresh token in the browser, secret only in Worker secrets) is adopted as-is |
+| `docs/decisions/ADR-0008-plumbline-stages-profile.md` | The repo adopts `structure-version: 5`: `project-profile.yaml` with three stages, decision ledger, owner gates, `§7 Stages` below; rigor and autonomy are per-stage owner rulings, never inferred |
 
 Changing this file's architecture requires a **new ADR plus a `STALE` cascade on the affected map
 entries, in the same PR** — and regenerating `docs/architecture-index.md`.
@@ -591,3 +614,35 @@ Still open, carried to the owner:
 - **Does `assignee` need to survive a member's removal from a workspace?** A nullable pointer to a
   user who is no longer a member is either a dangling label or an automatic un-assign. Cheap to
   decide now, awkward to change once rows exist.
+
+## §7 Stages
+
+Mirrors `project-profile.yaml` → `stages`, which is the source of truth; this section exists so a
+reader of the architecture sees the ceremony each stage owes without opening the profile. Values
+are the owner's ruling of 2026-09-14 (`docs/owner-approvals.md` gate 1; ADR-0008). Re-confirmed at
+every sprint plan; a stage transition is the gate event, and nothing per-item is renegotiated
+inside a stage.
+
+**Rigor** sizes the evidence a map promotion needs (`table[tier][rigor]`, tracking-validated-
+components). **Autonomy** sizes how often the owner is interrupted. They are independent axes: a
+`rushed` stage still owes every HIGH-tier component its test before the component changes (the
+`data` role rule in `CLAUDE.md`; §B U-003), and a `high`-autonomy stage still stops on every item
+in the profile's `escalate_always` — personal regression, origin crossing, an LWW lockstep split, a
+write to the default branch, a secret in a diff.
+
+| id | phase | rigor | autonomy | gate cadence | ends at |
+|---|---|---|---|---|---|
+| `demo-rush` | P1 | `rushed` | `high` (debt budget 5) | sprint | `sprint_end` = 2026-09-16 — demo functionality complete |
+| `demo-harden` | P2 | `standard` | `high` (debt budget 5) | sprint | `demo` = 2026-09-20 — main testing and user testing done |
+| `post-demo` | P3 | `standard` | `normal` (debt budget 2) | feature | `global` = open; owner dates it at the first post-demo sprint plan |
+
+Phase labels are plumbline's (`P1` scaffold, `P2` feature, `P3` harden) and coincide with the
+fork's own P0–P3 of ADR-0002, whose gates remain authoritative: `demo-rush` is spec 002, the fork's
+P1 team transform; `demo-harden` opens the fork's P2 (route scenarios, user testing) only once
+002's substrate is no longer `UNTESTED`. `post-demo` is `standard`, not `regulated`, because the
+profile contract forbids `regulated` in `mode: solo` — the owner's wish for a "more regulated"
+phase is an open gate (`docs/owner-approvals.md` gate 4), not a value silently rounded down.
+
+`mode` is `solo` throughout. The upstream teammate working `nitatsuu/Dandori` is a **merge
+source**, not a member of this project: their commits are fetched one way into the fork (ADR-0001
+§Merge contract) and they hold no sign-off here.

@@ -38,23 +38,27 @@ Board features, by contrast, stay boring on purpose.
 Every session, in this order. Stop as soon as you have what the task needs.
 
 1. **This file** — contract, phase state, roles, git rules.
-2. **`docs/validation-map.md`** — what is actually known to work. Cheapest context in the repo:
+2. **`project-profile.yaml`** — `current_stage` and that stage's `rigor` (how much evidence a
+   promotion owes) and `autonomy` (how often the owner is interrupted). Separate axes; neither
+   substitutes for the other. The SessionStart hook prints them, plus `docs/state.md` and the
+   decision-debt count. Every off-plan decision gets a row in `docs/assumptions.md` §A; every owner
+   question gets a B1..B5 class and a row in `docs/owner-approvals.md` (ADR-0008).
+3. **`docs/validation-map.md`** — what is actually known to work. Cheapest context in the repo:
    it is the only place that distinguishes "written" from "verified".
-3. **`docs/architecture-index.md`** → the cited **`ARCHITECTURE.md §N` ranges** in
+4. **`docs/architecture-index.md`** → the cited **`ARCHITECTURE.md §N` ranges** in
    `docs/ARCHITECTURE.md`. Index first, ranged read. Never the whole file.
-4. **`docs/decisions/ADR-000N-*.md`** — when a choice surprises you, or before you change one.
-5. **`specs/NNN-<feature>/`** — the feature you are implementing. Does not exist yet; a later
-   planning route creates it.
+5. **`docs/decisions/ADR-000N-*.md`** — when a choice surprises you, or before you change one.
+6. **`specs/README.md`** → **`specs/NNN-<feature>/`** — the feature you are implementing.
 
-Reference, not read-order: `docs/project-structure.md` (repo layout + map grammar),
-`docs/upstream-CLAUDE.md` (upstream's contract, for merge diffs only — **never** quote it as fork
-policy).
+Reference, not read-order: `docs/project-structure.md` (repo layout + map grammar,
+`structure-version: 5`), `docs/upstream-CLAUDE.md` (upstream's contract, for merge diffs only —
+**never** quote it as fork policy).
 
 One fact, one home. Link, don't restate.
 
 ---
 
-## The contract (ADR-0001 + ADR-0004, summarized — the ADRs are authoritative)
+## The contract (ADR-0001 + ADR-0004 + ADR-0005, summarized — the ADRs are authoritative)
 
 - **Workspace kind.** `workspaces.kind` is `personal` or `team`, defaulting to `personal`.
   Personal behaves exactly as upstream ships it. Team resolves access through membership.
@@ -80,8 +84,11 @@ One fact, one home. Link, don't restate.
   points*. Neither changes without the other, in the same change set.
 - **Triggers survive.** `keep_newer`, `stay_deleted_with_workspace`, `follow_workspace_delete` must
   behave identically after the predicate swap.
-- **Migrations.** Upstream's convention kept: hand-written, numbered, idempotent SQL, run manually
-  in the Supabase SQL editor. Fork migrations start at **migration-007**. No down-migrations —
+- **Migrations.** Upstream's convention kept, as amended by upstream `a3a7572` and adopted in
+  ADR-0005: `supabase/schema.sql` is the one idempotent home of every definition (tables, guarded
+  column adds, functions, triggers, policies) and is re-run to upgrade a database; a
+  `migration-00N-*.sql` carries only one-off row edits. Hand-written, run manually in the Supabase
+  SQL editor. Fork migrations, when one is needed, start at **migration-007**. No down-migrations —
   recorded as an owner-accepted risk.
 - **Upstream merges** are routine and expected. Upstream stays personal-only. Nothing is
   contributed back by default. `docs/upstream-CLAUDE.md` stays byte-identical to upstream so every
@@ -168,7 +175,7 @@ the ADR-0001 contract above binds it directly.
 
 ### `ui` — interface
 
-Owns: `src/views/`, `src/components/`, `src/styles/`.
+Owns: `src/views/`, `src/components/`, `src/styles/`, `src/i18n/` (adding keys in both languages; rewording an existing string is a `designer`-rule violation for every role).
 
 - Board (three modes), timeline, notes, task card, workspace switcher, label filter, banners.
 - Themes, density, phone behaviour.
@@ -179,7 +186,8 @@ Owns: `src/views/`, `src/components/`, `src/styles/`.
 
 ### `infra` — build and deploy
 
-Owns: `vite.config.ts`, the manifest and service worker, `wrangler.jsonc`, `.github/`, `README.md`.
+Owns: `vite.config.ts`, the manifest and service worker, `wrangler.jsonc`, `worker/`, `.github/`,
+`README.md`.
 
 - Build config, PWA, deploy to Cloudflare Workers static assets, hosted Supabase.
 - CI (`.github/workflows/ci.yml`): install, typecheck, lint, build. The `test` step and the
@@ -188,7 +196,8 @@ Owns: `vite.config.ts`, the manifest and service worker, `wrangler.jsonc`, `.git
 - Secrets never enter the repository, under any circumstances. The three `VITE_` vars are inlined
   at build time; there is no client secret and no `service_role` key here. The local test stack's
   keys are fixed development values, which is why they may be committed and a hosted project's
-  never may.
+  never may. The Google client secret used by `worker/index.ts` lives only in Cloudflare Worker
+  secrets — never in the repository, never in the bundle (ADR-0007).
 - Later: moving origin config from build-time `VITE_` inlining to **runtime** (ADR-0004). One
   artifact, any origin — the thing that makes a published build usable by a self-hoster who did
   not build it.

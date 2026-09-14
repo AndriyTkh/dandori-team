@@ -1,5 +1,18 @@
-import { db, stripLocal, type Local } from './local'
-import { requestPush } from '../sync/sync'
+import { db, getMeta, stripLocal, type Local } from './local'
+import {
+  addMemberByEmailRemote,
+  createLoginRemote,
+  deleteLoginRemote,
+  listLoginsRemote,
+  memberEmailsRemote,
+  refreshIsAdminCache,
+  requestPush,
+  setLoginAdminRemote,
+  setLoginPasswordRemote,
+  type CreatedLogin,
+  type LoginRow,
+  type MemberEmail,
+} from '../sync/sync'
 import { translate } from '../i18n'
 import { taskDate } from './types'
 import type {
@@ -9,10 +22,12 @@ import type {
   ISODate,
   Label,
   LabelColor,
+  Member,
   Note,
   NoteKind,
   Task,
   Workspace,
+  WorkspaceKind,
 } from './types'
 
 /*
@@ -48,7 +63,18 @@ export async function listWorkspaces(): Promise<Workspace[]> {
   return rows.filter((w) => !w.deleted)
 }
 
-export async function createWorkspace(name: string): Promise<ID> {
+/**
+ * Defaulted to `'personal'` so every existing call site is unchanged.
+ *
+ * Writes **only** the workspace row. A team workspace's owner membership row
+ * is `workspaces_seed_owner`'s server-side effect and reaches this device on
+ * its next pull (D-6, D-11 affordance 1) — writing one locally here would
+ * collide with `members_one_per_person` and wedge the queue (R-14).
+ */
+export async function createWorkspace(
+  name: string,
+  kind: WorkspaceKind = 'personal',
+): Promise<ID> {
   const existing = await listWorkspaces()
   const ts = now()
   const row: Local<Workspace> = {
@@ -56,6 +82,7 @@ export async function createWorkspace(name: string): Promise<ID> {
     name: name.trim() || translate('common.untitled'),
     gcal_sync: false,
     gcal: null,
+    kind,
     position: (existing.at(-1)?.position ?? 0) + POS_STEP,
     created_at: ts,
     updated_at: ts,
@@ -82,13 +109,27 @@ export async function renameWorkspace(id: ID, name: string): Promise<void> {
   queue()
 }
 
+/**
+ * Kind switching is an ordinary patch, not an RPC (contracts/rpc.md): same
+ * read-modify-write-then-queue shape as `updateTask`. No-op if the row is
+ * missing or already soft-deleted.
+ */
+export async function updateWorkspace(id: ID, patch: Pick<Workspace, 'kind'>): Promise<void> {
+  await db.transaction('rw', db.workspaces, async () => {
+    const row = await db.workspaces.get(id)
+    if (!row || row.deleted) return
+    await db.workspaces.put(touch({ ...row, ...patch }))
+  })
+  queue()
+}
+
 /** Deleting a workspace soft-deletes its content too, or the orphans stay out of reach. */
 export async function deleteWorkspace(id: ID): Promise<void> {
-  await db.transaction('rw', db.workspaces, db.labels, db.tasks, db.notes, async () => {
+  await db.transaction('rw', db.workspaces, db.labels, db.tasks, db.notes, db.members, async () => {
     const ws = await db.workspaces.get(id)
     if (ws) await db.workspaces.put(touch({ ...ws, deleted: true }))
 
-    for (const table of [db.labels, db.tasks, db.notes]) {
+    for (const table of [db.labels, db.tasks, db.notes, db.members]) {
       const rows = await table.where('workspace_id').equals(id).toArray()
       for (const row of rows) {
         if (!row.deleted) await table.put(touch({ ...row, deleted: true }) as never)
@@ -96,6 +137,140 @@ export async function deleteWorkspace(id: ID): Promise<void> {
     }
   })
   queue()
+}
+
+// --------------------------------------------------------------- current user
+
+/**
+ * The signed-in device's own uid, cached in the Dexie `meta` table under key
+ * `'owner'` by `claimCache` (`src/db/local.ts`) — the same shape as the
+ * `is-admin` cache `isAdmin()` reads (below). Null before the first sign-in
+ * claims the cache.
+ */
+export async function currentUserId(): Promise<string | null> {
+  return getMeta('owner')
+}
+
+// ------------------------------------------------------------------- members
+
+export async function listMembers(workspaceId: ID): Promise<Member[]> {
+  const rows = await db.members.where('workspace_id').equals(workspaceId).toArray()
+  return rows.filter((m) => !m.deleted)
+}
+
+/**
+ * An ordinary soft-delete write plus a queued push — removal is not an RPC
+ * (contracts/rpc.md "Client layering"), so it works offline exactly like
+ * `deleteTask`. `memberId` is the *person's* id (`member_id`), the same value
+ * `listMembers`/`memberEmails` hand the UI — not the row's own surrogate `id`.
+ */
+export async function removeMember(workspaceId: ID, memberId: ID): Promise<void> {
+  await db.transaction('rw', db.members, async () => {
+    const rows = await db.members.where('workspace_id').equals(workspaceId).toArray()
+    const row = rows.find((m) => m.member_id === memberId)
+    if (!row) return
+    await db.members.put(touch({ ...row, deleted: true }))
+  })
+  queue()
+}
+
+/**
+ * Online-only: an email -> uuid lookup can only happen where `auth.users`
+ * lives (FR-008), so — alone among `db-api` reads — this reaches through
+ * `src/sync/sync.ts` rather than Dexie (D-9). The per-device `member-email:`
+ * cache (Q-A Option B) lands in this one function in a later card (TG-4), not
+ * here.
+ */
+export async function memberEmails(workspaceId: ID): Promise<MemberEmail[]> {
+  return memberEmailsRemote(workspaceId)
+}
+
+/**
+ * Online-only for the same reason as `memberEmails` (D-9). The row the RPC
+ * hands back is written straight into Dexie, already-synced, so the new
+ * member appears without waiting for the next pull.
+ */
+export async function addMemberByEmail(workspaceId: ID, email: string): Promise<Member> {
+  const row = await addMemberByEmailRemote(workspaceId, email)
+  await db.members.put({ ...row, _dirty: 0 })
+  return row
+}
+
+// ---------------------------------------------------------------- instance admin
+
+/**
+ * The per-device admin flag (D-17), read from the Dexie `meta` cache under
+ * key `is-admin` — the same shape as the `member-email:<uuid>` cache (a plain
+ * string value keyed in `meta`). **Display-only**: it decides whether Settings
+ * draws the Logins section, nothing else. Every routine in the "logins"
+ * group below re-checks `is_admin()` inside the database on every call, so a
+ * device that lies to itself buys a `DA001` and nothing more (FR-037, FR-042).
+ * A cache with nothing written yet — a personal-only user, or a fresh
+ * install before the first sync cycle — reads `false`.
+ */
+export async function isAdmin(): Promise<boolean> {
+  return (await getMeta('is-admin')) === 'true'
+}
+
+/**
+ * Refreshes the cached flag from server truth and writes it back to `meta`.
+ * Called once at boot and again on each successful sync cycle's admin check
+ * (D-17) — never on every render, or the Logins section would flash in and
+ * out. Online-only, like the five provisioning calls below: offline, this
+ * throws rather than silently trusting a stale cache. `wipeLocal()` already
+ * clears every `meta` row (T029), `is-admin` included, so signing out on a
+ * shared device never leaves the next person believing they are an admin.
+ */
+export async function refreshIsAdmin(): Promise<boolean> {
+  return refreshIsAdminCache()
+}
+
+// -------------------------------------------------------------------- logins
+
+/*
+ * Five thin online-only delegations to `src/sync/sync.ts` (contracts/rpc.md
+ * "Client layering", D-16). None of these touch a synced table — provisioning
+ * writes to `auth.users`, not to anything `SYNCED_TABLES` carries — so there
+ * is nothing here to queue and nothing offline to fall back to. Every one
+ * fails loudly rather than queuing (FR-044): a queued account creation would
+ * be a password sitting in Dexie. `error.code` passes through unchanged, same
+ * discipline as `addMemberByEmail` above, so a caller branches on
+ * `DA001`/`DA010`..`DA015`/`DA404` without reading the message text.
+ */
+
+/** The Logins section's list. Admin-only — raises `DA001` rather than handing back an empty list. */
+export async function listLogins(): Promise<LoginRow[]> {
+  return listLoginsRemote()
+}
+
+/**
+ * Mints a login on this origin. Unwrapped here, not in `sync.ts`: the RPC's
+ * `returns table` shape is an implementation detail of PostgREST, and the UI
+ * asks for the one login it just created, not a list of one.
+ */
+export async function createLogin(
+  email: string,
+  password: string,
+  admin = false,
+): Promise<CreatedLogin> {
+  const [row] = await createLoginRemote(email, password, admin)
+  if (!row) throw new Error('create_login returned no row')
+  return row
+}
+
+/** Replaces a login's password. Admin-only: `DA001`/`DA011`/`DA404`. */
+export async function setLoginPassword(userId: string, password: string): Promise<void> {
+  await setLoginPasswordRemote(userId, password)
+}
+
+/** Bans a login and clears its memberships. Admin-only: `DA001`/`DA404`/`DA013`/`DA014`. */
+export async function deleteLogin(userId: string): Promise<void> {
+  await deleteLoginRemote(userId)
+}
+
+/** Grants or revokes instance admin. Admin-only: `DA001`/`DA404`/`DA015`. */
+export async function setLoginAdmin(userId: string, admin: boolean): Promise<void> {
+  await setLoginAdminRemote(userId, admin)
 }
 
 // -------------------------------------------------------------------- labels
@@ -191,6 +366,7 @@ export async function createTask(workspaceId: ID, input: NewTask): Promise<ID> {
     custom_fields: [],
     gcal: null,
     gcal_placed: null,
+    assignee: null,
     created_at: ts,
     updated_at: ts,
     deleted: false,
@@ -220,6 +396,7 @@ export type TaskPatch = Partial<
     | 'note_id'
     | 'label_ids'
     | 'custom_fields'
+    | 'assignee'
   >
 >
 

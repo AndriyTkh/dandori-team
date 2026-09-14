@@ -1,6 +1,7 @@
 import { supabase } from '../auth/supabase'
 import { claimCache, db, getMeta, pendingCount, setMeta, type Local } from '../db/local'
 import { SYNCED_COLUMNS, SYNCED_TABLES, type SyncedTable } from '../db/types'
+import type { Member, MemberLevel } from '../db/types'
 
 /*
  * Sync with Supabase.
@@ -224,10 +225,62 @@ async function push(): Promise<void> {
             .from(table)
             .upsert(payload, { onConflict: 'id' })
             .select('id')
-          if (error) throw error
           if (mine !== session) return
 
-          const landed = new Set((data ?? []).map((row) => (row as { id: string }).id))
+          // D-18: a `42501` (RLS `with check` refusal) rejects the whole
+          // batch, so without this the row behind the refused one — owed
+          // nothing, guilty of nothing — would be held hostage forever by a
+          // batch resent unchanged every cycle. Retried one row at a time,
+          // same payload construction, same `onConflict`, same `.select('id')`,
+          // so a row landing alone is bookkept exactly like a batch-landed
+          // one below. Any other error keeps today's behaviour: thrown here,
+          // caught by this table's `catch`, the whole cycle fails and is
+          // retried whole next time — this file never learns the batch had a
+          // problem at all in that case.
+          let landedRows = data
+          const droppedByRefusal = new Set<string>()
+          if (error) {
+            const singles: { id: string }[] = []
+            for (let i = 0; i < batch.length; i++) {
+              const { data: rowData, error: rowError } = await supabase
+                .from(table)
+                .upsert([payload[i]], { onConflict: 'id' })
+                .select('id')
+              if (mine !== session) return
+              if (rowError) {
+                if (rowError.code !== '42501') throw rowError
+                /*
+                 * A `42501` alone doesn't say which kind of refusal this is.
+                 * If the row can still be read, this account held it and an
+                 * `UPDATE` was refused (a member renaming a workspace only the
+                 * owner may rename) — that is the *other* kind of refusal,
+                 * where the server is silently keeping its own row, and it
+                 * belongs in the refused-id merge below, not here: leaving it
+                 * off `droppedByRefusal` (and out of `singles`) is enough to
+                 * carry it there. Only when the row can no longer be read at
+                 * all — this account was never going to get a corrected copy
+                 * of it from a pull, because it never held the server row to
+                 * begin with — is it dropped outright, exactly as before.
+                 */
+                const { data: probeRow, error: probeError } = await supabase
+                  .from(table)
+                  .select('id')
+                  .eq('id', batch[i].id)
+                  .maybeSingle()
+                if (mine !== session) return
+                if (probeError) throw probeError
+                if (!probeRow) {
+                  await db[table].delete(batch[i].id)
+                  droppedByRefusal.add(batch[i].id)
+                }
+                continue
+              }
+              singles.push(...((rowData ?? []) as { id: string }[]))
+            }
+            landedRows = singles
+          }
+
+          const landed = new Set((landedRows ?? []).map((row) => (row as { id: string }).id))
 
           /*
            * A row that changed while the push was in flight stays dirty. The
@@ -254,7 +307,9 @@ async function push(): Promise<void> {
            * it here ends the conflict where it was lost, and the device stops
            * offering an edit that can never land.
            */
-          const refused = batch.filter((row) => !landed.has(row.id)).map((row) => row.id)
+          const refused = batch
+            .filter((row) => !landed.has(row.id) && !droppedByRefusal.has(row.id))
+            .map((row) => row.id)
           // The ids travel in the query string, so they go a hundred at a time.
           for (const ids of chunks(refused, 100)) {
             const { data: kept, error: keptError } = await supabase
@@ -353,6 +408,16 @@ async function runPull(): Promise<void> {
      */
     for (const table of SYNCED_TABLES) {
       if (!(await pullTable(table))) return
+    }
+    // T033: refreshed on every successful cycle, not only at boot. A failure
+    // here (offline mid-cycle, a transient RPC error) leaves the cached value
+    // exactly as it was — display-only, so stale-until-next-cycle is fine,
+    // and it must never turn a pull that otherwise succeeded into a reported
+    // failure.
+    try {
+      await refreshIsAdminCache()
+    } catch {
+      // swallowed on purpose — see above.
     }
     settle()
   } catch (err) {
@@ -504,4 +569,104 @@ export function startSync(): SyncHandle {
       document.removeEventListener('visibilitychange', onVisible)
     },
   }
+}
+
+// ------------------------------------------------------ remote RPCs (online-only)
+
+/*
+ * Eight thin wrappers over `security definer` RPCs (contracts/rpc.md, D-9,
+ * D-16). None of these touch Dexie or the queue — they are never queued: a
+ * queued account creation would be a password sitting in Dexie (FR-044), so
+ * every one fails loudly offline instead of waiting for a connection.
+ * `error.code` passes through unchanged so a caller branches on
+ * `DA001`/`DA404`/`DA010`..`DA015` without inspecting the message text.
+ */
+
+/** A co-member's email, resolved from `auth.users` at call time — never mirrored (D-9). */
+export interface MemberEmail {
+  member_id: string
+  email: string
+  level: MemberLevel
+}
+
+/** What `create_login` hands back: the login it just minted. */
+export interface CreatedLogin {
+  user_id: string
+  email: string
+  is_admin: boolean
+}
+
+/** One row of the instance-admin login list. */
+export interface LoginRow extends CreatedLogin {
+  created_at: string
+}
+
+/** Adds `email` to team workspace `ws` as a member. Owner-only: `DA001`/`DA404`. */
+export async function addMemberByEmailRemote(ws: string, email: string): Promise<Member> {
+  const { data, error } = await supabase.rpc('add_member_by_email', { ws, email })
+  if (error) throw error
+  return data as Member
+}
+
+/** The people in team workspace `ws`, for display — never authoritative (D-9). */
+export async function memberEmailsRemote(ws: string): Promise<MemberEmail[]> {
+  const { data, error } = await supabase.rpc('workspace_member_emails', { ws })
+  if (error) throw error
+  return (data ?? []) as MemberEmail[]
+}
+
+/** Whether the signed-in session holds instance admin. Never raises. */
+export async function isAdminRemote(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_admin')
+  if (error) throw error
+  return data as boolean
+}
+
+/**
+ * The one write path for the `is-admin` cache (D-17): fetches instance-admin
+ * truth and writes it to `meta` in the shape `isAdmin()` in `src/db/api.ts`
+ * reads back — a plain `'true'`/`'false'` string. Shared by the boot-time
+ * `refreshIsAdmin()` there, which lets a failure throw, and this file's own
+ * pull cycle (`runPull`, above), which does not: two callers, one write.
+ */
+export async function refreshIsAdminCache(): Promise<boolean> {
+  const admin = await isAdminRemote()
+  await setMeta('is-admin', String(admin))
+  return admin
+}
+
+/** Mints a login on this origin. Admin-only: `DA001`/`DA010`/`DA011`/`DA012`. */
+export async function createLoginRemote(
+  email: string,
+  password: string,
+  admin: boolean,
+): Promise<CreatedLogin[]> {
+  const { data, error } = await supabase.rpc('create_login', { email, password, admin })
+  if (error) throw error
+  return (data ?? []) as CreatedLogin[]
+}
+
+/** Replaces a login's password. Admin-only: `DA001`/`DA011`/`DA404`. */
+export async function setLoginPasswordRemote(userId: string, password: string): Promise<void> {
+  const { error } = await supabase.rpc('set_login_password', { user_id: userId, password })
+  if (error) throw error
+}
+
+/** Bans a login and clears its memberships. Admin-only: `DA001`/`DA404`/`DA013`/`DA014`. */
+export async function deleteLoginRemote(userId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_login', { user_id: userId })
+  if (error) throw error
+}
+
+/** Grants or revokes instance admin. Admin-only: `DA001`/`DA404`/`DA015`. */
+export async function setLoginAdminRemote(userId: string, admin: boolean): Promise<void> {
+  const { error } = await supabase.rpc('set_login_admin', { user_id: userId, admin })
+  if (error) throw error
+}
+
+/** The Logins section's list. Admin-only — raises `DA001` rather than an empty list. */
+export async function listLoginsRemote(): Promise<LoginRow[]> {
+  const { data, error } = await supabase.rpc('list_logins')
+  if (error) throw error
+  return (data ?? []) as LoginRow[]
 }

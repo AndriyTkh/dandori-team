@@ -27,3 +27,9 @@ npm-debug.log*
 
 # wrangler
 .wrangler/
+
+# plumbline (docs/project-structure.md): generated, per-user
+artifacts/
+project-profile.local.yaml
+.claude/agents/dev-main.md
+.claude/agents/dev-worker.md

@@ -5,7 +5,8 @@ Repo: inherited from upstream `nitatsuu` (single-user personal planner). Fork wi
 workspaces, agent task-file sync, speckit ingestion — this map covers what EXISTS today only.
 
 Bootstrap rule applied: every entry starts `UNTESTED` unless a receipt below proves otherwise.
-No inherited/green history was trusted. `structure-version: 1` (see `project-compass` contract).
+No inherited/green history was trusted. Bootstrapped at `structure-version: 1`; the repo moved to
+`structure-version: 5` on 2026-09-14 (ADR-0008) — entry grammar unchanged, so no entry was re-stamped.
 
 Repo has **no `docs/`, `specs/`, `decisions/` before this audit** — non-conforming to the full
 structure contract; this file and a stub `docs/project-structure.md` are the first step, not a
@@ -65,14 +66,14 @@ distinctions below.
 - id: db-api
   kind: lib
   criticality: HIGH
-  status: UNTESTED
+  status: VALIDATED
   paths: [src/db/api.ts, src/db/dates.ts]
-  verify: "NONE — needs writing"
-  tests: —
+  verify: "npm test -- --run --project local tests/local/db-api-p1-surface.test.ts"
+  tests: tests/local/db-api-p1-surface.test.ts
   depends-on: [local-cache]
   scenarios: [s-offline-edit-sync]
-  last-verified: —
-  sign-off: —
+  last-verified: 9bc5687 2026-09-13
+  sign-off: Andrii Tkhorenko (single-operator) — specs/002-team-workspaces/receipts.md "db-api receipt (T002)"
 
 - id: sync-engine
   kind: adapter
@@ -83,8 +84,8 @@ distinctions below.
   tests: [tests/stack/offline-round-trip.test.ts, tests/stack/lww-conflict.test.ts, tests/stack/soft-delete.test.ts]
   depends-on: [local-cache, supabase-auth, supabase-schema]
   scenarios: [s-offline-edit-sync, s-conflict-lww]
-  last-verified: e7f258d 2026-09-12
-  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
+  last-verified: ec12db6 2026-09-13
+  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md "2026-09-13 — sync-engine receipt repaired (002 T003–T005)"
 
 - id: supabase-schema
   kind: adapter
@@ -95,8 +96,59 @@ distinctions below.
   tests: [tests/stack/schema-apply.test.ts, tests/stack/rls-two-accounts.test.ts]
   depends-on: []
   scenarios: [s-conflict-lww, s-workspace-delete-cascade]
-  last-verified: 5448a0d 2026-09-13
-  sign-off: Andrii Tkhorenko (single-operator) — specs/001-validation-spine/receipts.md
+  last-verified: 381122b 2026-09-14
+  sign-off: Andrii Tkhorenko (single-operator) — specs/002-team-workspaces/receipts.md "T022 receipt — fork block C" (re-verified after fork blocks A, B and C; specs/001-validation-spine/receipts.md remains the original P0 receipt)
+
+- id: account-provisioning
+  kind: store
+  criticality: HIGH
+  status: UNTESTED
+  paths: [supabase/schema.sql, src/db/api.ts, src/sync/sync.ts, src/components/Settings.tsx]
+  verify: "npx vitest run --project stack tests/stack/logins-provisioning.test.ts tests/stack/team-schema-guards.test.ts tests/stack/logins-mint-empty-password.test.ts"
+  tests: [tests/stack/logins-provisioning.test.ts, tests/stack/logins-mint-empty-password.test.ts]
+  depends-on: [supabase-schema, supabase-auth, db-api]
+  scenarios: []
+  last-verified: —
+  sign-off: —
+  accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T008 and T018 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers the provisioning routines, the first-account trigger on auth.users and the admin guards. T025/T026 have now landed and the verify command above is green (21 files / 204 tests, exit 0, @ 18d6828, 2026-09-14) — this entry stays UNTESTED only because a HIGH-tier promotion is the owner’s to sign: it is QUEUED FOR SIGN-OFF, not unproven. Nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
+
+- id: membership
+  kind: store
+  criticality: HIGH
+  status: UNTESTED
+  paths: [supabase/schema.sql, src/db/api.ts]
+  verify: "NONE — needs writing; becomes `npx vitest run --project stack tests/stack/members-two-accounts.test.ts tests/stack/kind-switch.test.ts` once T020–T024 land"
+  tests: —
+  depends-on: [supabase-schema, supabase-auth]
+  scenarios: []
+  last-verified: —
+  sign-off: —
+  accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T010, T014, T017, T019, T021, T022, T024 and T026 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers `public.members`, the `members_one_per_person` constraint, `is_member`/`is_owner`, `on_workspace_kind_change` and the two membership RPCs. The red-first tests these cards write are committed **red** on purpose and prove nothing until the schema cards land; nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
+
+- id: team-rls
+  kind: store
+  criticality: HIGH
+  status: UNTESTED
+  paths: [supabase/schema.sql]
+  verify: "NONE — needs writing; becomes `npx vitest run --project stack tests/stack/team-rls-both-halves.test.ts tests/stack/rls-two-accounts.test.ts tests/stack/personal-unchanged.test.ts` once T023 lands"
+  tests: —
+  depends-on: [supabase-schema, membership]
+  scenarios: []
+  last-verified: —
+  sign-off: —
+  accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T011–T017 and T023 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers the replaced `own_rows` predicate block on `workspaces`/`labels`/`tasks`/`notes` and the fork-only `members_access` policy. **The asymmetry documented in the fork-substrate note below is the thing at risk**: both halves of each policy are replaced separately, and a single predicate pasted into both would change the security model silently. Until T023 lands and T011–T013 run green, the fork has no executed evidence that team access resolves correctly or that personal access is unchanged; nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
+
+- id: multi-account-cache
+  kind: store
+  criticality: HIGH
+  status: UNTESTED
+  paths: [src/db/local.ts, src/db/api.ts]
+  verify: "npx vitest run --project local tests/local/no-wipe-on-reach-growth.test.ts tests/local/claim-cache.test.ts"
+  tests: [tests/local/no-wipe-on-reach-growth.test.ts, tests/local/claim-cache.test.ts]
+  depends-on: [local-cache]
+  scenarios: []
+  last-verified: —
+  sign-off: —
 
 - id: supabase-auth
   kind: adapter
@@ -109,7 +161,8 @@ distinctions below.
   scenarios: [s-auth-session-recovery, s-account-switch-wipe]
   last-verified: —
   sign-off: —
-  accepted-risk: "sign-out ordering uncovered in P0, P1 inherits (owner, 2026-09-12; specs/001-validation-spine/receipts.md F-5)"
+  accepted-risk: "sign-out ordering uncovered; browser-bound. Owner: Andrii Tkhorenko, 2026-09-13, expires end of P2 (Playwright arrives, ADR-0003)"
+  accepted-risk: "UNTESTED supabase-auth accepted as incidental substrate for the 002 P1 harness cards T007–T019 (owner, 2026-09-14; specs/002-team-workspaces/receipts.md \"Owner decisions 2026-09-14\" #1)"
 ```
 
 **Fork-substrate note (per task):** `sync-engine` + `supabase-schema` are the components the
@@ -159,7 +212,7 @@ fork stands on directly:
   kind: adapter
   criticality: NORMAL
   status: UNTESTED
-  paths: [src/gcal/api.ts, src/gcal/client.ts, src/gcal/sync.ts, src/components/Gcal.tsx]
+  paths: [src/gcal/api.ts, src/gcal/client.ts, src/gcal/sync.ts, src/components/Gcal.tsx, worker/index.ts]
   verify: "NONE — needs writing; would require live Google OAuth + Calendar API, not touched this session"
   tests: —
   depends-on: [db-api, sync-engine]

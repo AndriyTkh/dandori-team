@@ -17,10 +17,10 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { clientFor, createTestUser } from '../harness/accounts'
 import { seedWorkspaceWithTask } from '../harness/seed'
 import { assertStackReachable } from '../harness/stack'
+import { driveSyncCycle } from '../harness/sync'
 import { supabase } from '../../src/auth/supabase'
 import { db } from '../../src/db/local'
 import { deleteTask } from '../../src/db/api'
-import { onSyncState, startSync, type SyncState } from '../../src/sync/sync'
 
 beforeAll(async () => {
   await assertStackReachable()
@@ -30,62 +30,27 @@ afterEach(async () => {
   await supabase.auth.signOut()
 })
 
-/**
- * `tests/harness/sync.ts`'s `driveSyncCycle` resolves on the FIRST settle
- * after `startSync()` — but `push()` (`src/sync/sync.ts`) calls its own
- * `settle()` at its own end, before `cycle()`'s `await pull()` even starts:
- * a push-only settle for an already-clean queue looks, from the outside,
- * identical to a full push+pull cycle. A harness fix is tracked separately
- * (coordinator note, 2026-09-12; found by TG-3/US1). "A second client pulls
- * a deletion it never pushed itself" needs the pull half to have actually
- * run, so this waits for the SECOND settle-after-syncing instead of the
- * first — the same workaround TG-3 used locally in its own test file.
- */
-async function drivePushAndPullCycle(timeoutMs = 10_000): Promise<void> {
-  const handle = startSync()
-  try {
-    await new Promise<void>((resolve, reject) => {
-      let settles = 0
-      let leftInitial = false
-      const timer = setTimeout(() => {
-        unsubscribe()
-        reject(new Error(`drivePushAndPullCycle: timed out after ${timeoutMs}ms`))
-      }, timeoutMs)
-      const unsubscribe = onSyncState((state: SyncState) => {
-        if (state === 'syncing') {
-          leftInitial = true
-          return
-        }
-        if (!leftInitial) return
-        leftInitial = false
-        settles += 1
-        if (settles >= 2) {
-          clearTimeout(timer)
-          unsubscribe()
-          resolve()
-        }
-      })
-    })
-  } finally {
-    handle.stop()
-  }
-}
+// The full push+pull cycle is driven by the harness's `driveSyncCycle`
+// (`tests/harness/sync.ts`), which waits for both push's and pull's settle
+// and first drains the debounced push queue so no stray `push()` can be
+// counted as the pull (002 receipts, "sync-engine flake receipt (T003)").
+// The private two-settle driver this file used to carry is gone with it.
 
 describe('US5 — soft-delete propagation (T021: acceptances 1, 4)', () => {
   it('acceptance 1: a row deleted on one client arrives deleted at a second client', async () => {
     const testUser = await createTestUser('soft-delete-a1')
     const { taskId } = await seedWorkspaceWithTask(testUser)
-    await drivePushAndPullCycle() // pushes the seeded create
+    await driveSyncCycle() // pushes the seeded create
 
     await deleteTask(taskId)
-    await drivePushAndPullCycle() // pushes the delete
+    await driveSyncCycle() // pushes the delete
 
     // "A second client": no local state at all for this row — wipe the cache
     // and the cursor, then pull from scratch, exactly as a device that was
     // never told about the delete any other way would.
     await db.tasks.clear()
     await db.meta.clear()
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
 
     const arrived = await db.tasks.get(taskId)
     expect(arrived).toBeDefined()
@@ -95,13 +60,13 @@ describe('US5 — soft-delete propagation (T021: acceptances 1, 4)', () => {
   it('acceptance 4: no deleted row flips back to live across repeated cycles', async () => {
     const testUser = await createTestUser('soft-delete-a4')
     const { taskId } = await seedWorkspaceWithTask(testUser)
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
 
     await deleteTask(taskId)
-    await drivePushAndPullCycle()
+    await driveSyncCycle()
 
     for (let cycle = 0; cycle < 3; cycle++) {
-      await drivePushAndPullCycle()
+      await driveSyncCycle()
       const row = await db.tasks.get(taskId)
       expect(row?.deleted).toBe(true)
     }

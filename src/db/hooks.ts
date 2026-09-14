@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { listLabels, listNotes, listTasks, listWorkspaces } from './api'
+import { currentUserId, listLabels, listMembers, listNotes, listTasks, listWorkspaces } from './api'
 import { db } from './local'
-import type { ID, Label, Note, Task, Workspace } from './types'
+import type { ID, Label, Member, Note, Task, Workspace } from './types'
 
 /*
  * Reactive reads from the local database.
@@ -41,3 +41,16 @@ export function useNotes(workspaceId: ID | null): Note[] | undefined {
   return useLiveQuery(() => (workspaceId ? listNotes(workspaceId) : []), [workspaceId])
 }
 
+export function useMembers(workspaceId: ID | null): Member[] | undefined {
+  return useLiveQuery(() => (workspaceId ? listMembers(workspaceId) : []), [workspaceId])
+}
+
+/**
+ * The signed-in device's own uid (`meta['owner']`), reactive to
+ * `claimCache`/`wipeLocal`. Three states, like the single-row hooks above:
+ * `undefined` while `useLiveQuery` has not answered yet, `null` once it has
+ * and there is no signed-in owner, a uid once there is.
+ */
+export function useCurrentUserId(): string | null | undefined {
+  return useLiveQuery(() => currentUserId(), [])
+}
