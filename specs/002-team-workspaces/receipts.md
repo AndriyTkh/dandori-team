@@ -1846,3 +1846,228 @@ on its P0 receipts and is **not** re-signed here; T039 re-verifies it immediatel
 the point of ordering those two cards adjacently.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T020 receipt — fork block A, and the first production SQL this feature writes (2026-09-14)
+
+Committed as `0ab42f2`, directly on `002-team-workspaces` with no lane: `supabase/schema.sql` is
+written by T020–T026 **strictly serially**, so a worktree per card would be a merge hazard rather
+than parallelism. `+34/-0`, occupying `supabase/schema.sql:104-137`.
+
+**This card opens TG-2 and is the first in the feature to write code rather than evidence.** Every
+one of TG-1's thirteen files was authored red against it. That inverts the usual review question:
+the block is not judged only against the contract, but against what the tests already assert — a
+block satisfying `contracts/policies.sql` while leaving a TG-1 assertion red is a defect in one of
+the two, and the reviewer's job is to say which.
+
+**The block is byte-identical to `contracts/policies.sql:19-51`** — `diff -u` over the two ranges
+returns nothing, including the aligned trailing inline comments `-- creator` / `-- the subject`, the
+`'personal', 'team'` spacing and the `-- unconditional, NOT partial…` comment. There is no deviation
+to justify.
+
+### Verify, run by the coordinator on the `supabase` CLI local stack
+
+The card's own verify:
+
+```
+npx vitest run --project stack tests/stack/schema-apply.test.ts tests/stack/personal-unchanged.test.ts
+ ✓  stack  tests/stack/personal-unchanged.test.ts (13 tests) 4804ms
+ ✓  stack  tests/stack/schema-apply.test.ts (6 tests) 338ms
+ Test Files  2 passed (2)
+      Tests  19 passed (19)
+```
+
+`personal-unchanged.test.ts` went from **0/13 to 13/13** in one step. The idempotent second apply is
+inside `schema-apply.test.ts` and passed.
+
+The `supabase-schema` map entry's own verify, which names a different pair, re-run because this diff
+touches a file in that entry's `paths`:
+
+```
+npx vitest run --project stack tests/stack/rls-two-accounts.test.ts
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+```
+
+P0's file, **unedited** — `git status` never showed it modified. That is FR-030's obligation
+discharged early, and it is why the entry keeps `VALIDATED` rather than going `STALE`.
+
+Two further files were run to record exactly how far block A moves the evidence spine, since the
+TG-1 closing note predicted it card by card and a prediction is worth checking:
+
+```
+npx vitest run --project stack tests/stack/team-triggers.test.ts tests/stack/team-schema-guards.test.ts
+ ✓ the three existing triggers fire identically ('personal') > keep_newer / stay_deleted_with_workspace / follow_workspace_delete
+ ✓ the three existing triggers fire identically ('team')     > keep_newer / stay_deleted_with_workspace / follow_workspace_delete
+ × R-6: a team member's late-arriving live child on an owner-deleted workspace
+     → task insert failed: 42501 new row violates row-level security policy for table "tasks"
+ ✓ R-17: pgcrypto is installed in the extensions schema
+ × R-16 / R-1 / R-2 / R-3 ×8
+ Test Files  2 failed (2)
+      Tests  12 failed | 7 passed (19)
+```
+
+**6 of `team-triggers`' 7 green, R-6 red on `42501` until T023 — exactly what that file's header and
+the TG-1 table predicted.** R-6's red is a *member* insert, which needs the widened child write half;
+nothing about block A can move it. `team-schema-guards` is red on everything block A does not add:
+R-2 names all fifteen missing functions, R-3's eight cases return `PGRST202` rather than `42501`,
+R-16 wants a trigger on `auth.users` (T025). R-17 was green before this card and is independent of it.
+
+**R-1 is worth singling out.** It is still red, but its failure message changed shape: it now reads
+`members_access policy not found on public.members (found: (none))` rather than a
+`relation does not exist`. Block A created the table and enabled RLS; the policy is T023's. That is
+the guard's own vacuity defence working — R-1 refuses to pass merely because `members` exists.
+
+### The map, which is where the only blocking finding landed
+
+The closer found nothing blocking in the SQL. Its one blocking item was mine: `git status` showed
+only ` M supabase/schema.sql`, while `docs/validation-map.md:89-99` lists `supabase/schema.sql` in
+`supabase-schema`'s `paths` and was stamped `last-verified: 5448a0d 2026-09-13`. `CLAUDE.md`
+reviewer duty 5 makes a `paths` change without a map update a finding in its own right, and T020's
+`substrate:` line says `VALIDATED — re-verified in this PR`. The entry is now re-stamped to
+`0ab42f2 2026-09-14` with this receipt named in the sign-off. **The status is `VALIDATED` because
+the two tests the entry names were actually run and passed above, not because they were expected to.**
+
+Note for anyone diffing the map: `5448a0d 2026-09-13` appears **twice** in the file — the other
+occurrence belongs to a different component and is deliberately left alone.
+
+### Idempotency, examined adversarially rather than asserted
+
+`schema.sql` is re-run to upgrade a live database (ADR-0005), so "it applies twice in the test" is
+not the whole question.
+
+- **The `drop constraint if exists` / `add constraint` pair (`:111-113`)** is safe on a second apply
+  against a **populated** database: `kind` is `not null` and the first apply already constrained it
+  to exactly `('personal','team')`, so the revalidation scan cannot find a violating row.
+  `applySchema` (`tests/harness/schema.ts:45`) sends the whole file as one `client.query()` — simple
+  query protocol, hence one implicit transaction — so no concurrent session ever observes the
+  constraint absent. Same in the Supabase SQL editor. The pair *would* fail loudly and roll the apply
+  back if a later card narrowed the value list while a row held the dropped value, which is correct
+  fail-loud behaviour and the reason the contract chose drop/add over upstream's guarded
+  `if not exists (select 1 from pg_constraint …)` form at `:95-102`: the guarded form silently keeps
+  a **stale predicate** forever. The cost, recorded honestly: an `ACCESS EXCLUSIVE` lock and a full
+  scan of `workspaces` on **every** re-run. Contract-level, not this card's to change.
+- **`create table if not exists public.members` silently accepts a pre-existing table of a different
+  shape**, and unlike upstream's four tables `members` has no compensating
+  `add column if not exists` guard — upstream's `foreach` loop at `:153-155` exists precisely to
+  repair that drift for `synced_at`. Harmless today, since `members` is new here and no deployed
+  database holds an earlier shape. **It stops being harmless the first time a later card changes a
+  `members` column**: that card must carry its own guarded `alter table … add column if not exists`
+  rather than rely on the `create table`, or a live database will not upgrade and T022's
+  `members_zz_*` triggers will attach to the wrong shape. Recorded here because ADR-0005 accepts "no
+  down-migrations" as a risk and this is the same risk's other face.
+- `add column if not exists assignee … references auth.users(id)` skips the **whole statement**,
+  FK included, when the column exists — so an `assignee` created without its FK would never gain one.
+  Same drift class; no database is in that state.
+- Everything else — the two `create index if not exists`, `enable row level security`, both
+  `add column if not exists` — is a plain no-op on re-apply.
+
+### R-4, proven rather than assumed
+
+`git diff -U0 | grep -c '^-[^-]'` → **0**: the change is a pure insertion, so no upstream table
+definition could have changed. But "no removed lines" is not the whole of R-4, because **placement**
+can change the meaning of what follows. Traced:
+
+- The block sits after upstream's last table statement — the `tasks_note_id_fkey` do-block,
+  `:95-102` — and before `touch_synced_at` at `:140`, exactly where the contract places it.
+- All five `foreach t in array array[…]` arrays are byte-unchanged and still read
+  `['workspaces','labels','tasks','notes']` / `['labels','tasks','notes']`.
+- Consequence, and it is deliberate: `members` is therefore in **none** of the loops. It receives no
+  `members_synced_at` trigger, no `members_synced_at_idx`, no `keep_newer`, no `stay_deleted`, and
+  the policy block's `enable row level security` loop (`:268`) does not reach it either. Between T020
+  and T022 `members.synced_at` is stamped at insert only, which is harmless because nothing writes
+  `members` until `seed_workspace_owner` / `add_member_by_email` land at T022/T024.
+- **That last exclusion is what makes block A's own
+  `alter table public.members enable row level security` (`:133`) load-bearing rather than
+  decorative.** Without it, `members` would be world-readable through PostgREST from the moment this
+  card lands until T023. It is present, and it was checked for specifically.
+
+### `members_one_per_person` unconditional — confirmed load-bearing, not stylistic
+
+The card insists the unique index is unconditional, not partial on `not deleted`, and it is worth
+recording *why*, because the partial form is the one a reader would reach for. All three downstream
+upserts use the **bare** inference form with no `where`:
+
+- `contracts/rpc.md:37` — `on conflict (workspace_id, member_id) do update set deleted = false, …`
+  (T024 `add_member_by_email`)
+- `contracts/policies.sql:145` — the personal→team branch of `on_workspace_kind_change` (T022)
+- `contracts/policies.sql:107` — `seed_workspace_owner`'s `do nothing` (T022)
+
+Postgres infers a **partial** index as an arbiter only when the statement carries a matching `where`
+on the conflict target. A partial index here would therefore make all three raise
+`42P10 there is no unique or exclusion constraint matching the ON CONFLICT specification`. The
+semantics point the same way: with a partial index, re-adding a removed person would insert a
+**second live row** beside the soft-deleted one, breaking FR-036/SC-019's "exactly one owner row,
+un-deleted not duplicated" and T017 case (b).
+
+One detail checked positively: block A creates a unique **index**, not a unique **constraint**.
+`on conflict (cols)` infers from indexes, so this suffices — but `on conflict on constraint
+members_one_per_person` would fail against an index alone. No contract uses that form; if one ever
+does, this is the line it breaks on.
+
+### Two column decisions that bite later, both checked against the cards that depend on them
+
+**`tasks.assignee … on delete set null` is right, and `on delete cascade` would be a data-loss bug.**
+Every other `auth.users` FK in the file cascades, so the odd one out deserves a reason: cascading
+here would delete **another person's task** because that person happened to be the assignee. `set
+null` returns the task to unassigned and keeps the row — which is exactly what FR-043 demands
+("the workspace rows that login created are still there") and what makes R-18's ban-not-delete
+decision coherent at T026. It also matches D-3's "coerce, never raise" posture at T014. In normal
+operation the clause never fires at all, because `delete_login` bans rather than deletes.
+
+**`members` carries exactly the four housekeeping columns the synced tables carry**, compared
+directly against `workspaces` (`:25-27`) and `tasks` (`:74-76`) plus the loop-added `synced_at`
+(`:155`): same four names, same types, same defaults, same nullability. This is what lets T022 attach
+`members_synced_at` and `members_keep_newer` and get behaviour identical to the upstream four —
+`touch_synced_at()` sets `new.synced_at = now()` unconditionally and `keep_newer()` reads only
+`new.updated_at < old.updated_at`, so neither cares which table it is on. `members.id uuid primary
+key` deliberately has **no** default, matching upstream's client-supplied-id convention; both
+contract upserts supply `gen_random_uuid()` explicitly.
+
+### Personal must not regress — traced to the client, not stopped at the schema
+
+This is the fork's first binding rule and the diff adds a `not null` column to a populated table, so
+it gets a full trace rather than an assurance.
+
+- **Server side: no table rewrite, no row touched, no trigger fired.**
+  `add column if not exists kind text not null default 'personal'` is a PG 11+ **fast default** — a
+  non-volatile constant — so it is a catalogue-only change. `updated_at` is not bumped, `synced_at`
+  is not bumped, and `ALTER TABLE` fires no row-level triggers at all. A personal user's devices do
+  **not** re-download every workspace after the upgrade. `tasks.assignee` is a nullable add; its FK
+  validates against all-NULL values, taking a brief lock and rewriting nothing.
+- **Client side, checked in source rather than assumed.** Pulled rows now *carry* `kind` and
+  `assignee`, because `mergeRows` strips only `user_id`/`synced_at` (`src/sync/sync.ts:409-458`).
+  That is inert, and the reason is that both functions which could have turned it into behaviour
+  iterate a fixed whitelist: `sameRow()` (`:131-141`) loops `Object.keys(SYNCED_COLUMNS[table])`, so
+  the new columns are never compared and there is **no** one-time "every row differs" rewrite storm
+  waking every live query; and `forServer()` (`:147-153`) loops the same whitelist, so push payloads
+  are unchanged and a partial-column upsert cannot null out a server-side `assignee`.
+  `SYNCED_COLUMNS` (`src/db/types.ts:215-242`) is untouched by this diff.
+- **P0 evidence unaffected for a stated reason**, not merely observed to pass:
+  `rls-two-accounts.test.ts` asserts only `toEqual([])` and `toHaveLength(1)` — no row-shape or
+  column-count assertion anywhere — and `offline-round-trip.test.ts:76` projects its server read
+  through `Object.keys(SYNCED_COLUMNS.tasks)`, so `assignee` never enters it.
+
+### Done-when, clause by clause
+
+FR-001 holds (default plus `workspaces_kind_check`, and `personal-unchanged`'s two `23514` cases
+prove the constraint is reached rather than shadowed by a `42501`). FR-016 holds (`assignee`).
+FR-028 and FR-027 hold: `grep -n "origin" supabase/schema.sql` returns **nothing**, so P1 anticipates
+ADR-0004's federation with zero schema support, as required. R-4 holds per the trace above.
+`ls supabase/` confirms there is no `migration-007*` — the highest is `migration-006`, and D-2 says
+block A is schema-only.
+
+No credential, key, token or `service_role` literal appears in the diff — FR-044, FR-033 and SC-020
+clean.
+
+**A stale citation in the card was corrected in the same change set.** T020 cited
+`contracts/policies.sql` "lines 14–46"; block A is at **19–51**, and 14–18 are that file's placement
+preamble. The card also said "its own guarded block", which reads as a `do $$ … end $$` wrapper — the
+contract writes plain idempotent top-level DDL and is authoritative. Both fixed in the card text so
+the next reader diffing against the contract lands on the right range.
+
+**Not proven by this card:** no team behaviour whatsoever. Block A is columns, one table, two indexes
+and an RLS enable. `membership` and `team-rls` stay `UNTESTED`; `account-provisioning` stays
+`UNTESTED`. The only map entry that moves is `supabase-schema`, and it moves in place — re-stamped,
+not re-classified.
+
+Sign-off: Andrii Tkhorenko (single-operator).
