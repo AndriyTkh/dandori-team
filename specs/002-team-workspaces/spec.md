@@ -259,7 +259,12 @@ observe the assignment cleared — all at the data layer.
 5. **Given** any access question about any row, **Then** its outcome is identical whether or not the
    row carries an assignee — assignment is never an input to an access decision.
 6. **Given** an attempt to assign a task to someone who is not a member of that workspace, **Then**
-   the write is refused.
+   the write is accepted with the assignee coerced to `null`. **Coordinator correction 2026-09-14
+   (T014 closer's finding):** this clause previously read "the write is refused". It was wrong, and
+   plan decision D-3 with `contracts/policies.sql:164-178` says why — `assignee_must_be_member` does
+   `new.assignee := null; return new;` and never raises, because a raise inside a sync batch would
+   abort the whole upsert and wedge the tasks queue. Coercion, not refusal. FR-016's last sentence
+   carried the same error and is corrected with it.
 
 ---
 
@@ -617,7 +622,8 @@ roles).
 
 - **FR-016**: A task MUST be able to carry at most one **assignee**, empty by default, naming a person
   who holds an account on **this same origin** and is a member of that task's workspace. An assignment
-  to a non-member MUST be refused.
+  to a non-member MUST be accepted with the assignee coerced to empty (see US5 acceptance 6's
+  coordinator correction, plan decision D-3, `contracts/policies.sql:164-178`).
 - **FR-017**: The assignee MUST carry **no authorization meaning**. No access decision may read it, and
   every access outcome MUST be identical with and without it.
 - **FR-018**: Removing a member from a workspace MUST clear that person's assignments within it,

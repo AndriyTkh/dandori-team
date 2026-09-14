@@ -669,3 +669,261 @@ security rather than as zero rows matched.
 before the code and stays red until T024.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T015 receipt — the three upstream triggers on both workspace kinds (2026-09-14)
+
+Merged as `8583e4f` from lane `wt/triggers` (worker commit `3aae3a5`). Artefact:
+`tests/stack/team-triggers.test.ts`, `+430/-0`, seven cases — three triggers ×
+`describe.each(['personal','team'])` plus one R-6 case — committed **red on purpose**.
+
+Red run, by the coordinator on the `supabase` CLI local stack, from the lane worktree:
+
+```
+npx vitest run --project stack tests/stack/team-triggers.test.ts
+Test Files  1 failed (1)
+     Tests  7 failed (7)
+```
+
+All seven fail identically on `workspace insert (kind: personal|team) failed: PGRST204 Could not
+find the 'kind' column of 'workspaces' in the schema cache`. Single-cause, none skipped. "Fires
+identically on both kinds" is established by **literally the same assertions** running twice out of
+one `describe.each` body, not by two differently-shaped tests.
+
+**The closer returned SEND-BACK on the first pass with two blocking findings.** Both are clock
+hazards that bite any stack test, so they are recorded here rather than left in the lane:
+
+1. **A `timestamptz` does not round-trip as an equal string.** PostgREST renders it through
+   Postgres's own json conversion as `…+00:00` and **drops the fractional part entirely when the
+   milliseconds are zero**; JS's `toISOString()` writes `…Z` and always keeps three digits. The
+   strings are never equal, so the case would have gone red at T020 under the message "a
+   newer-stamped update must land — the stale drop above is `keep_newer`, not a broken write path",
+   reading as a `keep_newer` regression when nothing about `keep_newer` was wrong. Every stamp
+   comparison now goes through `Date.parse` on **both** sides; the repo precedent is
+   `tests/stack/lww-conflict.test.ts:226-227, 275, 389`. Note the sibling hazard stays forbidden:
+   `Date.parse(<Date instance>)` truncates to whole seconds, and the `pg` driver returns `Date`.
+2. **The R-6 late stamp was taken from the host clock against a row stamped by the container
+   clock.** The task's `updated_at` had just been written by `follow_workspace_delete` as
+   `greatest(updated_at, now())` — the **container's** `now()`. `tasks_keep_newer` fires before
+   `tasks_stay_deleted` (alphabetical, `supabase/schema.sql:196-212`). If the container clock leads
+   the host by more than the test's elapsed time — routine under Docker Desktop / WSL2, especially
+   after a host sleep — `keep_newer` returns null, the statement matches nothing, and PostgREST
+   answers 204 with `error === null`. That outcome is **byte-for-byte** the one the file's header
+   pre-commits to reading as the FR-014/R-6 regression, so a clock skew would have been filed to
+   the owner as a schema regression with the test's own comment forbidding investigation. The late
+   stamp is now built from the cascaded row's own `updated_at` + 60 s — a value the container
+   produced.
+
+The closer returned **PASS** on the second pass; its four advisories were applied before the
+commit (the header paragraph that stated the clock rule backwards, a citation of
+`schema.sql:193-195` that pointed at the `do $$` preamble rather than the trigger loops at
+`196-212`, a comment recording that the R-6 fix now depends on the member still being able to read
+its own cascaded row, and optional chaining in two teardown catch handlers that could throw a
+`TypeError` and skip a `deleteTestUser`).
+
+**Green progression.** Six of the seven turn green at **T020** — they need only `workspaces.kind`,
+since the creator writes under the unchanged `own_rows` predicate and `kind` is a label these cases
+carry, not a gate. The R-6 case turns green at **T023**: it needs `public.members` (T020) and then
+the widened child write half, because the member's fixture INSERT evaluates only `WITH CHECK`,
+which before T023 requires the workspace to be the caller's own. T021 and T022 touch neither the
+three triggers nor the policy predicates, so nothing moves between T020 and T023.
+
+**Recorded coverage residue, in the file's header, asserted nowhere:** `keep_newer`'s contractual
+**equal**-stamp acceptance (`supabase/schema.sql:138-141`, "Equal stamps are accepted on purpose"),
+and FR-014's "*or reachable on rows it never saw*" half for two of the three triggers — `keep_newer`
+and `follow_workspace_delete` are exercised only by the workspace's own creator, whose write path
+T023 leaves character for character unchanged. The card's done-when is met literally.
+
+**Not proven by this card:** no trigger behaviour is verified. The file is evidence written before
+the code and stays red until T020.
+
+Sign-off: Andrii Tkhorenko (single-operator).
+
+## T016 receipt — a personal workspace is unchanged after the swap (2026-09-14)
+
+Merged as `15ad98b` from lane `wt/personal` (worker commit `ffccd7d`). Artefact:
+`tests/stack/personal-unchanged.test.ts`, `+486/-0`, thirteen cases.
+
+Run, by the coordinator on the `supabase` CLI local stack, from the lane worktree:
+
+```
+npx vitest run --project stack tests/stack/personal-unchanged.test.ts
+Test Files  1 failed (1)
+     Tests  5 failed | 8 passed (13)
+```
+
+The five reds are all structural on the missing `kind` column — two `42703 column
+workspaces.kind does not exist`, two `expected 'PGRST204' to be '23514'`, one `PGRST204 Could not
+find the 'kind' column of 'workspaces' in the schema cache` — and all five go green on **T020
+alone**. The eight greens are personal-side behaviours that already hold on today's schema; the
+closer audited each one for vacuity and found none. T021 and T022 turn nothing in this file green;
+**T023's job is to leave all thirteen green**, which is the card's whole point.
+
+**This card took three review passes, and all three blocking findings were the same defect wearing
+different clothes: a claim about coverage that was not true.**
+
+1. Pass 1: the file **overclaimed FR-003** — it asserted a pre-existing-row property it did not
+   exercise.
+2. Pass 2: the rewrite replaced the overclaim with a **referral to evidence nobody wrote** — a
+   T009 catalog guard on `workspaces.kind`. T009's card enumerates R-1/R-2/R-3/R-16/R-17 only, and
+   `kind` appears in `team-schema-guards.test.ts` solely inside the function name
+   `on_workspace_kind_change`.
+3. Pass 3: the replacement paragraph cited the **wrong requirement**. The pre-existing-row clause is
+   **FR-001** ("defaulting to personal for every pre-existing row and every row created without an
+   explicit choice"); FR-003 reads, in full, "A personal workspace's behaviour MUST be unchanged in
+   every respect listed under *Personal must not regress*" and has no such clause.
+
+The paragraph now standing makes the honest claim: `add column if not exists kind text not null
+default 'personal'` (`contracts/policies.sql:24`) is a **fast default** on PG 11+, and
+`supabase/config.toml:41` pins this stack at PG 17 — so a pre-existing row and a freshly-inserted
+row read `'personal'` from the same column default, and there is no separate backfill step that
+could get it wrong. `data-model.md:25` states the same doctrine independently. The case is named
+for what it does (`a row inserted without naming kind reads personal (FR-001 default)`), because the
+**name** is what lands in a receipt's test output, not the comment underneath it.
+
+Advisories applied before the commit: the `notes.kind` (`'folder'|'file'`) disambiguation at both
+sites where it could be mistaken for this feature's `workspaces.kind`; five redundant
+`expect(...).not.toBeNull()` deletions, each verified to leave an exact-code assertion on the same
+`error` object; an explicit statement of SC-002's scope (by-identifier read exercised on
+`workspaces` only, child tables by listing and by-workspace-id write); `try`/`finally` around the
+first `deleteTestUser` so the second cannot be skipped; and in-block positive controls on both
+by-identifier cases — A reads `wsA` back before B's empty result, and A renames `wsA` successfully
+before B's update matches nothing. Without that second control, a T023 swap that broke `workspaces`
+UPDATE for **everyone** would have left the case green.
+
+One advisory was **declined with reasons, and the reasons are right**: moving the three child-row
+seeds into `beforeAll` would remove a case-ordering dependency but silently drop coverage, because
+those inserts go through `clientA` and assert `labelErr`/`noteErr` are null — the only place in the
+file that confirms A's own write succeeds on `labels` and `notes`. A raw-`pg` `beforeAll` seed
+carries no such assertion. The dependency produces a cascading red, never a silent green, so it is
+not the structural trap.
+
+**A false positive was raised twice, by two different reviewers, and is recorded so it is not
+raised a third time.** Both claimed T016's card still demands a `kind` pin-back. It does not. The
+card carries an explicit coordinator correction withdrawing D-6's pin; its Read list cites
+`contracts/policies.sql` lines 117-122 "on the withdrawn pin" and plan **D-6′**; its done-when ends
+"no assertion claims a pin-back, which does not exist (D-6′)". The stale phrase appears only
+*inside* the correction sentence. The second reviewer additionally quoted a done-when clause about
+`kind` immutability being "proven as *coerced*" that is not in the card at all. **D-6 is withdrawn
+and D-6′ governs:** `pin_workspace_kind` and `workspaces_zz_kind_fixed` do not exist, `kind` is an
+ordinary owner-writable column, and `on_workspace_kind_change` (AFTER UPDATE) draws the
+consequences.
+
+Sign-off: Andrii Tkhorenko (single-operator).
+
+## T011 receipt — both halves of the replaced team policies (2026-09-14)
+
+Merged as `7c4c874` from lane `wt/us3-rls` (worker commit `44dba0c`'s content; lane retained for
+T012 and T013, which write the same file and are serial behind this card). Artefact:
+`tests/stack/team-rls-both-halves.test.ts`, `+561/-0`, nineteen cases, committed **red on purpose**.
+
+Red run, by the coordinator on the `supabase` CLI local stack, from the lane worktree:
+
+```
+npx vitest run --project stack tests/stack/team-rls-both-halves.test.ts
+Error: team-rls-both-halves seed failed — pre-T020 structural gap (see file header):
+  code=42703 message=column "kind" of relation "workspaces" does not exist
+Test Files  1 failed (1)
+     Tests  19 skipped (19)
+```
+
+A single-cause abort carrying the SQLSTATE and the Postgres message verbatim, with nineteen skips —
+and that shape is the **fix**, not the defect. It is worth recording why, because this file is where
+the taskgroup's dominant defect class was traced to its structural parent.
+
+**A module-level variable assigned inside an `it` that throws silently unseeds every downstream
+case.** The first re-verify of this file read `12 failed | 7 skipped (19)` and every one of those
+numbers was a lie. The seed `it` assigned the module-level ids and then threw on the missing `kind`
+column, leaving `seededRowIds` as `""`. The `42501` that followed was upstream's **ownership**
+clause refusing a write into a workspace that did not exist — the right SQLSTATE for the wrong
+reason — and the `22P02 invalid input syntax for type uuid: ""` was a malformed literal, not a
+policy refusal. Twelve cases failing for twelve incidental reasons looked like progress and was
+worth nothing.
+
+The settled pattern, now applied across this taskgroup: **seed in `beforeAll`; rethrow carrying the
+Postgres `code` and `message` verbatim; replace the seed `it` with a seed-*landed* assertion; and
+tolerate exactly `42P01` in cleanup so teardown still runs.** An honest single-cause red is
+preferred to many cases failing for varied incidental reasons. The seed-landed `it` that remains is
+not theatre — it can fail independently of `beforeAll` on a wrong `kind`, a wrong `level`, a wrong
+`user_id`, an `on conflict … do nothing` that swallowed a `members` row, or a T022
+`workspaces_seed_owner` row making it three.
+
+**The second pass's blocking finding is the one that gives this file its value.** Three of the four
+tables were not discriminated in the read direction. Pasting the **write** predicate into both
+halves of `labels`/`tasks`/`notes` —
+`using ((auth.uid() = user_id and exists (… w.user_id = auth.uid())) or public.is_member(workspace_id))`
+— left all nineteen cases green. The only behaviour that separates the correct read half from the
+write half is the property `docs/validation-map.md:137-139` calls load-bearing — *reads stay loose so
+a not-yet-synced workspace cannot hide your own rows* — i.e. **your own row stays readable even when
+its workspace is not yours**. The file asserted that in prose and never tested it. It now records a
+live row B created, and after B's removal reads that row back by id, asserting one row with
+`user_id = B`. The closer worked the mutant through by hand: branch 1 fails on the workspace's
+owner, branch 2 fails on `not m.deleted`, USING is false, PostgREST returns `[]`, the assertion goes
+red. Under the contracted predicate branch 1 alone admits it. It is the discriminating assertion,
+and it doubles as a positive control proving B's read path works at all.
+
+The other three directions were already sharp: `workspaces` write←read at the member's refused
+rename, `workspaces` read←write at the team workspace's absence from B's list, and child write←read
+at C's refused insert.
+
+Advisories applied before the commit: the header now states that the post-removal write half asserts
+INSERT only, and why that is sufficient (the policy is `for all`, so UPDATE and DELETE ride the
+USING already asserted immediately above); an "A can still insert" control on the post-removal write
+block; an in-block existence control for SC-002, whose `not.toContain` was otherwise satisfied
+vacuously if A's personal workspace never existed; a sharper SC-002 filter
+(`user_id === userA && id !== teamWorkspaceId`) that survives a future second A-owned workspace; a
+header note that T023's "membership branch **not** conjoined with `auth.uid() = user_id`" is
+undiscriminated here and is **T013's** to catch; an `afterAll` loop that skips undefined users so a
+first-`beforeAll` throw is not masked by a `TypeError`; and a correction to the header's T022
+claim — T022 is a **serial-lane** prerequisite on `supabase/schema.sql`, not a behavioural one for
+any assertion in this file. The own-row control was also moved onto a second, never-deleted row
+after the closer observed the first was a tombstone: correct today, since no predicate or trigger
+filters on `deleted`, but incidentally sensitive to any future read path that does.
+
+**Green progression.** The seed-landed case needs **T020** only. Every other case needs T020 plus
+T021's `is_member` plus **T023**'s policy block; the third-account cases already pass today for the
+right reason (upstream's `and exists(… w.user_id = auth.uid())`) and must keep passing across T023.
+The card's verify — red before T023, green after — is honest given T020 and T021 land first.
+
+**Not proven by this card:** no policy behaviour is verified. The file is evidence written before
+the code and stays red until T023.
+
+Sign-off: Andrii Tkhorenko (single-operator).
+
+## Coordinator notes — added 2026-09-14, not yet discharged
+
+- **Branch CI has been red since T009 landed, by design, and stays red until T023 and T026.**
+  `.github/workflows/ci.yml` runs `npm run test -- --run`, and `package.json`'s `"test": "vitest"`
+  runs **both** vitest projects including `stack` — so every deliberately-red TG-1 file fails CI.
+  That is inherent to the red-first card design and is in direct tension with the definition of
+  done's "CI is green". **The gate is suspended for the duration of TG-1 and is re-armed at T027**,
+  which runs the entire suite. Recorded here rather than worked around: nobody may take a green CI
+  as evidence during this window, and nobody may make CI green by weakening a red-first file.
+- **`tests/` is typechecked by nothing in CI.** `tsconfig.app.json` includes only `src` and
+  `tsconfig.node.json` only `vite.config.ts`/`worker/index.ts`, so `npx tsc -b --noEmit` — the CI
+  typecheck step — never reads a file under `tests/`. Every "typecheck is green" claim about a test
+  file in this feature's receipts rests on an out-of-band invocation run by hand:
+  `npx tsc --ignoreConfig --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --skipLibCheck --lib es2022,dom <file>`.
+  Found independently by the T017 closer (three real errors invisible to `tsc -b`) and the T011
+  closer. Now carded as **T026B** `[infra]`.
+- **T022's new triggers are unobserved on personal rows.** Nothing watches
+  `<labels|tasks|notes>_zz_keep_creator` or `tasks_zz_assignee_member` against a `kind: personal`
+  workspace. The second is the more interesting: `seed_workspace_owner` is guarded
+  `if new.kind = 'team'` (`contracts/policies.sql:101-114`), so a personal workspace has no
+  `members` row at all and its owner is **not** a live member of their own workspace — which means
+  `tasks_zz_assignee_member` coerces every personal assignment to `null`. That is contractually
+  intended and observed nowhere. Now carded as **T026A**, deliberately kept out of T015: `spec.md`
+  lines 443-450's "Triggers" invariant names exactly the three upstream triggers, and T015 gates
+  T020, so a case that can only go green at T022 would have muddied that gate.
+- **Two spec clauses were corrected, not superseded by a test.** `spec.md` US5 acceptance 6 and
+  FR-016's final sentence both said an assignment to a non-member "MUST be refused". Both are wrong:
+  plan decision D-3 and `contracts/policies.sql:164-178` make `assignee_must_be_member` do
+  `new.assignee := null; return new;` and never raise, because a raise inside a sync batch would
+  abort the whole upsert and wedge the tasks queue. Both clauses now read "accepted with the
+  assignee coerced to empty", each carrying the correction and its citation. The T014 author
+  followed the contract and changed no spec — the flag was right, it was merely half the size of
+  the error.
+- **`add_member_by_email`'s reactivation branch is covered by no file.** The
+  `do update set deleted = false` arm (`contracts/rpc.md` lines 38 and 42) fires only when a
+  *removed* member is re-added. T010's acceptance-6 case adds B twice while B's row was never
+  deactivated, so the conflict path takes the no-op arm. Carried forward alongside the three
+  uncovered `DA404` paths already recorded above.
