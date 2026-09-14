@@ -104,13 +104,13 @@ distinctions below.
   criticality: HIGH
   status: UNTESTED
   paths: [supabase/schema.sql, src/db/api.ts, src/sync/sync.ts, src/components/Settings.tsx]
-  verify: "NONE — the evidence exists but is red by design; becomes `npx vitest run --project stack tests/stack/logins-provisioning.test.ts tests/stack/team-schema-guards.test.ts` once T025 and T026 land"
-  tests: [tests/stack/logins-provisioning.test.ts]
+  verify: "npx vitest run --project stack tests/stack/logins-provisioning.test.ts tests/stack/team-schema-guards.test.ts tests/stack/logins-mint-empty-password.test.ts"
+  tests: [tests/stack/logins-provisioning.test.ts, tests/stack/logins-mint-empty-password.test.ts]
   depends-on: [supabase-schema, supabase-auth, db-api]
   scenarios: []
   last-verified: —
   sign-off: —
-  accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T008 and T018 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers the provisioning routines, the first-account trigger on auth.users and the admin guards. Nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
+  accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T008 and T018 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers the provisioning routines, the first-account trigger on auth.users and the admin guards. T025/T026 have now landed and the verify command above is green (21 files / 204 tests, exit 0, @ 18d6828, 2026-09-14) — this entry stays UNTESTED only because a HIGH-tier promotion is the owner’s to sign: it is QUEUED FOR SIGN-OFF, not unproven. Nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
 
 - id: membership
   kind: store

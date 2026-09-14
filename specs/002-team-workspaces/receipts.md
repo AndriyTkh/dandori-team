@@ -2571,3 +2571,36 @@ test (`e.startsWith("sb_secret_")`), not a key. (Note: a first fetch returned a 
 every assertion above is from a cache-busted re-fetch.)
 
 Status: **PASS ×3**. Sign-off: Andrii Tkhorenko (single-operator).
+
+## Defect lane `wt/login-password` — merged @ 18d6828 (2026-09-14)
+
+Owner reported "adding an account creates a login without a password". **Reproduced at the RPC
+layer against the local stack; the report's literal premise does not hold** — the owner later
+confirmed the same, having conflated member-add with account minting.
+
+| case | call | server | account after |
+|---|---|---|---|
+| mint, empty password | `create_login(email, '')` | `DA011` | none (0 `auth.users` rows) |
+| mint, 6-char password | `create_login(email, …)` | `DA011` | none |
+| member-add, unknown email | `add_member_by_email` | `DA404` | none — never creates one |
+| member-add, known email | `add_member_by_email` | success | unchanged; one `members` row |
+
+Independently confirmed on the hosted origin: both `auth.users` rows carry 60-char bcrypt hashes.
+
+**Real defect, client-side only.** None of the three forms in `src/components/Settings.tsx`
+(mint-login, set-password, member-add) carried `required`, `minLength` or `type="email"`, so an
+empty or short submit made a server round-trip and returned as an error banner that is easy to
+miss — an admin could believe an account was created when the call had failed, leaving nothing for
+a second device to sign in to. That is the shape of the owner's report. Fix: 8 lines of native
+constraint validation (`131ded5`), plus `tests/stack/logins-mint-empty-password.test.ts` pinning
+the literal empty-string case (`3147008`). `DA404`'s copy was reviewed and left alone — already
+clear, and rewording it would be a designer-rule violation.
+
+`npx vitest run` → 21 files, **204/204 passed**, exit 0. `npx tsc -b` 0, `npx oxlint` 0,
+`npm run build` 0.
+
+**Map:** `account-provisioning` (HIGH) verify command de-staled — it said "NONE — red by design
+until T025 and T026 land"; both landed and it is green. Status deliberately left `UNTESTED` and
+**queued for owner sign-off**: a HIGH-tier promotion is not an agent's to write.
+
+Status: **PASS**. Sign-off: Andrii Tkhorenko (single-operator).
