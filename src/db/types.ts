@@ -85,6 +85,12 @@ export interface GcalReminder {
   minutes: number
 }
 
+/** `personal` behaves exactly as upstream ships it; `team` resolves access through membership. */
+export type WorkspaceKind = 'personal' | 'team'
+
+/** The two membership levels. Not a role system (ADR-0001 §1). */
+export type MemberLevel = 'owner' | 'member'
+
 export interface Workspace extends Synced {
   name: string
   position: number
@@ -92,6 +98,20 @@ export interface Workspace extends Synced {
   gcal_sync: boolean
   /** The defaults that whole-workspace sync hands out. */
   gcal: GcalConfig | null
+  /** `personal` or `team`; chosen at creation, mutable afterwards by the owner. */
+  kind: WorkspaceKind
+}
+
+/**
+ * A membership row: who belongs to a team workspace, and at which level.
+ * `member_id` names whose membership this is; the row is otherwise owned like
+ * any other synced table (`Synced`'s `id`/`created_at`/`updated_at`/`deleted`
+ * carry the usual meaning) — see data-model.md §1 `public.members`.
+ */
+export interface Member extends Synced {
+  workspace_id: ID
+  member_id: ID
+  level: MemberLevel
 }
 
 export interface Label extends Synced {
@@ -153,6 +173,12 @@ export interface Task extends Synced {
    * good.
    */
   gcal_placed: string | null
+  /**
+   * A label, never an authorization input — no RLS predicate reads it
+   * (FR-017). Must be a live member of the task's workspace; cleared
+   * structurally when that membership goes away.
+   */
+  assignee: ID | null
 }
 
 /**
@@ -181,15 +207,17 @@ export interface Note extends Synced {
 /** Tables that take part in sync. */
 /*
  * Sync order, and it matters: a row is pushed after everything it points at.
+ * `members` follows `workspaces` for the same reason — it FKs one (D-8).
  * Tasks come last because a task can carry a note, and the server rejects the
  * whole batch with a foreign key error when that note has not landed yet.
  */
-export const SYNCED_TABLES = ['workspaces', 'labels', 'notes', 'tasks'] as const
+export const SYNCED_TABLES = ['workspaces', 'members', 'labels', 'notes', 'tasks'] as const
 export type SyncedTable = (typeof SYNCED_TABLES)[number]
 
 /** What a row of each table is. */
 export interface SyncedRow {
   workspaces: Workspace
+  members: Member
   labels: Label
   notes: Note
   tasks: Task
@@ -213,7 +241,8 @@ const IN_WORKSPACE = { ...OWN, workspace_id: true } as const
  * quietly stop being sent, and one that does not exist would break the push.
  */
 export const SYNCED_COLUMNS = {
-  workspaces: { ...OWN, name: true, position: true, gcal_sync: true, gcal: true },
+  workspaces: { ...OWN, name: true, position: true, gcal_sync: true, gcal: true, kind: true },
+  members: { ...IN_WORKSPACE, member_id: true, level: true },
   labels: { ...IN_WORKSPACE, name: true, color: true, position: true },
   notes: {
     ...IN_WORKSPACE,
@@ -238,5 +267,6 @@ export const SYNCED_COLUMNS = {
     custom_fields: true,
     gcal: true,
     gcal_placed: true,
+    assignee: true,
   },
 } satisfies { [K in SyncedTable]: ColumnsOf<SyncedRow[K]> }
