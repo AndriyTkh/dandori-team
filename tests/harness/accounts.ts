@@ -70,3 +70,34 @@ export async function clientFor(testUser: TestUser): Promise<SupabaseClient> {
 export async function deleteTestUser(testUser: TestUser): Promise<void> {
   await admin().auth.admin.deleteUser(testUser.user.id)
 }
+
+/**
+ * Provisions `n` independent throwaway users in one call, labelled
+ * `${label}-0`, `${label}-1`, ... so a failure is still traceable to the
+ * scenario that provisioned it. Generalizes the two-call pattern
+ * `rls-two-accounts.test.ts` uses today (plan.md D-13): a third account is
+ * needed for "knows the id, is not a member" (US3 acceptance 4) and for
+ * "same person in several team workspaces" (edge case 9).
+ */
+export async function createTestUsers(n: number, label = 'user'): Promise<TestUser[]> {
+  return Promise.all(Array.from({ length: n }, (_, i) => createTestUser(`${label}-${i}`)))
+}
+
+const memoizedClients = new WeakMap<TestUser, Promise<SupabaseClient>>()
+
+/**
+ * Memoized `clientFor`: the same `testUser` always resolves to the same
+ * client instance, so a file that switches between several accounts (A, B,
+ * C) does not re-authenticate on every assertion (plan.md D-13). Keyed by
+ * the `TestUser` object itself — call `createTestUser(s)` once per account
+ * and reuse the returned value, the same convention every existing stack
+ * test already follows.
+ */
+export function asUser(testUser: TestUser): Promise<SupabaseClient> {
+  let cached = memoizedClients.get(testUser)
+  if (!cached) {
+    cached = clientFor(testUser)
+    memoizedClients.set(testUser, cached)
+  }
+  return cached
+}
