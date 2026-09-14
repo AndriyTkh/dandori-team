@@ -487,3 +487,132 @@ correct throughout; what was wrong was three task-card restatements of them, and
 case was to read the contract and make the card match it.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T017 receipt — kind-switch gates on `on_workspace_kind_change` (2026-09-14)
+
+Merged as `47d20aa` from lane `wt/kind-switch` (worker commit `f350a21`). Artefact:
+`tests/stack/kind-switch.test.ts`, five cases (a)-(e), committed **red on purpose**.
+
+Red run, by the coordinator on the `supabase` CLI local stack, from the lane worktree:
+
+```
+npx vitest run --project stack tests/stack/kind-switch.test.ts
+Test Files  1 failed (1)
+     Tests  5 failed (5)
+```
+
+All five fail for the one structural reason the card names: `workspaces.kind` does not exist, so
+the flip arrives as `PGRST204 Could not find the 'kind' column of 'workspaces' in the schema
+cache`, and case (b)'s owner-row read finds nothing because `public.members` does not exist
+either. No case fails for an incidental reason and none is skipped.
+
+**The closer returned SEND-BACK on the first pass with five blocking findings.** All five were
+applied and re-verified; they are recorded here because four of them are hazards that bite any
+stack test, not quirks of this file:
+
+1. **`pg` returns `Date` for timestamptz, not `string`** (`pg-types.getTypeParser(1184)`).
+   `expect(a).toBe(b)` on two `Date`s is always false, so the stamp assertions could never have
+   passed; `Date.parse(<Date>)` coerces via `Date.prototype.toString()` and **truncates
+   milliseconds to whole seconds**, so it cannot compare stamps at all. Every comparison now uses
+   `.getTime()`. `tests/stack/offline-round-trip.test.ts:82` documents the hazard and `:145` shows
+   the `toEqual` form.
+2. **The file did not typecheck.** A row shape declared as an `interface` fails
+   `TS2344: Index signature for type 'string' is missing` when passed as a generic constrained to
+   `Record<string, unknown>`; a `type` alias does not. Three errors, none visible to `tsc -b`,
+   because `tsconfig.app.json` includes only `src` and `tsconfig.node.json` only
+   `vite.config.ts`/`worker/index.ts` — **`tests/` is in no project and `tsc -b` is vacuous on it.**
+   The command that actually checks a test file, now used on every card:
+   `npx tsc --ignoreConfig --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --skipLibCheck --lib es2022,dom <file>`
+3. Case (e)'s outsider half asserted `42501` for a stranger's flip. A stranger's `UPDATE` fails the
+   read half's `using` clause, matches zero rows and raises **no error at all** — the assertion
+   could never have passed, and the half duplicated T016's scope. Deleted; the file now creates two
+   accounts, not three.
+4. Case (a)'s `expect(tasksSeenByExMember).toEqual([])` had **no positive control**. A break that
+   makes nobody see anything would have left it green. The same ex-member now reads **one** row
+   while the membership is still live, in the same block, before the purge.
+5. Case (c) could not distinguish `greatest(updated_at, now())` from a bare `now()`. It now forces
+   the member row five minutes into the future before the purge and asserts the read-back stamp
+   equals that future value — which only the `greatest` form produces. The fix worker verified the
+   premise against `contracts/policies.sql:126-150` before changing anything.
+
+**Green progression.** Cases (b), (c) and (d) turn green at **T022**, when fork block C lands
+`workspaces_zz_kind_change` and `members_keep_newer`. Cases (a) and (e) turn green only at
+**T023**: (e) needs the `workspaces` read half widened with `public.is_member(id)` before a
+non-owner's write can be refused rather than silently matching nothing, and (a)'s positive control
+needs the widened child read half so the live member can read the task it later must not see. The
+T022 card has been corrected to say `(a) and (e)`, not `(e)` alone.
+
+**Not proven by this card:** nothing about the trigger's behaviour is verified yet. The file is
+evidence written before the code, and it stays red until T022.
+
+Sign-off: Andrii Tkhorenko (single-operator).
+
+## T019 receipt — `seedTeamWorkspace` harness helper (2026-09-14)
+
+Merged as `3d6c86c` from lane `wt/harness-seed` (worker commit `b930f30`). Artefact:
+`tests/harness/seed.ts`, `+135/-0` — **additive only**, no pre-existing line removed and no
+existing export's signature changed (D-13). The seed never inserts a `public.members` row
+directly; membership arrives through `add_member_by_email`, whose parameter names match
+`contracts/rpc.md` character for character.
+
+**The closer returned PASS with no blocking findings** — the first card in this taskgroup to do so.
+It traced the function line by line and confirmed it will work once T024 lands the RPC.
+
+**No runtime behaviour of `seedTeamWorkspace` is verified.** The card's own verify is
+`npm test -- --run --project stack` green **after T024**, and T024 has not landed. What is
+established today is the shape of the diff, its typecheck, its lint, and the closer's reading —
+not that the helper works. It is recorded as UNTESTED substrate under the `membership` map entry
+and reaches nothing better without a green run.
+
+Five of six advisories were applied before the commit:
+
+1. **The wrong trigger was named — the same defect class corrected in `7718363`.** Two comments
+   said the owner's `members` row is `workspaces_seed_owner`'s effect, "in the same transaction as
+   the workspace insert". It is not, on this helper's path: `seed_workspace_owner()` is guarded
+   `if new.kind = 'team'` (`contracts/policies.sql:104`) and `createWorkspace` inserts
+   `kind = 'personal'`, so that trigger fires and does nothing. The owner row arrives from
+   `workspaces_zz_kind_change` / `on_workspace_kind_change()`'s personal-to-team branch
+   (`contracts/policies.sql:126-155`), on the **update**. Same outcome, wrong mechanism named; the
+   fix worker re-read the contract and confirmed before editing.
+2. The recorded member id is now the id the RPC resolved (`data.member_id`), asserted equal to the
+   caller's, not the id the caller passed in. On the edge-case-5 path — adding the owner's own
+   email — the RPC returns the existing `owner` row, and the old code would have labelled the
+   owner's id as a member's.
+3. Every throw now carries the Postgres `code`, not just the message. The one that matters is the
+   `kind`-write throw: an RLS refusal there arrives as `42501`.
+4. The stamp is `Math.max(Date.parse(current.updated_at) + 1, Date.now())`, guarded against `NaN`
+   with a named throw. `Date.parse` truncates Postgres's microsecond `updated_at` to milliseconds,
+   so on a stack whose server clock leads the client the computed stamp could land **below** the
+   stored value and `keep_newer()` would cancel the update.
+5. `flushQueue()`'s return — the still-pending count after three bounded tries
+   (`src/sync/sync.ts:313`) — is captured and throws when non-zero, instead of being discarded and
+   surfacing later as a `PGRST116` that blames the read rather than the push.
+
+The sixth advisory is a **deliberate deferral, not a defect**: the card asks the seed to use "the
+real creation path", and today that is unavailable — `createWorkspace` gains its `kind` parameter
+only at **T031**, far downstream of T019, which must land before T020. Create-then-flip is correct
+for now. **Follow-up owed at T031/T040:** once `createWorkspace(name, 'team')` exists,
+`seedTeamWorkspace` should call it and the read/stamp/update/read-back block disappears.
+
+Both silent-failure guards the closer verified are intact and hardened, not weakened: the
+`await flushQueue()` before the first server read, which closes the 400 ms debounce race in
+`src/db/api.ts:53-66`, and the stamp-then-re-read-and-throw around the `kind` flip, which closes
+`keep_newer()`'s silent-cancel hole (`supabase/schema.sql:142-153` — a BEFORE trigger returning
+`null` cancels the update with no PostgREST error, and an AFTER-UPDATE trigger never fires on a
+cancelled update). A cancelled `kind` update remains impossible to mistake for success.
+
+Sign-off: Andrii Tkhorenko (single-operator).
+
+## Coordinator notes — carried forward, not yet discharged (2026-09-14)
+
+- **FR-043's "outbound messages 0" is covered by construction, not by an assertion.** The
+  `supabase` CLI local stack runs with no SMTP transport configured, so no provisioning routine
+  can emit mail whatever it does. No card asserts it and none needs to; recorded here so the
+  requirement is not later believed to rest on a test that does not exist.
+- **Three `DA404` paths have no case in any card**: `contracts/rpc.md` lines 180, 198 and 245.
+  T010 covers the fourth (`add_member_by_email` against an email with no account on this origin).
+  Not a defect in any card as written — a gap in the card set, to be closed when the TG-2 schema
+  cards land the routines that raise them.
+- **The `membership` and `team-rls` map entries were created UNTESTED ahead of their code** in
+  `460da90`, so the cards that name them as substrate cite something that exists. Neither may reach
+  VALIDATED without a green run and a receipt naming command, revision, date and sign-off.
