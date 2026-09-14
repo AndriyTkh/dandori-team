@@ -93,7 +93,7 @@ problem, not a test problem. **Blocks TG-1 onward.**
   - verify: `for ($i=1; $i -le 10; $i++) { npm test -- --run --project stack tests/stack/soft-delete.test.ts }` — 10/10 green
   - done-when: 10/10 green; `git diff tests/stack/soft-delete.test.ts` shows no change to any `expect(...)`, `it(...)` title or acceptance comment; `git diff src/` is empty (SC-003 discipline; FR-030 exception named on T004)
   - blocked-by: T003
-- [ ] T004a [data] [sub-of: T004] Swap `tests/stack/offline-round-trip.test.ts`'s private `drivePushAndPullCycle` (same two-settle defect as T004's, 9 call sites) for the harness `driveSyncCycle`. Owner-approved 2026-09-14 as the second recorded FR-030 exception; no `expect(...)`, `it(...)` title or acceptance comment may change [in-progress: wt/ort-driver]
+- [x] T004a [data] [sub-of: T004] Swap `tests/stack/offline-round-trip.test.ts`'s private `drivePushAndPullCycle` (same two-settle defect as T004's, 9 call sites) for the harness `driveSyncCycle`. Owner-approved 2026-09-14 as the second recorded FR-030 exception; no `expect(...)`, `it(...)` title or acceptance comment may change
   - Write: `tests/stack/offline-round-trip.test.ts`
   - Read: `tests/harness/sync.ts` (post-T004 `driveSyncCycle`, `flushFirst`); `tests/stack/soft-delete.test.ts` (the T004 swap, as the pattern); `specs/001-validation-spine/receipts.md` "sync-engine receipt repaired"
   - substrate: `sync-engine` (VALIDATED at ec12db6)

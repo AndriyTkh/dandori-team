@@ -116,3 +116,13 @@ Sign-off: Andrii Tkhorenko (single-operator)
   the owner's word. `{settles:1}` callers keep the hazard by design (no such caller writes
   through `src/db/api.ts` today).
 - Sign-off: Andrii Tkhorenko (single-operator).
+
+## 2026-09-14 — second FR-030 exception: offline-round-trip driver swap (002 T004a)
+- Owner-approved 2026-09-14. `tests/stack/offline-round-trip.test.ts`'s private
+  `drivePushAndPullCycle` (same two-settle defect as T004's) deleted; 9 call sites switched to the
+  harness `driveSyncCycle`, unused imports removed. No `expect`, `it`/`describe` title or
+  acceptance comment changed (closer-verified by grep and by eye); `git diff src/` empty;
+  `tests/harness/sync.ts` untouched — harness defaults covered every site (all cycles run online).
+- Verify: worker 10/10 green on the file, closer 3/3; `npx vitest run --project stack` 5 files /
+  24 tests PASS (both); lint and `tsc -b` clean. Merged into `002-team-workspaces`.
+- Sign-off: Andrii Tkhorenko (single-operator).
