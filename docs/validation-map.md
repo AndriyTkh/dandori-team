@@ -111,6 +111,32 @@ distinctions below.
   sign-off: —
   accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T008 and T018 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers the provisioning routines, the first-account trigger on auth.users and the admin guards. Nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
 
+- id: membership
+  kind: backend
+  criticality: HIGH
+  status: UNTESTED
+  paths: [supabase/schema.sql]
+  verify: "NONE — needs writing; becomes `npx vitest run --project stack tests/stack/members-two-accounts.test.ts tests/stack/kind-switch.test.ts` once T020–T024 land"
+  tests: —
+  depends-on: [supabase-schema, supabase-auth]
+  scenarios: []
+  last-verified: —
+  sign-off: —
+  accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T010, T014, T017, T019, T021, T022, T024 and T026 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers `public.members`, the `members_one_per_person` constraint, `is_member`/`is_owner`, `on_workspace_kind_change` and the two membership RPCs. The red-first tests these cards write are committed **red** on purpose and prove nothing until the schema cards land; nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
+
+- id: team-rls
+  kind: backend
+  criticality: HIGH
+  status: UNTESTED
+  paths: [supabase/schema.sql]
+  verify: "NONE — needs writing; becomes `npx vitest run --project stack tests/stack/team-rls-both-halves.test.ts tests/stack/rls-two-accounts.test.ts tests/stack/personal-unchanged.test.ts` once T023 lands"
+  tests: —
+  depends-on: [supabase-schema, membership]
+  scenarios: []
+  last-verified: —
+  sign-off: —
+  accepted-risk: "entry created UNTESTED ahead of its code so the 002 cards T011–T017 and T023 cite a substrate that exists in the map (ADR-0006 Consequences, \"Validation map\"); covers the replaced `own_rows` predicate block on `workspaces`/`labels`/`tasks`/`notes` and the fork-only `members_access` policy. **The asymmetry documented in the fork-substrate note below is the thing at risk**: both halves of each policy are replaced separately, and a single predicate pasted into both would change the security model silently. Until T023 lands and T011–T013 run green, the fork has no executed evidence that team access resolves correctly or that personal access is unchanged; nothing reaches VALIDATED without a receipt naming command, revision, date and the (single-operator) sign-off (coordinator, 2026-09-14)"
+
 - id: supabase-auth
   kind: adapter
   criticality: HIGH
