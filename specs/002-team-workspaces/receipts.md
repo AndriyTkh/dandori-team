@@ -1111,3 +1111,77 @@ Status stays **UNTESTED** — a red file is not a validation.
 before the code and stays red until T026.
 
 Sign-off: Andrii Tkhorenko (single-operator).
+
+## T026B receipt — `tests/` is typechecked in CI (2026-09-14)
+
+Merged as `c463d65` from lane `wt/tsconfig-tests` (lane commit `fbc0f26`). Artefacts:
+`tsconfig.test.json` (new, 23 lines) and one line added to `tsconfig.json`'s `references`.
+
+**The gap.** `tsconfig.app.json` includes only `src`, `tsconfig.node.json` only `vite.config.ts`
+and `worker/index.ts`. CI's typecheck step (`.github/workflows/ci.yml:36`) runs
+`npx tsc -b --noEmit` against the root solution file, which referenced only those two — so it had
+never read a single file under `tests/`. Every "typecheck is green" statement about a test file in
+this feature's receipts rested on an out-of-band invocation run by hand:
+`npx tsc --ignoreConfig --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --skipLibCheck --lib es2022,dom <file>`.
+Found independently by the T017 closer and the T011 closer.
+
+**Verify, run by the coordinator on the branch tip, both halves:**
+
+```
+npx tsc -b --noEmit --force        -> exit 0, no output
+```
+
+and, with `const coordinatorProbe: number = "not a number"` appended to a real stack test file
+(`tests/stack/team-triggers.test.ts`, not a fixture):
+
+```
+tests/stack/team-triggers.test.ts(432,7): error TS6133: 'coordinatorProbe' is declared but its value is never read.
+tests/stack/team-triggers.test.ts(432,34): error TS2304: Cannot find name '...'
+tsc exit code with a broken test file: 2
+tsc exit code on the clean tree: 0
+```
+
+The exit code is the half that matters and is checked separately: `tsc -b` printing errors while
+exiting 0 would leave CI green and the card undone. It exits **2**, so CI fails. The probe was
+reverted and `git status --porcelain` confirmed clean before the commit.
+
+**The design decision worth recording.** The worker first tried `composite: true` +
+`emitDeclarationOnly`, the ordinary shape for a `references` target. `tsc -b` then demanded that
+`tsconfig.app.json` itself become composite (TS6306/TS6310) — which changes how `src/` is compiled
+and is precisely what this card's done-when forbids. The config is therefore a **non-composite
+leaf**, referenced only from the root solution file, matching what `tsconfig.app.json` and
+`tsconfig.node.json` already are (neither is composite either). A non-composite project may pull
+`src/**` in transitively as plain program inputs, which is what the tests need in order to
+typecheck their imports at all.
+
+Options are copied from the two existing configs rather than from a template, so `tests/` is held
+to the same strictness as `src/` — including `noUnusedLocals`, `noUnusedParameters`,
+`verbatimModuleSyntax` and `erasableSyntaxOnly`, all of which the hand invocation above did **not**
+apply. `types` is `["node", "vite/client"]`; `"vitest/globals"` was deliberately not added, because
+`vitest.config.ts` never sets `test.globals` and every test imports `describe`/`it`/`expect`
+explicitly. `tsBuildInfoFile` points into `node_modules/.tmp/`, where the other two already write,
+so nothing untracked appears in the tree.
+
+**The card's premise turned out to be already discharged, and that is itself the finding.** The new
+coverage surfaced **zero** errors on the tree as it stands, re-confirmed with `--force` after
+deleting the build-info directory to rule out stale incremental state. The three real errors the
+card attributes to the T017 closer were found by that closer's own out-of-band run and fixed before
+`47d20aa` landed. So this card did not clean up a backlog; it removed the **need for the coordinator
+to run a typecheck by hand on every future test file**, which is the thing that was actually
+fragile. Nothing enforced that habit, and a single forgotten invocation would have put an untypechecked
+test file into the tree with CI reporting green.
+
+`.github/workflows/ci.yml` needed no change: its typecheck step already invokes
+`npx tsc -b --noEmit` against the root `tsconfig.json`, which now carries the third reference.
+Confirmed by the broken-file demonstration, which used that exact command.
+
+**Note on the `env-boot` map entry.** It is not re-signed here. This card changes what CI checks,
+not what the toolchain does: no `src/` compilation option changed, `tsconfig.app.json` is untouched,
+and `npm run build` produces the same output. Its `paths` do not include `tsconfig.test.json`, so no
+map discipline rule is triggered. T052 re-verifies and re-signs it at the end of the feature.
+
+**CI standing, restated here because this card touches CI.** The typecheck step is now stricter and
+green. The **test** step remains red by design and stays red until T023 and T026 — see the
+coordinator note above on the suspended gate.
+
+Sign-off: Andrii Tkhorenko (single-operator).

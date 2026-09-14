@@ -278,7 +278,7 @@ parallel.
   - verify: `npx vitest run --project stack tests/stack/personal-triggers-after-t022.test.ts` — red before T022, green after
   - done-when: all three cases pass; no assertion depends on T023 (this file's subject is personal, whose read and write halves T023 leaves as upstream wrote them); each negative assertion carries an in-block positive control
   - blocked-by: T022
-- [ ] T026B [infra] **`tests/` is typechecked by nothing in CI.** `tsconfig.app.json` includes only `src` and `tsconfig.node.json` only `vite.config.ts`/`worker/index.ts`, so `npx tsc -b --noEmit` — the CI typecheck step — never reads a single file under `tests/`. Every "typecheck is green" claim about a test file in this feature's receipts rests on an **out-of-band** invocation the coordinator ran by hand: `npx tsc --ignoreConfig --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --skipLibCheck --lib es2022,dom <file>`. Close the gap the ordinary way: a `tsconfig.test.json` covering `tests/` referenced from the root solution file, so `tsc -b` picks it up, and no change to what `tsconfig.app.json` compiles into the bundle. Found independently by the T017 closer (three real errors invisible to `tsc -b`, recorded in T017's receipt) and the T011 closer
+- [x] T026B [infra] [done: c463d65] **`tests/` is typechecked by nothing in CI.** `tsconfig.app.json` includes only `src` and `tsconfig.node.json` only `vite.config.ts`/`worker/index.ts`, so `npx tsc -b --noEmit` — the CI typecheck step — never reads a single file under `tests/`. Every "typecheck is green" claim about a test file in this feature's receipts rests on an **out-of-band** invocation the coordinator ran by hand: `npx tsc --ignoreConfig --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --skipLibCheck --lib es2022,dom <file>`. Close the gap the ordinary way: a `tsconfig.test.json` covering `tests/` referenced from the root solution file, so `tsc -b` picks it up, and no change to what `tsconfig.app.json` compiles into the bundle. Found independently by the T017 closer (three real errors invisible to `tsc -b`, recorded in T017's receipt) and the T011 closer
   - Write: `tsconfig.test.json`, `tsconfig.json`, `.github/workflows/ci.yml` (only if the step needs it)
   - Read: `tsconfig.app.json`, `tsconfig.node.json`, `.github/workflows/ci.yml`; T017's receipt in `specs/002-team-workspaces/receipts.md`
   - substrate: `env-boot`
@@ -665,7 +665,7 @@ account's rows to another. It is worth merging and reviewing on its own before a
 | T018 | wt/logins | data | `tests/stack/logins-provisioning.test.ts` | own file; needs T008's helper |
 | T019 | wt/harness-seed | data | `tests/harness/seed.ts` | [P] — disjoint from T007 |
 | T026A | (new lane) | data | `tests/stack/personal-triggers-after-t022.test.ts` | own file; after T022 |
-| T026B | (new lane) | infra | `tsconfig.test.json`, `tsconfig.json`, `.github/workflows/ci.yml` | [P] — no file shared with any data card |
+| T026B | wt/tsconfig-tests | infra | `tsconfig.test.json`, `tsconfig.json`, `.github/workflows/ci.yml` | [P] — no file shared with any data card |
 | T020 | serial | data | `supabase/schema.sql` | **`supabase/schema.sql` is written by T020–T026; strictly serial, never parallel lanes** |
 | T021 | serial | data | `supabase/schema.sql` | after T020 |
 | T022 | serial | data | `supabase/schema.sql` | after T021 |
