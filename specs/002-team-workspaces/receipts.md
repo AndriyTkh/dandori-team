@@ -2536,3 +2536,38 @@ output. Project `Dandori_host`, hosted ref not recorded here (FR-033).
   A-020 the owner mints a real account before the backfill.
 
 Status: **PASS**. Sign-off: Andrii Tkhorenko (single-operator).
+
+## T059 — hosted admin, T060 — sign-ups closed, T061 — deploy (2026-09-14)
+
+All three run through the Supabase Management API and Wrangler; no dashboard step, no
+`wrangler login`, no credential in the repository (FR-033, FR-044). Hosted ref and the owner's
+password are recorded nowhere here.
+
+**T059 — PASS, and the manual intervention turned out unnecessary.** The owner minted a real
+account in the dashboard (A-020) and `users_seed_first_admin` **fired on it**: reading
+`instance_admins` before the backfill already showed exactly one row, that account, `granted_by`
+null. The card's `insert … on conflict do nothing` was then run anyway and was a no-op
+(`201 []`). After: `select count(*) from public.instance_admins` → `1`; the pre-existing
+`test@dandori.local` is **not** admin. So the trigger works on a real origin, and SC-001's "zero
+manual database intervention" holds *more* strongly than the card assumed — T059's premise (an
+owner account predating the trigger) did not apply, because the owner chose a fresh account.
+
+**T060 — PASS.** `PATCH /v1/projects/{ref}/config/auth {"disable_signup": true}` → `200`;
+re-read confirms `disable_signup: true`, `external_email_enabled: true` (the e-mail provider stays
+on, so admin-minted logins can still sign in — only self-service sign-up is closed). Verified
+against the live origin with the anon key: `POST /auth/v1/signup` →
+`422 {"error_code":"signup_disabled","msg":"Signups not allowed for this instance"}`, no account
+created. Order held: strictly after T059 (FR-039, SC-019).
+
+**T061 — PASS.** `npm run build` 0 with `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` supplied
+from a gitignored `.env.local` (`git check-ignore -v` → `.gitignore:19:*.local`); the legacy `anon`
+key, pulled from the Management API, never written to a tracked file. `npx wrangler deploy` with
+`CLOUDFLARE_API_TOKEN` from the operator's environment — 4 changed assets uploaded, worker
+`dandori`, version `2fe65111-5e09-4cae-a189-7d9ef4ea2e05`, live at
+`https://dandori.otherbadeng.workers.dev`. Live smoke: `/` → 200 with the PWA manifest, `/sw.js`
+→ 200, the served bundle inlines the hosted origin. **Credential scan of the live bundle:**
+`sbp_`, `service_role`, `GOCSPX` absent; the one `sb_secret_` hit is supabase-js's own key-prefix
+test (`e.startsWith("sb_secret_")`), not a key. (Note: a first fetch returned a stale edge copy;
+every assertion above is from a cache-busted re-fetch.)
+
+Status: **PASS ×3**. Sign-off: Andrii Tkhorenko (single-operator).
