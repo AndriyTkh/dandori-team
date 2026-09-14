@@ -59,7 +59,7 @@ directly:
   and `email_confirmed_at = now()`, plus the matching `auth.identities` row with `provider = 'email'`
   and `provider_id` equal to the new user id;
 - set password: update `encrypted_password` the same way;
-- remove: **ban, not delete.** `banned_until = 'infinity'`, `encrypted_password` scrambled to an
+- remove: **ban, not delete.** `banned_until = '9999-12-31 23:59:59+00'` (finite far-future; `'infinity'` makes the pinned local GoTrue v2.196.0 return 500 on sign-in, A-009), `encrypted_password` scrambled to an
   unusable value, the `instance_admins` row removed, the login's `members` rows soft-deleted (which
   clears its assignees). A real `delete from auth.users` is ruled out by the schema: `workspaces`,
   `labels`, `tasks` and `notes` all declare `user_id ... on delete cascade`, so deleting the account

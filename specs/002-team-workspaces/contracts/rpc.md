@@ -217,7 +217,7 @@ violates the spec's "their rows remain, the creator id is kept" and SC-016. So t
 
 ```sql
 update auth.users
-   set banned_until        = 'infinity',
+   set banned_until        = '9999-12-31 23:59:59+00',  -- finite: 'infinity' 500s on pinned local GoTrue (A-009)
        encrypted_password  = extensions.crypt(gen_random_uuid()::text || gen_random_uuid()::text,
                                               extensions.gen_salt('bf')),
        updated_at          = now()
