@@ -1,5 +1,18 @@
-import { db, stripLocal, type Local } from './local'
-import { addMemberByEmailRemote, memberEmailsRemote, requestPush, type MemberEmail } from '../sync/sync'
+import { db, getMeta, setMeta, stripLocal, type Local } from './local'
+import {
+  addMemberByEmailRemote,
+  createLoginRemote,
+  deleteLoginRemote,
+  isAdminRemote,
+  listLoginsRemote,
+  memberEmailsRemote,
+  requestPush,
+  setLoginAdminRemote,
+  setLoginPasswordRemote,
+  type CreatedLogin,
+  type LoginRow,
+  type MemberEmail,
+} from '../sync/sync'
 import { translate } from '../i18n'
 import { taskDate } from './types'
 import type {
@@ -155,6 +168,85 @@ export async function addMemberByEmail(workspaceId: ID, email: string): Promise<
   const row = await addMemberByEmailRemote(workspaceId, email)
   await db.members.put({ ...row, _dirty: 0 })
   return row
+}
+
+// ---------------------------------------------------------------- instance admin
+
+/**
+ * The per-device admin flag (D-17), read from the Dexie `meta` cache under
+ * key `is-admin` — the same shape as the `member-email:<uuid>` cache (a plain
+ * string value keyed in `meta`). **Display-only**: it decides whether Settings
+ * draws the Logins section, nothing else. Every routine in the "logins"
+ * group below re-checks `is_admin()` inside the database on every call, so a
+ * device that lies to itself buys a `DA001` and nothing more (FR-037, FR-042).
+ * A cache with nothing written yet — a personal-only user, or a fresh
+ * install before the first sync cycle — reads `false`.
+ */
+export async function isAdmin(): Promise<boolean> {
+  return (await getMeta('is-admin')) === 'true'
+}
+
+/**
+ * Refreshes the cached flag from server truth and writes it back to `meta`.
+ * Called once at boot and again on each successful sync cycle's admin check
+ * (D-17) — never on every render, or the Logins section would flash in and
+ * out. Online-only, like the five provisioning calls below: offline, this
+ * throws rather than silently trusting a stale cache. `wipeLocal()` already
+ * clears every `meta` row (T029), `is-admin` included, so signing out on a
+ * shared device never leaves the next person believing they are an admin.
+ */
+export async function refreshIsAdmin(): Promise<boolean> {
+  const admin = await isAdminRemote()
+  await setMeta('is-admin', String(admin))
+  return admin
+}
+
+// -------------------------------------------------------------------- logins
+
+/*
+ * Five thin online-only delegations to `src/sync/sync.ts` (contracts/rpc.md
+ * "Client layering", D-16). None of these touch a synced table — provisioning
+ * writes to `auth.users`, not to anything `SYNCED_TABLES` carries — so there
+ * is nothing here to queue and nothing offline to fall back to. Every one
+ * fails loudly rather than queuing (FR-044): a queued account creation would
+ * be a password sitting in Dexie. `error.code` passes through unchanged, same
+ * discipline as `addMemberByEmail` above, so a caller branches on
+ * `DA001`/`DA010`..`DA015`/`DA404` without reading the message text.
+ */
+
+/** The Logins section's list. Admin-only — raises `DA001` rather than handing back an empty list. */
+export async function listLogins(): Promise<LoginRow[]> {
+  return listLoginsRemote()
+}
+
+/**
+ * Mints a login on this origin. Unwrapped here, not in `sync.ts`: the RPC's
+ * `returns table` shape is an implementation detail of PostgREST, and the UI
+ * asks for the one login it just created, not a list of one.
+ */
+export async function createLogin(
+  email: string,
+  password: string,
+  admin = false,
+): Promise<CreatedLogin> {
+  const [row] = await createLoginRemote(email, password, admin)
+  if (!row) throw new Error('create_login returned no row')
+  return row
+}
+
+/** Replaces a login's password. Admin-only: `DA001`/`DA011`/`DA404`. */
+export async function setLoginPassword(userId: string, password: string): Promise<void> {
+  await setLoginPasswordRemote(userId, password)
+}
+
+/** Bans a login and clears its memberships. Admin-only: `DA001`/`DA404`/`DA013`/`DA014`. */
+export async function deleteLogin(userId: string): Promise<void> {
+  await deleteLoginRemote(userId)
+}
+
+/** Grants or revokes instance admin. Admin-only: `DA001`/`DA404`/`DA015`. */
+export async function setLoginAdmin(userId: string, admin: boolean): Promise<void> {
+  await setLoginAdminRemote(userId, admin)
 }
 
 // -------------------------------------------------------------------- labels
