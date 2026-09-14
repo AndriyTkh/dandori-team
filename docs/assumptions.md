@@ -13,6 +13,8 @@ it costs if wrong. A defaulted **owner** answer lives in §B, never in §A.
 
 | id | date | stage | task | decision | why | reversible | reviewed |
 |---|---|---|---|---|---|---|---|
+| A-001 | 2026-09-14 | demo-rush | T022–T026 | Pipeline the serial schema cards: closer(N) reviews the committed card read-only while coder(N+1) writes the next block in the primary checkout; `supabase/schema.sql` keeps one writer at a time. T023 dispatched before T022 is checked off. | Owner asked for speed and parallelism; every remaining TG-1 card writes the same file so lanes cannot help, but review and the next write are independent. Closer findings land as a follow-up commit before the card is checked off. | yes — each card is one commit on `002-team-workspaces`; `git revert` undoes it, no data migrated, hosted DB untouched | no |
+| A-002 | 2026-09-14 | demo-rush | T022 | Accept T022 as PASS with five red cases instead of the card's three, all T023-gated (added `kind-switch` (b) and `team-triggers` R-6 to the card's exception list); test files not edited. | Coder traced both to the widened read/write halves T023 supplies (`team-triggers.test.ts:20-33` says so itself). Plan-text defect (B1 class, non-blocking): the card's exception list predates the test files' final shape. Swept T023–T027 verify lines: each requires all-green, so the gap cannot recur later in TG-1. | yes — card text only; if wrong, T023's all-green verify exposes it | no |
 
 ## §B Known unknowns
 
