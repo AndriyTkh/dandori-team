@@ -498,3 +498,74 @@ begin
   --        owner row comes from workspaces_seed_owner, which is security definer and so does
   --        not have to satisfy this predicate -- that is what closes the chicken-and-egg hole.
 end $blk$;
+
+-- ==========================================================================
+-- add-by-email and member listing -- two security definer RPCs   (plan D-9, contracts/rpc.md)
+-- These reach `auth.users`, which policies alone cannot do (RLS on public tables says nothing
+-- about it), so both carry `auth` in their search_path -- the two membership helpers above do
+-- not need it and do not have it.  Revoked from public/anon for the same reason as is_member/
+-- is_owner: PostgREST publishes every public function as an RPC by default (plan R-3).
+-- ==========================================================================
+
+create or replace function public.add_member_by_email(ws uuid, email text)
+returns public.members
+language plpgsql security definer set search_path = public, auth, pg_temp as $fn$
+declare
+  found_id     uuid;
+  result       public.members;
+  -- Computed into its own name, never referenced bare inside a query below: a query that
+  -- names both `u.email` (the column) and the parameter `email` in the same scope raises
+  -- plpgsql's `42702 column reference "email" is ambiguous`, not a normal comparison.
+  wanted_email text := lower(trim(email));
+begin
+  if not public.is_owner(ws) then
+    raise exception using errcode = 'DA001', message = 'not an owner of this workspace';
+  end if;
+
+  -- Supabase stores auth.users.email lower-cased; the owner types free text.  Normalising
+  -- both sides is what stops an existing account being reported as absent (plan R-13).
+  select u.id into found_id
+    from auth.users u
+   where lower(trim(u.email)) = wanted_email
+   limit 1;
+
+  -- The lookup precedes the insert inside this one function call, so a DA404 here leaves
+  -- no row of any kind behind (SC-010) -- there is nothing left to roll back.
+  if found_id is null then
+    raise exception using errcode = 'DA404', message = 'no account with this email on this origin';
+  end if;
+
+  -- The set-list deliberately does not touch `level`: re-adding a removed person reactivates
+  -- the same row (US2 acceptance 6), and adding the owner's own email hits this same conflict
+  -- target without ever demoting them from 'owner' (edge case 5).
+  insert into public.members (id, user_id, workspace_id, member_id, level)
+  values (gen_random_uuid(), auth.uid(), ws, found_id, 'member')
+  on conflict (workspace_id, member_id)
+  do update set deleted = false, updated_at = now()
+  returning * into result;
+
+  return result;
+end;
+$fn$;
+
+revoke execute on function public.add_member_by_email(uuid, text) from public, anon;
+grant  execute on function public.add_member_by_email(uuid, text) to authenticated;
+
+-- Zero rows unless the caller is a member (FR-007) -- a refusal reads exactly like an empty
+-- workspace, which is what US2 acceptance 5 asks for.  No `profiles` table and no second copy
+-- of the email exists anywhere: this reads auth.users live, at call time, and returns only the
+-- three fields a member list needs.  `not m.deleted` keeps a removed person off the list they
+-- no longer belong to, the same predicate is_member itself uses.
+create or replace function public.workspace_member_emails(ws uuid)
+returns table (member_id uuid, email text, level text)
+language sql stable security definer set search_path = public, auth, pg_temp as $fn$
+  select m.member_id, u.email, m.level
+    from public.members m
+    join auth.users u on u.id = m.member_id
+   where m.workspace_id = ws
+     and not m.deleted
+     and public.is_member(ws)
+$fn$;
+
+revoke execute on function public.workspace_member_emails(uuid) from public, anon;
+grant  execute on function public.workspace_member_emails(uuid) to authenticated;
