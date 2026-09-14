@@ -2343,6 +2343,43 @@ sign-off: Andrii Tkhorenko (single-operator)
 
 ## Schema lane review — 67a56d8..c5fda53 (2026-09-14)
 
-Reviewer verdict FAIL: transcription clean, three blocking RLS reachability findings + FR-010 gap; fixed by T023a. Full text follows.
+Reviewer (dev-main), Gate-2 receipt. **Status: FAIL** — transcription clean, three blocking RLS
+reachability findings plus an FR-010 gap. Fix card: T023a (A-013). Checks: `git diff 67a56d8 c5fda53
+-- supabase/schema.sql`; `diff -u` contract ranges vs schema (block C + policy: 2 benign additions;
+block D byte-identical); psql catalog reads of `information_schema.triggers` (32), `pg_policies` (5),
+`pg_proc` prosecdef/proconfig/proacl (21), `relrowsecurity`, `relacl`, `pg_extension`. NOT RUN: double
+apply and vitest (shared DB held by T027).
 
+Passes: block C/D/E and RPCs match contract (declared A-009 drifts judged correct; finite
+`banned_until` is right — GoTrue `IsBanned()` treats any future value identically, `'infinity'` is
+unscannable → 500); both halves as contracted, child-table write half = upstream clause `OR
+is_member(...)`, asymmetry preserved; personal reduction exact (`is_member` constant-false for
+personal rows); origin invariant clean; every fork function `security definer` + `search_path`;
+`instance_admins` RLS-on/zero-policies; `seed_first_admin` not replayable; `delete_login` never hard
+deletes `auth.users`; trigger BEFORE order `keep_newer → stay_deleted → synced_at → _zz_*` on every
+table; `keep_newer`/`stay_deleted_with_workspace`/`follow_workspace_delete` bodies untouched;
+every statement guarded (idempotent by reading).
 
+Findings:
+1. **blocking** `schema.sql:465` — `workspaces_access` is `for all`; Postgres applies `using` to
+   DELETE and `with check` never. Widening `using` to `or is_member(id)` let any member
+   `DELETE /rest/v1/workspaces?id=eq.<ws>`, cascading labels/tasks/notes/members. FR-005/FR-006.
+2. **blocking** `schema.sql:494` — same on `members_access`: any member can hard-delete every
+   membership incl. the owner's. Committed tests only exercise the soft-delete UPDATE path.
+   FR-005/FR-010/FR-015.
+3. **blocking** `schema.sql:465-466` — member `PATCH workspaces {user_id: self}` passes both
+   halves; `keep_creator` not installed on `workspaces`. Creator hijack. FR-011.
+4. should-fix (B1) — FR-010 "at least one owner / cannot leave / no promote or transfer" has no
+   backend enforcement; sole owner can soft-delete or demote self, or promote another.
+5. should-fix `schema.sql:708` — `_create_login_impl` revoked from `public` only; `anon` and
+   `authenticated` keep EXECUTE (Supabase default privileges). Body guard (`is_admin()`) holds, but
+   it is an undocumented public endpoint.
+6. doc-fix — `banned_until 'infinity'` still in data-model.md:223, plan.md:1019, tasks.md:266
+   (rpc.md and ADR-0006 corrected at 75f4fb6).
+7. doc-fix `schema.sql:634-636` — block-E header says five functions; six, impl split.
+8. note `schema.sql:413` — `keep_creator` lacks `set search_path`.
+
+Map owed at lane close: `supabase-schema` re-stamp → post-T023a SHA; `membership`, `team-rls`,
+`account-provisioning` UNTESTED → VALIDATED with verify commands filled — **held until T023a is
+green** (a VALIDATED stamp backed by a suite that never issues a member hard-DELETE is a claim
+without a receipt).
